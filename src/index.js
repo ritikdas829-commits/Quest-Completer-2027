@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
-import { writeFileSync, existsSync } from 'fs';
+import { connectDB } from './utils/db.js'; // <-- MongoDB connection import
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -37,9 +37,8 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// Ensure data files exist
-if (!existsSync('tokens.json'))    writeFileSync('tokens.json', '{}');
-if (!existsSync('autoquest.json')) writeFileSync('autoquest.json', '[]');
+// 1. Connect to MongoDB before bot startup
+await connectDB();
 
 banner();
 await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
@@ -61,13 +60,11 @@ client.tokenStore     = makeTokenStore(TOKEN);
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
-    // Single default export
     if (mod.default) {
         const cmd = mod.default;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
-    // Named exports (questCommands.js has multiple)
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || key === 'makeTokenStore' || key === 'handleLinkModal' || key === 'handleLinkPromptButton' || key === 'runAutoquestForUser') continue;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
