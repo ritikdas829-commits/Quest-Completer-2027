@@ -2,9 +2,10 @@ import mongoose from 'mongoose';
 
 export async function connectDB() {
     try {
-        const uri = process.env.MONGODB_URI;
+        // Yeh dono me se jo bhi mil jaye use kar lega
+        const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
         if (!uri) {
-            console.error('❌ MONGODB_URI is missing in .env file');
+            console.error('❌ MONGO_URI or MONGODB_URI is missing in environment variables.');
             return;
         }
         await mongoose.connect(uri);
