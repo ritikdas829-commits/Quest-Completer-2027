@@ -1,8 +1,16 @@
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs';
+import mongoose from 'mongoose';
 
-const STORE_FILE = 'tokens.json';
 const ALGORITHM = 'aes-256-gcm';
+
+// Mongoose Schema for encrypted tokens in MongoDB
+const userTokenSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    encryptedData: { type: String, required: true },
+    linkedAt: { type: Date, default: Date.now }
+});
+
+const TokenModel = mongoose.models.UserToken || mongoose.model('UserToken', userTokenSchema);
 
 function deriveKey(secret) {
     return crypto.createHash('sha256').update(secret).digest();
@@ -31,54 +39,65 @@ function decrypt(stored, key) {
     }
 }
 
-function loadStore() {
-    try {
-        return JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    } catch {
-        return {};
-    }
-}
-
-function saveStore(store) {
-    fs.writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
-}
-
 export class TokenStore {
     constructor(secret) {
         this.key = deriveKey(secret);
+        this.cache = new Map();
+        this.loadIntoCache();
     }
 
-    save(userId, token) {
-        const store = loadStore();
-        store[userId] = encrypt(token, this.key);
-        saveStore(store);
+    async loadIntoCache() {
+        try {
+            const docs = await TokenModel.find({});
+            for (const doc of docs) {
+                this.cache.set(doc.userId, doc.encryptedData);
+            }
+            console.log(`🔑 Loaded ${this.cache.size} encrypted token(s) into memory cache.`);
+        } catch (err) {
+            console.error('❌ Error loading tokens from MongoDB:', err);
+        }
+    }
+
+    async save(userId, token) {
+        const encrypted = encrypt(token, this.key);
+        this.cache.set(userId, encrypted);
+        try {
+            await TokenModel.findOneAndUpdate(
+                { userId },
+                { encryptedData: encrypted, linkedAt: new Date() },
+                { upsert: true, new: true }
+            );
+        } catch (err) {
+            console.error(`❌ Error saving token for user ${userId}:`, err);
+        }
     }
 
     get(userId) {
-        const store = loadStore();
-        const raw = store[userId];
+        const raw = this.cache.get(userId);
         if (!raw) return null;
         return decrypt(raw, this.key);
     }
 
-    remove(userId) {
-        const store = loadStore();
-        if (!store[userId]) return false;
-        delete store[userId];
-        saveStore(store);
-        return true;
+    async remove(userId) {
+        const existed = this.cache.has(userId);
+        this.cache.delete(userId);
+        try {
+            await TokenModel.findOneAndDelete({ userId });
+        } catch (err) {
+            console.error(`❌ Error removing token for user ${userId}:`, err);
+        }
+        return existed;
     }
 
     has(userId) {
-        const store = loadStore();
-        return !!store[userId];
+        return this.cache.has(userId);
     }
 
     get size() {
-        return Object.keys(loadStore()).length;
+        return this.cache.size;
     }
 
     listUserIds() {
-        return Object.keys(loadStore());
+        return Array.from(this.cache.keys());
     }
 }
