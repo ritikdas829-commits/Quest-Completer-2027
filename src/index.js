@@ -5,7 +5,6 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
-// FIXED: db.js ka export koi bhi ho — named ya default — dono chalega
 import * as dbModule from './utils/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,17 +37,15 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// FIXED: 【entity-MongoDB¦canonical_name=MongoDB】 Connect — chahe export default ho ya named ho
-const connectDB = dbModule.connectDB || dbModule.default || dbModule.connect;
-if (connectDB && typeof connectDB === 'function') {
+// 【entity-MongoDB¦canonical_name=MongoDB】 — Safe Connect — default ya named — dono chalega
+const connectDB = dbModule.connectDB || dbModule.default;
+if (typeof connectDB === 'function') {
     try {
         await connectDB();
         console.log(`${col.green}● MongoDB Connected${col.reset}`);
     } catch (e) {
-        console.warn(`${col.purple}● MongoDB Failed: ${e.message}${col.reset}`);
+        console.warn(`${col.purple}● MongoDB Failed: ${e.message}${col.reset} — Bot chalega bina DB ke`);
     }
-} else {
-    console.warn('● db.js me connectDB function nahi mila — skip kar raha hu');
 }
 
 banner();
@@ -67,9 +64,8 @@ const client = new Client({
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
 client.tokenStore     = makeTokenStore(TOKEN);
-// Prefix system — teri demand wala
-client.config = { prefix: process.env.PREFIX || ';' };
-client.prefix = process.env.PREFIX || ';';
+client.config         = { prefix: process.env.PREFIX || ';' };
+client.prefix         = process.env.PREFIX || ';';
 
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
