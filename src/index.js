@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
-import { connectDB } from './utils/db.js'; // <-- MongoDB connection import
+// FIXED: db.js ka export koi bhi ho — named ya default — dono chalega
+import * as dbModule from './utils/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -37,8 +38,18 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// 1. Connect to MongoDB before bot startup
-await connectDB();
+// FIXED: 【entity-MongoDB¦canonical_name=MongoDB】 Connect — chahe export default ho ya named ho
+const connectDB = dbModule.connectDB || dbModule.default || dbModule.connect;
+if (connectDB && typeof connectDB === 'function') {
+    try {
+        await connectDB();
+        console.log(`${col.green}● MongoDB Connected${col.reset}`);
+    } catch (e) {
+        console.warn(`${col.purple}● MongoDB Failed: ${e.message}${col.reset}`);
+    }
+} else {
+    console.warn('● db.js me connectDB function nahi mila — skip kar raha hu');
+}
 
 banner();
 await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
@@ -56,6 +67,9 @@ const client = new Client({
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
 client.tokenStore     = makeTokenStore(TOKEN);
+// Prefix system — teri demand wala
+client.config = { prefix: process.env.PREFIX || ';' };
+client.prefix = process.env.PREFIX || ';';
 
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
