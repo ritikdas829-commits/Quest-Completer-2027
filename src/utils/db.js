@@ -1,58 +1,34 @@
-/**
- * mongo.js - Central MongoDB Connection - Multi Server Safe - No Crash
- * Location: src/utils/mongo.js
- */
-
-import { MongoClient } from 'mongodb';
+import mongoose from 'mongoose';
 
 const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
-let client = null;
-let dbInstance = null;
-let isConnecting = false;
 
 export async function getDatabase() {
-    if (dbInstance) return dbInstance;
     if (!uri) {
-        console.warn("⚠️ MONGO_URI not set - Using memory only - Data will be lost on reset");
+        console.warn("⚠️ MONGO_URI not set - Using memory only");
         return null;
     }
-    if (isConnecting) {
-        // Wait for existing connection
-        await new Promise(r => setTimeout(r, 500));
-        return dbInstance || getDatabase();
+    if (mongoose.connection.readyState === 1) {
+        return mongoose.connection.db;
     }
     try {
-        isConnecting = true;
-        if (!client) {
-            client = new MongoClient(uri, {
-                maxPoolSize: 10,
-                serverSelectionTimeoutMS: 5000,
-                socketTimeoutMS: 45000,
-            });
-            await client.connect();
-            dbInstance = client.db();
-            console.log("📂 MongoDB Connected - Multi Server - Multi User - Persistent");
-        }
-        isConnecting = false;
-        return dbInstance;
+        await mongoose.connect(uri, { dbName: 'questdb' });
+        console.log("📦 MongoDB Connected - Mongoose - Persistent");
+        return mongoose.connection.db;
     } catch (err) {
-        isConnecting = false;
         console.error("❌ MongoDB Connect Error:", err.message);
         return null;
     }
 }
 
 export async function getCollection(name) {
-    try {
-        const db = await getDatabase();
-        if (!db) return null;
-        return db.collection(name);
-    } catch (err) {
-        console.error(`❌ Collection ${name} error:`, err.message);
-        return null;
-    }
+    const db = await getDatabase();
+    if (!db) return null;
+    return db.collection(name);
 }
 
 export function isMongoReady() {
-    return !!dbInstance;
+    return mongoose.connection.readyState === 1;
 }
+
+export const connectDB = getDatabase;
+export default getDatabase;
