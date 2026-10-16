@@ -5,6 +5,7 @@ import {
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
+const DEFAULT_PREFIX = process.env.PREFIX || ';'; // Tera prefix yaha se aayega —.env se ya config se
 
 function getAccountAge(discordId) {
     try {
@@ -17,13 +18,24 @@ function getAccountAge(discordId) {
     } catch { return 'N/A'; }
 }
 
-export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore) {
+function getPrefix(client, guildId) {
+    // Tera prefix system — Jo set hai wahi lega
+    try {
+        if (client?.config?.prefix) return client.config.prefix;
+        if (client?.prefix) return client.prefix;
+        if (client?.getPrefix) return client.getPrefix(guildId);
+    } catch {}
+    return DEFAULT_PREFIX;
+}
+
+export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client) {
     const accounts = await tokenStore.getAllSlots(guildId, ownerId);
+    const prefix = getPrefix(client, guildId); // ← PREFIX SYSTEM — Dynamic
 
     const c1 = new ContainerBuilder();
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        '**Terms & Privacy**\nBy linking your Discord token, you allow the bot to use it for quest completion. Use `.guide` for help.'
+        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}guide\` if you need the exact token flow guide first.`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
@@ -40,10 +52,10 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore) {
                 new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
             ));
         } else {
-            const status = linked.isActive ? 'Active' : 'Not Active';
+            const status = linked.isActive? 'Active' : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
-            const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US',{month:'long', day:'numeric', year:'numeric'}) : 'N/A';
-            const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
+            const linkedAt = linked.linkedAt? new Date(linked.linkedAt).toLocaleDateString('en-US',{month:'long', day:'numeric', year:'numeric'}) : 'N/A';
+            const avatarUrl = linked.avatar? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
             const content = `### #${slotNum} Account Configuration\n• ${linked.username} (${linked.linkedUserId})\n• Status: ${status}\n• Account Age: ${age}\n• Linked At: ${linkedAt}`;
             if (avatarUrl) {
                 c2.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl))));
@@ -71,7 +83,7 @@ export const data = new SlashCommandBuilder().setName('link').setDescription('Pr
 
 export async function execute(interaction, client) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore);
+    const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
     await interaction.editReply(panel);
 }
 
@@ -81,12 +93,12 @@ export async function handleButton(interaction, client) {
     }
     if (interaction.customId.startsWith('unlink_slot_')) {
         await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, parseInt(interaction.customId.split('_')[2]));
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore);
+        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
         return await interaction.update(panel);
     }
     if (interaction.customId.startsWith('select_slot_')) {
         await client.tokenStore.setActiveSlot(interaction.guild.id, interaction.user.id, parseInt(interaction.customId.split('_')[2]));
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore);
+        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
         return await interaction.update(panel);
     }
 }
@@ -104,7 +116,7 @@ export async function handleModal(interaction, client) {
             guildId: interaction.guild.id, ownerId: interaction.user.id, slot, token,
             linkedUserId: data.id, username: data.username, avatar: data.avatar, linkedAt: new Date()
         });
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore);
+        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
         await interaction.editReply({ content: `✅ Slot ${slot} Linked as ${data.username}`, components: panel.components, flags: MessageFlags.IsComponentsV2 });
     } catch (e) {
         await interaction.editReply({ content: `❌ ${e.message}` });
