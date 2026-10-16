@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
-const DEFAULT_PREFIX = process.env.PREFIX || ';'; // Tera prefix yaha se aayega —.env se ya config se
+const DEFAULT_PREFIX = process.env.PREFIX || ';';
 
 function getAccountAge(discordId) {
     try {
@@ -15,11 +15,12 @@ function getAccountAge(discordId) {
         const months = Math.floor(days / 30);
         if (months < 12) return `${months} months ago`;
         return `${Math.floor(months/12)} years ago`;
-    } catch { return 'N/A'; }
+    } catch {
+        return 'N/A';
+    }
 }
 
 function getPrefix(client, guildId) {
-    // Tera prefix system — Jo set hai wahi lega
     try {
         if (client?.config?.prefix) return client.config.prefix;
         if (client?.prefix) return client.prefix;
@@ -30,7 +31,7 @@ function getPrefix(client, guildId) {
 
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client) {
     const accounts = await tokenStore.getAllSlots(guildId, ownerId);
-    const prefix = getPrefix(client, guildId); // ← PREFIX SYSTEM — Dynamic
+    const prefix = getPrefix(client, guildId);
 
     const c1 = new ContainerBuilder();
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
@@ -52,30 +53,38 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                 new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
             ));
         } else {
-            const status = linked.isActive? 'Active' : 'Not Active';
+            const status = linked.isActive ? 'Active' : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
-            const linkedAt = linked.linkedAt? new Date(linked.linkedAt).toLocaleDateString('en-US',{month:'long', day:'numeric', year:'numeric'}) : 'N/A';
-            const avatarUrl = linked.avatar? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
+            const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
+            const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
             const content = `### #${slotNum} Account Configuration\n• ${linked.username} (${linked.linkedUserId})\n• Status: ${status}\n• Account Age: ${age}\n• Linked At: ${linkedAt}`;
+            
             if (avatarUrl) {
-                c2.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl))));
+                c2.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
             } else {
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
             }
+
             const row = new ActionRowBuilder();
             row.addComponents(new ButtonBuilder().setCustomId(`unlink_slot_${slotNum}`).setLabel('Unlink').setStyle(ButtonStyle.Danger));
-            if (!linked.isActive) row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
+            if (!linked.isActive) {
+                row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
+            }
             c2.addActionRowComponents(row);
         }
-        if (slotNum < 5) c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+        if (slotNum < 5) {
+            c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+        }
     }
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Active slot se quest chalega — Support: ${SUPPORT_SERVER}`));
+    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Active slot will run quests — Support: ${SUPPORT_SERVER}`));
     return { components: [c1, c2], flags: MessageFlags.IsComponentsV2 };
 }
 
 export function buildLinkModal(slot) {
     const m = new ModalBuilder().setCustomId(`link_modal_slot_${slot}`).setTitle(`Link Slot ${slot}`);
-    m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('token_input').setLabel('Discord Token').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Paste Authorization header...')));
+    m.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('token_input').setLabel('Discord Token').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Paste Authorization header...')
+    ));
     return m;
 }
 
