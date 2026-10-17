@@ -131,6 +131,39 @@ export async function removeRole(guildId, key) {
     return roles;
 }
 
+export async function syncRolesFromDB() {
+    try {
+        const col = await getCollection(COLLECTION_NAME);
+        if (!col) return null;
+        const allDocs = await col.find({}).toArray();
+        
+        ensureDataFolder();
+        let fileData = {};
+        try {
+            if (fs.existsSync(STORE_PATH)) {
+                fileData = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+            }
+        } catch {}
+
+        allDocs.forEach(doc => {
+            if (doc.guildId && doc.roles) {
+                memoryCache.set(doc.guildId, { ...DEFAULT_ROLES, ...doc.roles });
+                fileData[doc.guildId] = { ...DEFAULT_ROLES, ...doc.roles };
+            }
+        });
+
+        try {
+            fs.writeFileSync(STORE_PATH, JSON.stringify(fileData, null, 2));
+        } catch {}
+
+        isCacheLoaded = true;
+        return memoryCache;
+    } catch (err) {
+        console.error("Sync roles error:", err.message);
+        return null;
+    }
+}
+
 export async function checkAndUpdateRoles(guild, userId, inviteCount = 0) {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return;
