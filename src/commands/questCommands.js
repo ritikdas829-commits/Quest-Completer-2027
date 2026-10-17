@@ -22,7 +22,7 @@ async function getActiveToken(guildId, userId, tokenStore) {
     if (!tokenStore) return null;
     const active = await tokenStore.getActiveSlot(guildId, userId);
     if (!active) return null;
-    return await tokenStore.getDecryptedToken(guildId, userId, active.slot);
+    return active.token || await tokenStore.get(guildId, userId, active.slot);
 }
 
 // ── UI Builders (Component V2) ─────────────────────────────────────────────
@@ -532,7 +532,7 @@ export const autoquestCmd = {
 export async function runAutoquestForUser(userId, quest, tokenStore, discordClient, guildId) {
     const active = await tokenStore.getActiveSlot(guildId, userId);
     if (!active) { disableAutoquest(userId); return; }
-    const token = await tokenStore.getDecryptedToken(guildId, userId, active.slot);
+    const token = active.token || await tokenStore.get(guildId, userId, active.slot);
     if (!token) { disableAutoquest(userId); return; }
 
     const { QuestClient: QC } = await import('../quest/questClient.js');
