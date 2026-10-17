@@ -16,7 +16,16 @@ import {
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
-const DEFAULT_PREFIX = process.env.PREFIX || ';';
+
+// Helper to get dynamic prefix matching questCommands.js
+function getClientPrefix(client, guildId) {
+    try {
+        if (client?.getPrefix) return client.getPrefix(guildId);
+        if (client?.config?.prefix) return client.config.prefix;
+        if (client?.prefix) return client.prefix;
+    } catch {}
+    return process.env.PREFIX || '?';
+}
 
 function getAccountAge(discordId) {
     try {
@@ -31,19 +40,9 @@ function getAccountAge(discordId) {
     }
 }
 
-// FIXED: getPrefix ab server ka custom prefix pehle check karega
-function getPrefix(client, guildId) {
-    try {
-        if (client?.getPrefix) return client.getPrefix(guildId);
-        if (client?.config?.prefix) return client.config.prefix;
-        if (client?.prefix) return client.prefix;
-    } catch {}
-    return DEFAULT_PREFIX;
-}
-
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client) {
     const accounts = await tokenStore.getAllSlots(guildId, ownerId);
-    const prefix = getPrefix(client, guildId);
+    const prefix = getClientPrefix(client, guildId);
 
     const c1 = new ContainerBuilder();
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
@@ -100,18 +99,26 @@ export function buildLinkModal(slot) {
     return m;
 }
 
-// ── 1. SLASH COMMAND: /link ────────────────────────────────────────────────
+// ── 1. LINK COMMAND (Slash + Prefix) ───────────────────────────────────────
 const linkData = new SlashCommandBuilder()
     .setName('link')
     .setDescription('Premium Link - Manage 5 progressive account slots');
 
-async function executeLink(interaction, client) {
-    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
-    await interaction.editReply(panel);
-}
+export const linkCmd = {
+    data: linkData,
+    prefix: 'link',
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
+        await interaction.editReply(panel);
+    },
+    async prefixExecute(message, _args, client) {
+        const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
+        await message.reply(panel);
+    }
+};
 
-// ── 2. SLASH COMMAND: /unlink (With Smart Slot Manager Panel) ──────────────
+// ── 2. UNLINK COMMAND (Slash + Prefix) ─────────────────────────────────────
 const unlinkData = new SlashCommandBuilder()
     .setName('unlink')
     .setDescription('Unlink a specific account slot and view slot manager')
@@ -123,33 +130,66 @@ const unlinkData = new SlashCommandBuilder()
             .setMaxValue(5)
     );
 
-async function executeUnlink(interaction, client) {
-    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-    const slot = interaction.options.getInteger('slot');
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
+export const unlinkCmd = {
+    data: unlinkData,
+    prefix: 'unlink',
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+        const slot = interaction.options.getInteger('slot');
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
 
-    try {
-        const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
-        const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
+        try {
+            const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
+            const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
 
-        if (removed) {
-            await interaction.editReply({
-                content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
-                components: panel.components,
-                flags: MessageFlags.IsComponentsV2
-            });
-        } else {
-            await interaction.editReply({
-                content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
-                components: panel.components,
-                flags: MessageFlags.IsComponentsV2
-            });
+            if (removed) {
+                await interaction.editReply({
+                    content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
+                    components: panel.components,
+                    flags: MessageFlags.IsComponentsV2
+                });
+            } else {
+                await interaction.editReply({
+                    content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
+                    components: panel.components,
+                    flags: MessageFlags.IsComponentsV2
+                });
+            }
+        } catch (err) {
+            await interaction.editReply({ content: `❌ Error unlinking slot: ${err.message}` });
         }
-    } catch (err) {
-        await interaction.editReply({ content: `❌ Error unlinking slot: ${err.message}` });
+    },
+    async prefixExecute(message, args, client) {
+        const slot = parseInt(args[0]);
+        const guildId = message.guild.id;
+        const userId = message.author.id;
+        const prefix = getClientPrefix(client, guildId);
+
+        if (!slot || slot < 1 || slot > 5) {
+            return await message.reply(`❌ Please specify a valid slot number (1 to 5). Example: \`${prefix}unlink 1\``);
+        }
+
+        try {
+            const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
+            const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
+
+            if (removed) {
+                await message.reply({
+                    content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
+                    ...panel
+                });
+            } else {
+                await message.reply({
+                    content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
+                    ...panel
+                });
+            }
+        } catch (err) {
+            await message.reply(`❌ Error unlinking slot: ${err.message}`);
+        }
     }
-}
+};
 
 // ── BUTTON HANDLERS ────────────────────────────────────────────────────────
 export async function handleButton(interaction, client) {
@@ -188,7 +228,3 @@ export async function handleModal(interaction, client) {
         await interaction.editReply({ content: `❌ ${e.message}` });
     }
 }
-
-// ── DYNAMIC EXPORTS FOR LOADER ─────────────────────────────────────────────
-export const linkCmd = { data: linkData, execute: executeLink };
-export const unlinkCmd = { data: unlinkData, execute: executeUnlink };
