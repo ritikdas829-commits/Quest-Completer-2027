@@ -16,8 +16,13 @@ export const SLOTS = {
 
 export async function getCounts(member) {
     try {
-        const guildId = member.guild?.id;
-        let invites = guildId ? await getUserInvites(member.id, guildId) : 0;
+        if (!member || !member.guild) return { invites: 0, boosts: 0 };
+
+        const guildId = member.guild.id;
+        const userId = member.id;
+
+        // Fetch real-time invites from MongoDB via inviteTracker
+        let invites = await getUserInvites(userId, guildId);
 
         let boosts = 0;
         const roles = getRoles(guildId);
@@ -26,7 +31,7 @@ export async function getCounts(member) {
         if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) boosts = Math.max(boosts, 1);
         if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) boosts = 2;
 
-        // Fallback role checks if DB invites are empty
+        // Fallback role checks if DB invites are empty or lower than role threshold
         if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) invites = Math.max(invites, 10);
         else if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) invites = Math.max(invites, 10);
         else if (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES)) invites = Math.max(invites, 5);
@@ -41,14 +46,14 @@ export async function getCounts(member) {
 
 export async function getProgressiveSlots(member) {
     try {
-        const guildId = member.guild?.id || 'global';
+        const guildId = member?.guild?.id || 'global';
         const roles = getRoles(guildId);
         const { invites, boosts } = await getCounts(member);
         
-        const hasRole2 = invites >= 2 || (roles.ROLE_2_INVITES && member.roles.cache.has(roles.ROLE_2_INVITES));
-        const hasRole5 = invites >= 5 || (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES));
-        const hasBoost1 = invites >= 10 || boosts >= 1 || (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST));
-        const hasBoost2 = boosts >= 2 || (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST));
+        const hasRole2 = invites >= 2 || (roles.ROLE_2_INVITES && member?.roles?.cache?.has(roles.ROLE_2_INVITES));
+        const hasRole5 = invites >= 5 || (roles.ROLE_5_INVITES && member?.roles?.cache?.has(roles.ROLE_5_INVITES));
+        const hasBoost1 = invites >= 10 || boosts >= 1 || (roles.ROLE_1_BOOST && member?.roles?.cache?.has(roles.ROLE_1_BOOST));
+        const hasBoost2 = boosts >= 2 || (roles.ROLE_2_BOOST && member?.roles?.cache?.has(roles.ROLE_2_BOOST));
 
         let slotsToShow = 1;
         if (hasRole2) slotsToShow = 2;
@@ -57,7 +62,6 @@ export async function getProgressiveSlots(member) {
         if (hasBoost2) slotsToShow = 5;
 
         const slots = [];
-        // Loop through all 5 slots so the user sees all slots and their lock/unlock status clearly
         for (let i = 1; i <= 5; i++) {
             let can = false;
             let reason = '';
