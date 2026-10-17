@@ -11,11 +11,11 @@ function getBoostRoles(guild) {
         const roles = {};
         if (stored.ROLE_1_BOOST) {
             const r = guild.roles.cache.get(stored.ROLE_1_BOOST);
-            if (r) roles.ROLE_1_BOOST = r;
+            if (r) roles.ROLE_1_BOOST = r; // Role 4: 1 Boost (Slot 4 Boost)
         }
         if (stored.ROLE_2_BOOST) {
             const r = guild.roles.cache.get(stored.ROLE_2_BOOST);
-            if (r) roles.ROLE_2_BOOST = r;
+            if (r) roles.ROLE_2_BOOST = r; // Role 5: 2 Boosts (Slot 5 Full)
         }
         return roles;
     } catch {
@@ -28,10 +28,9 @@ function getBoostCount(member) {
         let boosts = 0;
         if (member.premiumSince) {
             boosts = 1;
-            // Check if member is boosting with multiple boosts if guild allows/tracks it
             const guildBoostCount = member.guild?.premiumSubscriptionCount || 0;
             if (guildBoostCount >= 2 && member.guild.members.cache.filter(m => m.premiumSince).size === 1) {
-                boosts = 2; // Agar ek hi user ne multiple boosts diye hain
+                boosts = 2;
             }
         }
         
@@ -62,13 +61,13 @@ export async function handleBoostAdd(member) {
         if (boosts >= 1 && boostRoles.ROLE_1_BOOST) {
             if (!member.roles.cache.has(boostRoles.ROLE_1_BOOST.id)) {
                 await member.roles.add(boostRoles.ROLE_1_BOOST).catch(()=>{});
-                await sendSafeDM(member, `💎 You boosted ${guild.name}! **${boostRoles.ROLE_1_BOOST.name}** unlocked - Slot 4 - Now 5 slots visible`);
+                await sendSafeDM(member, `💎 You boosted ${guild.name}! **${boostRoles.ROLE_1_BOOST.name}** unlocked - Slot 4 Boost`);
             }
         }
         if (boosts >= 2 && boostRoles.ROLE_2_BOOST) {
             if (!member.roles.cache.has(boostRoles.ROLE_2_BOOST.id)) {
                 await member.roles.add(boostRoles.ROLE_2_BOOST).catch(()=>{});
-                await sendSafeDM(member, `👑 Double boosted ${guild.name}! **${boostRoles.ROLE_2_BOOST.name}** unlocked - Slot 5 - Full 5 slots!`);
+                await sendSafeDM(member, `👑 Double boosted ${guild.name}! **${boostRoles.ROLE_2_BOOST.name}** unlocked - Slot 5 Full Access!`);
             }
         }
     } catch (err) {
@@ -109,7 +108,6 @@ export async function handleBoostUpdate(oldMember, newMember) {
         } else if (hadBoost && !hasBoost) {
             await handleBoostRemove(newMember);
         } else if (hadBoost && hasBoost) {
-            // Check for boost count changes even if premiumSince remains true
             const oldBoosts = getBoostCount(oldMember);
             const newBoosts = getBoostCount(newMember);
             if (newBoosts > oldBoosts) {
