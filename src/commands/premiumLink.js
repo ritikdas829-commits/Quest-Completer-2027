@@ -12,7 +12,7 @@ import {
     TextInputBuilder, 
     TextInputStyle, 
     MessageFlags, 
-    SlashCommandBuilder
+    SlashCommandBuilder,
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
