@@ -28,7 +28,7 @@ function banner() {
         `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═══╝   ╚═╝${col.reset}`,
         '',
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
-        `  ${col.green}●${col.reset} ${col.white}Quest Completer V1 - 5 Slots${col.reset}  ${col.dim}|${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
+        `  ${col.green}●${col.reset} ${col.white}Quest Completer V1 - 5 Slots${col.reset}  ${col.dim}\vert{}${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
         '',
     ];
@@ -63,11 +63,16 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
 });
 
+const activePrefix    = process.env.BOT_PREFIX || process.env.PREFIX || '?';
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
 client.tokenStore     = new TokenStore(TOKEN);
-client.config         = { prefix: process.env.PREFIX || ';' };
-client.prefix         = process.env.PREFIX || ';';
+client.config         = { prefix: activePrefix };
+client.prefix         = activePrefix;
+
+client.getPrefix = function(guildId) {
+    return this.config?.prefix || process.env.BOT_PREFIX || process.env.PREFIX || '?';
+};
 
 // Load Commands Dynamically
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
@@ -85,7 +90,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Interaction Create Handler (Buttons, Modals, and Slash Commands) ───────
+// ── Interaction Create Handler ─────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isButton()) {
@@ -117,24 +122,22 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ── Message Create Handler (Prefix Commands Support) ──────────────────────
+// ── Message Create Handler ────────────────────────────────────────────────
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    const prefix = client.config.prefix || ';';
+    const prefix = client.getPrefix(message.guild.id);
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
     try {
-        // 1. Check registered prefix commands collection
         const prefixCmd = client.prefixCommands.get(commandName);
         if (prefixCmd && typeof prefixCmd.prefixExecute === 'function') {
             return await prefixCmd.prefixExecute(message, args, client);
         }
 
-        // 2. Explicit Fallback Handlers for link & unlink
         if (commandName === 'link') {
             const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
             return await message.reply(panel);
@@ -143,7 +146,7 @@ client.on('messageCreate', async (message) => {
         if (commandName === 'unlink') {
             const slot = parseInt(args[0]);
             if (!slot || slot < 1 || slot > 5) {
-                return await message.reply("❌ Please specify a valid slot number (1 to 5). Example: `;unlink 1`");
+                return await message.reply(`❌ Please specify a valid slot number (1 to 5). Example: \`${prefix}unlink 1\``);
             }
             await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
             const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
