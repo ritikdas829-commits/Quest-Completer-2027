@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
-import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from './commands/premiumLink.js';
+import { handleButton as handlePremiumButton, handleModal as handlePremiumModal, buildPremiumLinkPanel } from './commands/premiumLink.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -88,7 +88,6 @@ for (const file of commandFiles) {
 // ── Interaction Create Handler (Buttons, Modals, and Slash Commands) ───────
 client.on('interactionCreate', async (interaction) => {
     try {
-        // 1. Handle 5-Slot Premium Link Buttons (Link, Unlink, Select)
         if (interaction.isButton()) {
             if (
                 interaction.customId.startsWith('link_slot_') ||
@@ -99,14 +98,12 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // 2. Handle 5-Slot Modals (Token Submission Popups)
         if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('link_modal_slot_')) {
                 return await handlePremiumModal(interaction, client);
             }
         }
 
-        // 3. Handle Slash Commands
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
@@ -117,6 +114,47 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: '❌ An error occurred while executing this action.', ephemeral: true }).catch(() => {});
         }
+    }
+});
+
+// ── Message Create Handler (Prefix Commands Support) ──────────────────────
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+
+    const prefix = client.config.prefix || ';';
+    if (!message.content.startsWith(prefix)) return;
+
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
+
+    try {
+        // 1. Check registered prefix commands collection
+        const prefixCmd = client.prefixCommands.get(commandName);
+        if (prefixCmd && typeof prefixCmd.prefixExecute === 'function') {
+            return await prefixCmd.prefixExecute(message, args, client);
+        }
+
+        // 2. Explicit Fallback Handlers for link & unlink
+        if (commandName === 'link') {
+            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
+            return await message.reply(panel);
+        }
+
+        if (commandName === 'unlink') {
+            const slot = parseInt(args[0]);
+            if (!slot || slot < 1 || slot > 5) {
+                return await message.reply("❌ Please specify a valid slot number (1 to 5). Example: `;unlink 1`");
+            }
+            await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
+            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
+            return await message.reply({
+                content: `✅ Slot #${slot} unlinked successfully! Here is your updated slot manager panel:`,
+                ...panel
+            });
+        }
+    } catch (err) {
+        console.error(`❌ Prefix Error [${commandName}]:`, err);
+        await message.reply(`❌ Error executing \`${prefix}${commandName}\`.`).catch(() => {});
     }
 });
 
