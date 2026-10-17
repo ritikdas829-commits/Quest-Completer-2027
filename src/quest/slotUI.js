@@ -1,7 +1,6 @@
 /**
- * slotUI.js - Slot UI - Premium Link Panel - Progressive 4 Roles
+ * slotUI.js - Slot UI - Premium Link Panel - Progressive 4 Roles (MongoDB 5-Slot Compatible)
  * Location: src/quest/slotUI.js
- * UI similar to Photo 1 - Shows 2,3,4,5 slots progressively
  */
 
 import {
@@ -18,43 +17,56 @@ import {
     TextInputStyle,
 } from 'discord.js';
 import { getProgressiveSlots } from './slotSystem.js';
-import { PREFIX } from '../utils/config.js';
+
+const DEFAULT_PREFIX = process.env.PREFIX || ';';
 
 export function buildLinkModal(slotNumber = 1) {
-    const modal = new ModalBuilder().setCustomId(`slot_link_modal_slot_${slotNumber}`).setTitle(`Link Slot #${slotNumber}`);
+    const modal = new ModalBuilder().setCustomId(`link_modal_slot_${slotNumber}`).setTitle(`Link Slot #${slotNumber}`);
     modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('link_token_input').setLabel('Your Discord user token').setStyle(TextInputStyle.Short).setPlaceholder(`Paste token for Slot #${slotNumber}`).setRequired(true)
+        new TextInputBuilder().setCustomId('token_input').setLabel('Discord User Token').setStyle(TextInputStyle.Short).setPlaceholder(`Paste token for Slot #${slotNumber}...`).setRequired(true)
     ));
     return modal;
 }
 
 export async function buildSlotPanel(member, inviteStore, tokenStore) {
+    const guildId = member.guild?.id;
+    const userId = member.id || member.user?.id;
+    
     const { slots, invites, boosts, slotsToShow, stage, roles } = await getProgressiveSlots(member, inviteStore);
+    
+    // Fetch all linked slots from MongoDB for this user in this guild
+    const accounts = await tokenStore.getAllSlots(guildId, userId);
 
     const c = new ContainerBuilder().setAccentColor(0x2B2D31);
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `# Premium Link\n## Terms & Privacy\n> By linking your Discord token, you allow premium bot to use it for quest completion. Use \`${PREFIX}guide\` if you need guide first.\n> **Stage:** ${stage}\n> Invites: ${invites} | Boosts: ${boosts}\n`
+        `# Premium Link\n## Terms & Privacy\n> By linking your Discord token, you allow premium bot to use it for quest completion. Use \`${DEFAULT_PREFIX}guide\` if you need guide first.\n> **Stage:** ${stage}\n> Invites: ${invites} | Boosts: ${boosts}\n`
     ));
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# Account Panel - ${slotsToShow} Slots - 4 Roles System`));
 
     for (const s of slots) {
-        const token = tokenStore.get(`${member.id}_slot_${s.slot}`);
-        const username = tokenStore.get(`${member.id}_slot_${s.slot}_username`) || '';
+        const linked = accounts.find(a => a.slot === s.slot);
 
-        if (token) {
+        if (linked) {
+            const status = linked.isActive ? 'Active ✅' : 'Not Active';
+            const linkedAtStr = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString() : 'N/A';
+            
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `### #${s.slot} Account Configuration - ${s.label}\n` +
-                `• ${username || 'Linked'} - ${s.label}\n` +
-                `• Status: Active ✅\n` +
+                `• ${linked.username || 'Linked Account'} - ${s.label}\n` +
+                `• Status: ${status}\n` +
                 `• Requirement: ${s.need}\n` +
                 `• Role: ${s.needRoleId ? `<@&${s.needRoleId}>` : 'Free'}\n` +
-                `• Linked At: ${new Date().toLocaleDateString()}`
+                `• Linked At: ${linkedAtStr}`
             ));
-            c.addActionRowComponents(new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`unlink_slot_${s.slot}_btn`).setLabel('Unlink').setStyle(ButtonStyle.Danger)
-            ));
+            
+            const row = new ActionRowBuilder();
+            row.addComponents(new ButtonBuilder().setCustomId(`unlink_slot_${s.slot}_btn`).setLabel('Unlink').setStyle(ButtonStyle.Danger));
+            if (!linked.isActive) {
+                row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${s.slot}_btn`).setLabel('Select').setStyle(ButtonStyle.Primary));
+            }
+            c.addActionRowComponents(row);
         } else {
             if (s.can) {
                 c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -62,7 +74,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                     `• Not Linked (${s.label})\n` +
                     `• Status: Not Active\n` +
                     `• Requirement: ${s.need} - ✅ Unlocked\n` +
-                    `• Your Progress: ${s.currentInvites} invites, ${s.currentBoosts} boosts\n` +
+                    `• Your Progress: ${invites} invites, ${boosts} boosts\n` +
                     `• ${s.reason}`
                 ));
                 c.addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -74,7 +86,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                     `• Locked\n` +
                     `• Status: Locked\n` +
                     `• Need: ${s.need} - ${s.needRoleId ? `<@&${s.needRoleId}>` : 'Role not set - Use /setuproles'}\n` +
-                    `• Your Progress: ${s.currentInvites} invites, ${s.currentBoosts} boosts\n` +
+                    `• Your Progress: ${invites} invites, ${boosts} boosts\n` +
                     `• ${s.reason}`
                 ));
                 c.addActionRowComponents(new ActionRowBuilder().addComponents(
