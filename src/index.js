@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
 import * as dbModule from './utils/db.js';
+import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from './commands/premiumLink.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -37,7 +38,7 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// 【entity-MongoDB¦canonical_name=MongoDB】 — Safe Connect — default ya named — dono chalega
+// Safe MongoDB Connection
 const connectDB = dbModule.connectDB || dbModule.default;
 if (typeof connectDB === 'function') {
     try {
@@ -57,8 +58,9 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers,
     ],
-    partials: [Partials.Message, Partials.Channel],
+    partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
 });
 
 client.commands       = new Collection();
@@ -67,6 +69,7 @@ client.tokenStore     = makeTokenStore(TOKEN);
 client.config         = { prefix: process.env.PREFIX || ';' };
 client.prefix         = process.env.PREFIX || ';';
 
+// Load Commands Dynamically
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
@@ -76,21 +79,61 @@ for (const file of commandFiles) {
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
     for (const [key, cmd] of Object.entries(mod)) {
-        if (key === 'default' || key === 'makeTokenStore' || key === 'handleLinkModal' || key === 'handleLinkPromptButton' || key === 'runAutoquestForUser') continue;
+        if (['default', 'makeTokenStore', 'handleLinkModal', 'handleLinkPromptButton', 'runAutoquestForUser', 'buildPremiumLinkPanel', 'handleButton', 'handleModal'].includes(key)) continue;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
 }
 
-const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
-for (const file of eventFiles) {
-    const mod   = await import(pathToFileURL(join(__dirname, 'events', file)).href);
-    const event = mod.default;
-    if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
-    } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
+// ── Interaction Create Handler (Buttons, Modals, and Slash Commands) ───────
+client.on('interactionCreate', async (interaction) => {
+    try {
+        // 1. Handle 5-Slot Premium Link Buttons (Link, Unlink, Select)
+        if (interaction.isButton()) {
+            if (
+                interaction.customId.startsWith('link_slot_') ||
+                interaction.customId.startsWith('unlink_slot_') ||
+                interaction.customId.startsWith('select_slot_')
+            ) {
+                return await handlePremiumButton(interaction, client);
+            }
+        }
+
+        // 2. Handle 5-Slot Modals (Token Submission Popups)
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId.startsWith('link_modal_slot_')) {
+                return await handlePremiumModal(interaction, client);
+            }
+        }
+
+        // 3. Handle Slash Commands
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
+            await command.execute(interaction, client);
+        }
+    } catch (err) {
+        console.error('❌ Interaction Error:', err);
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ An error occurred while executing this action.', ephemeral: true }).catch(() => {});
+        }
     }
-}
+});
+
+// Load Events (If any exist in events folder)
+try {
+    const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
+    for (const file of eventFiles) {
+        const mod   = await import(pathToFileURL(join(__dirname, 'events', file)).href);
+        const event = mod.default;
+        if (event?.name && event?.execute) {
+            if (event.once) {
+                client.once(event.name, (...args) => event.execute(...args, client));
+            } else {
+                client.on(event.name, (...args) => event.execute(...args, client));
+            }
+        }
+    }
+} catch {}
 
 client.login(TOKEN);
