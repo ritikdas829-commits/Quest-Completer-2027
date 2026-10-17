@@ -1,18 +1,15 @@
 /**
  * roleStore.js - 4 Roles Per Guild - MongoDB Persistent - Multi Server Safe
  * Location: src/quest/roleStore.js
- * 
- * Saves per guild: guildId -> 4 roles
- * Reset safe, crash safe, multi server
  */
 
 import { getCollection } from '../utils/mongo.js';
-import InviteTracker from '../handlers/inviteTracker.js';
 import fs from 'fs';
 import path from 'path';
 
 const STORE_PATH = './data/roles.json';
 const COLLECTION_NAME = 'roles_data';
+const COLLECTION_INVITES = 'invites_data';
 
 const DEFAULT_ROLES = {
     ROLE_2_INVITES: null, // Role 1: 2 Invites - Slot 2
@@ -21,7 +18,7 @@ const DEFAULT_ROLES = {
     ROLE_2_BOOST: null,   // Role 4: 2 Boosts - Slot 5 - Full
 };
 
-const memoryCache = new Map(); // guildId -> roles
+const memoryCache = new Map();
 let isCacheLoaded = false;
 
 function ensureDataFolder() {
@@ -42,7 +39,6 @@ async function preloadCache() {
             }
         });
         isCacheLoaded = true;
-        console.log(`⚡ Roles cache loaded - ${memoryCache.size} guilds - Multi Server`);
     } catch (err) {
         console.error("Roles preload error:", err.message);
     }
@@ -50,7 +46,6 @@ async function preloadCache() {
 
 export function getRoles(guildId = null) {
     ensureDataFolder();
-    
     if (guildId) {
         if (memoryCache.has(guildId)) {
             return { ...DEFAULT_ROLES, ...memoryCache.get(guildId) };
@@ -80,48 +75,9 @@ export async function getRolesAsync(guildId) {
 
 export async function setRole(guildId, key, roleId) {
     if (!guildId || !key) return null;
-    
     ensureDataFolder();
     let roles = getRoles(guildId);
     roles[key] = roleId;
-
-    memoryCache.set(guildId, roles);
-
-    try {
-        let fileData = {};
-        if (fs.existsSync(STORE_PATH)) {
-            fileData = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
-        }
-        fileData[guildId] = roles;
-        fs.writeFileSync(STORE_PATH, JSON.stringify(fileData, null, 2));
-    } catch (err) {
-        console.error("File save error:", err.message);
-    }
-
-    try {
-        const col = await getCollection(COLLECTION_NAME);
-        if (col) {
-            await col.updateOne(
-                { guildId },
-                { $set: { guildId, roles, updatedAt: new Date() } },
-                { upsert: true }
-            );
-        }
-    } catch (err) {
-        console.error("MongoDB setRole error:", err.message);
-    }
-
-    console.log(`✅ Role set [${guildId}] ${key}: ${roleId} - Persistent`);
-    return roles;
-}
-
-export async function removeRole(guildId, key) {
-    if (!guildId || !key) return null;
-    
-    ensureDataFolder();
-    let roles = getRoles(guildId);
-    roles[key] = null;
-
     memoryCache.set(guildId, roles);
 
     try {
@@ -142,49 +98,38 @@ export async function removeRole(guildId, key) {
                 { upsert: true }
             );
         }
-    } catch (err) {
-        console.error("MongoDB removeRole error:", err.message);
-    }
-
-    console.log(`🗑️ Role removed [${guildId}] ${key} - Persistent`);
+    } catch {}
     return roles;
 }
 
-export async function syncRolesFromDB() {
+export async function removeRole(guildId, key) {
+    if (!guildId || !key) return null;
+    ensureDataFolder();
+    let roles = getRoles(guildId);
+    roles[key] = null;
+    memoryCache.set(guildId, roles);
+
+    try {
+        let fileData = {};
+        if (fs.existsSync(STORE_PATH)) {
+            fileData = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+        }
+        fileData[guildId] = roles;
+        fs.writeFileSync(STORE_PATH, JSON.stringify(fileData, null, 2));
+    } catch {}
+
     try {
         const col = await getCollection(COLLECTION_NAME);
-        if (!col) return null;
-        const allDocs = await col.find({}).toArray();
-        
-        ensureDataFolder();
-        let fileData = {};
-        try {
-            if (fs.existsSync(STORE_PATH)) {
-                fileData = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
-            }
-        } catch {}
-
-        allDocs.forEach(doc => {
-            if (doc.guildId && doc.roles) {
-                memoryCache.set(doc.guildId, { ...DEFAULT_ROLES, ...doc.roles });
-                fileData[doc.guildId] = { ...DEFAULT_ROLES, ...doc.roles };
-            }
-        });
-
-        try {
-            fs.writeFileSync(STORE_PATH, JSON.stringify(fileData, null, 2));
-        } catch {}
-
-        console.log(`🔄 Roles synced from MongoDB - ${memoryCache.size} guilds - Multi Server Safe`);
-        isCacheLoaded = true;
-        return memoryCache;
-    } catch (err) {
-        console.error("Sync roles error:", err.message);
-        return null;
-    }
+        if (col) {
+            await col.updateOne(
+                { guildId },
+                { $set: { guildId, roles, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        }
+    } catch {}
+    return roles;
 }
-
-// ── AUTOMATED ROLE & ACCESS LOGIC ──
 
 export async function checkAndUpdateRoles(guild, userId, inviteCount = 0) {
     const member = await guild.members.fetch(userId).catch(() => null);
@@ -192,8 +137,11 @@ export async function checkAndUpdateRoles(guild, userId, inviteCount = 0) {
     
     const roles = getRoles(guild.id);
     if (!inviteCount) {
-        const t = await InviteTracker.findOne({ guildId: guild.id, userId }).catch(() => null);
-        inviteCount = t?.invites || 0;
+        try {
+            const col = await getCollection(COLLECTION_INVITES);
+            const t = col ? await col.findOne({ guildId: guild.id, userId }) : null;
+            inviteCount = t?.count || 0;
+        } catch { inviteCount = 0; }
     }
     
     const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
@@ -242,8 +190,13 @@ export async function isSlotUnlocked(guild, userId, slotNum) {
     if (!member) return false;
     
     const roles = getRoles(guild.id);
-    const tracker = await InviteTracker.findOne({ guildId: guild.id, userId }).catch(() => null);
-    const invites = tracker?.invites || 0;
+    let invites = 0;
+    try {
+        const col = await getCollection(COLLECTION_INVITES);
+        const tracker = col ? await col.findOne({ guildId: guild.id, userId }) : null;
+        invites = tracker?.count || 0;
+    } catch {}
+    
     const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
     
     if (slotNum === 2) return invites >= 2 || member.roles.cache.has(roles.ROLE_2_INVITES);
