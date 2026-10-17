@@ -11,69 +11,27 @@ import {
     ButtonStyle,
     StringSelectMenuBuilder,
     ComponentType,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
     MessageFlags,
-    Colors,
 } from 'discord.js';
 import { QuestClient } from '../quest/questClient.js';
-import { TokenStore } from '../quest/tokenStore.js';
 import { enableAutoquest, disableAutoquest, isAutoquestEnabled } from '../quest/autoquestStore.js';
 import { PREFIX } from '../utils/config.js';
 
-// ── TokenStore (shared instance via BOT_TOKEN as secret) ───────────────────
-export function makeTokenStore(secret) {
-    return new TokenStore(secret);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function sanitizeToken(raw) {
-    return raw.trim()
-        .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
-        .replace(/^`+|`+$/g, '')
-        .replace(/^Bot\s+/i, '')
-        .trim();
-}
-
-function isValidUserToken(token) {
-    return token.length >= 50 && /^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(token);
+// ── Helper: Get active token for user from 5-Slot Store ────────────────────
+async function getActiveToken(guildId, userId, tokenStore) {
+    if (!tokenStore) return null;
+    const active = await tokenStore.getActiveSlot(guildId, userId);
+    if (!active) return null;
+    return await tokenStore.getDecryptedToken(guildId, userId, active.slot);
 }
 
 // ── UI Builders (Component V2) ─────────────────────────────────────────────
 
-function buildLinkModal() {
-    const modal = new ModalBuilder()
-        .setCustomId('link_token_modal')
-        .setTitle('Link Your Discord Token');
-    modal.addComponents(
-        new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-                .setCustomId('link_token_input')
-                .setLabel('Your Discord user token')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('Paste your token here...')
-                .setRequired(true),
-        ),
-    );
-    return modal;
-}
-
-function buildLinkPrompt() {
+function buildLinkPrompt(prefix) {
     const c = new ContainerBuilder().setAccentColor(0xFEE75C);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# 🔗 Token Required\nYou need to link your Discord token before using quest commands.\n\nClick **Link Token** below — a popup will appear where you can paste your token.\n\n**How to get your token:**\n\`1.\` Open Discord in your **browser** (not the app)\n\`2.\` Press \`Ctrl+Shift+I\` → **Network** tab → filter \`XHR\`\n\`3.\` Send any message, click the request, find \`Authorization\` in headers\n\`4.\` Copy that value and paste it into the popup\n\n> ⚠️ This is your **user token**, NOT your bot token.`,
-        ),
-    );
-    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
-    c.addActionRowComponents(
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('link_prompt')
-                .setLabel('🔗 Link Token')
-                .setStyle(ButtonStyle.Primary),
+            `# 🔗 Token Required\nYou need to link your Discord token in a slot before using quest commands.\n\nUse \`${prefix}link\` to open your 5-slot account panel and link a token.`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -83,30 +41,30 @@ function buildNoQuestsCard() {
     const c = new ContainerBuilder().setAccentColor(0x4F545C);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# 🔍 No Quests Available\nThere are no active, uncompleted quests on your account right now.`,
+            `# 🔍 No Quests Available\nThere are no active, uncompleted quests on your active slot account right now.`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildExpiredTokenCard() {
+function buildExpiredTokenCard(prefix) {
     const c = new ContainerBuilder().setAccentColor(0xED4245);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ❌ Token Expired\nYour saved token was rejected by Discord — it has likely expired.\n\n**Your token has been removed.** Re-link with \`/link\` or \`${PREFIX}link\`.`,
+            `# ❌ Token Expired\nYour saved token on the active slot was rejected by Discord — it has likely expired.\n\n**Your active slot token has been removed.** Re-link using \`${prefix}link\`.`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildErrorCard(err) {
+function buildErrorCard(err, prefix) {
     const msg = err?.message ?? String(err);
     const is401 = msg.includes('401');
     const c = new ContainerBuilder().setAccentColor(0xED4245);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             is401
-                ? `# ❌ Invalid or Expired Token\nRe-link your token with \`${PREFIX}link\`.`
+                ? `# ❌ Invalid or Expired Token\nRe-link your token using \`${prefix}link\`.`
                 : `# ❌ Error\n${msg.slice(0, 800)}`,
         ),
     );
@@ -179,7 +137,7 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
             const s = task.target;
             dur = s >= 60 ? `  •  **${Math.ceil(s / 60)} min**` : `  •  **${s}s**`;
         }
-        return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? '  ✅' : ''}`;
+        return `${meta.icon}${meta.label}${dur}${phase === 'done' ? '  ✅' : ''}`;
     });
 
     const rewardLines = cfg.rewards_config.rewards.map((r) => {
@@ -242,11 +200,11 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ── Quest Runners ──────────────────────────────────────────────────────────
+// ── Quest Runners (Multi-Slot Integrated) ──────────────────────────────────
 
-async function runQuestOne(userId, tokenStore, send) {
-    const token = tokenStore.get(userId);
-    if (!token) { await send(buildLinkPrompt()); return false; }
+async function runQuestOne(guildId, userId, tokenStore, send, prefix) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
+    if (!token) { await send(buildLinkPrompt(prefix)); return false; }
 
     const qc = new QuestClient(token);
     try {
@@ -267,7 +225,7 @@ async function runQuestOne(userId, tokenStore, send) {
             selectedId = interaction.values[0];
         } catch {
             const c = new ContainerBuilder().setAccentColor(0xED4245);
-            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⏱️ Timed Out\nNo quest was selected within 60 seconds. Run \`${PREFIX}quest\` again.`));
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⏱️ Timed Out\nNo quest was selected within 60 seconds. Run \`${prefix}quest\` again.`));
             await selMsg.edit({ components: [c], flags: MessageFlags.IsComponentsV2 });
             return false;
         }
@@ -293,19 +251,21 @@ async function runQuestOne(userId, tokenStore, send) {
 
     } catch (err) {
         const msg = err?.message ?? String(err);
-        if (msg.includes('401') && tokenStore.has(userId)) {
-            tokenStore.remove(userId); disableAutoquest(userId);
-            await send(buildExpiredTokenCard()).catch(() => {});
+        if (msg.includes('401')) {
+            const active = await tokenStore.getActiveSlot(guildId, userId);
+            if (active) await tokenStore.removeSlot(guildId, userId, active.slot);
+            disableAutoquest(userId);
+            await send(buildExpiredTokenCard(prefix)).catch(() => {});
         } else {
-            await send(buildErrorCard(err)).catch(() => {});
+            await send(buildErrorCard(err, prefix)).catch(() => {});
         }
         return false;
     }
 }
 
-async function runQuestAll(userId, tokenStore, send) {
-    const token = tokenStore.get(userId);
-    if (!token) { await send(buildLinkPrompt()); return false; }
+async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
+    if (!token) { await send(buildLinkPrompt(prefix)); return false; }
 
     const qc = new QuestClient(token);
     try {
@@ -353,19 +313,21 @@ async function runQuestAll(userId, tokenStore, send) {
 
     } catch (err) {
         const msg = err?.message ?? String(err);
-        if (msg.includes('401') && tokenStore.has(userId)) {
-            tokenStore.remove(userId); disableAutoquest(userId);
-            await send(buildExpiredTokenCard()).catch(() => {});
+        if (msg.includes('401')) {
+            const active = await tokenStore.getActiveSlot(guildId, userId);
+            if (active) await tokenStore.removeSlot(guildId, userId, active.slot);
+            disableAutoquest(userId);
+            await send(buildExpiredTokenCard(prefix)).catch(() => {});
         } else {
-            await send(buildErrorCard(err)).catch(() => {});
+            await send(buildErrorCard(err, prefix)).catch(() => {});
         }
         return false;
     }
 }
 
-async function runQuestList(userId, tokenStore, send) {
-    const token = tokenStore.get(userId);
-    if (!token) { await send(buildLinkPrompt()); return; }
+async function runQuestList(guildId, userId, tokenStore, send, prefix) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
+    if (!token) { await send(buildLinkPrompt(prefix)); return; }
 
     const qc = new QuestClient(token);
     try {
@@ -440,16 +402,16 @@ async function runQuestList(userId, tokenStore, send) {
         }
 
     } catch (err) {
-        await send(buildErrorCard(err)).catch(() => {});
+        await send(buildErrorCard(err, prefix)).catch(() => {});
     }
 }
 
-async function runTokenCheck(userId, tokenStore, replyFn) {
-    const token = tokenStore.get(userId);
+async function runTokenCheck(guildId, userId, tokenStore, replyFn, prefix) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
 
     if (!token) {
         const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# No Token Saved\nYou don't have a saved token. Use \`${PREFIX}link\` to save one.`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# No Active Slot Token\nYou don't have an active token set in your slots. Use \`${prefix}link\` to configure your slots.`));
         await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
         return;
     }
@@ -468,25 +430,29 @@ async function runTokenCheck(userId, tokenStore, replyFn) {
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             valid
-                ? `# ✅ Token is Valid\nLinked as **"${accountName}"**.\n\nYour saved token is working correctly.`
-                : `# ❌ Token Invalid or Expired\nYour saved token was rejected by Discord.\nUse \`${PREFIX}unlink\` then \`${PREFIX}link\` to save a fresh token.`,
+                ? `# ✅ Token is Valid\nActive slot linked as **"${accountName}"**.\n\nYour active token is working correctly.`
+                : `# ❌ Token Invalid or Expired\nYour active slot token was rejected by Discord.\nUse \`${prefix}link\` to manage and update your slots.`,
         ),
     );
     await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
-    if (!valid) tokenStore.remove(userId);
+    if (!valid) {
+        const active = await tokenStore.getActiveSlot(guildId, userId);
+        if (active) await tokenStore.removeSlot(guildId, userId, active.slot);
+    }
 }
 
-async function runAutoquestToggle(userId, tokenStore, replyFn) {
+async function runAutoquestToggle(guildId, userId, tokenStore, replyFn, prefix) {
     if (isAutoquestEnabled(userId)) {
         disableAutoquest(userId);
         const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Disabled\nI'll no longer auto-run new quests for you.\nUse \`${PREFIX}autoquest\` again to turn it back on.`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Disabled\nI'll no longer auto-run new quests for you.\nUse \`${prefix}autoquest\` again to turn it back on.`));
         await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
         return;
     }
-    if (!tokenStore.has(userId)) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
+    if (!token) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Saved Token\nAuto-Quest needs your Discord user token.\n\n**Use \`${PREFIX}link\` first**, then run \`${PREFIX}autoquest\` again.`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Active Token\nAuto-Quest needs an active linked slot.\n\n**Use \`${prefix}link\` first** to select or add a token slot.`));
         await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
         return;
     }
@@ -494,7 +460,7 @@ async function runAutoquestToggle(userId, tokenStore, replyFn) {
     const c = new ContainerBuilder().setAccentColor(0x57F287);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# 🤖 Auto-Quest Enabled!\nEvery new Discord quest that drops will be **auto-completed for you** in the background.\n\nI'll DM you a summary once each quest finishes.\n\nUse \`${PREFIX}autoquest\` again to turn this off.\n\n-# Keep your saved token fresh with \`${PREFIX}tokencheck\`.`,
+            `# 🤖 Auto-Quest Enabled!\nEvery new Discord quest that drops will be **auto-completed for you** using your active slot.\n\nI'll DM you a summary once each quest finishes.\n\nUse \`${prefix}autoquest\` again to turn this off.\n\n-# Keep your token fresh with \`${prefix}tokencheck\`.`,
         ),
     );
     await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -506,12 +472,11 @@ export const questCmd = {
     data: new SlashCommandBuilder().setName('quest').setDescription('Pick and complete one Discord quest'),
     prefix: 'quest',
     async execute(interaction, client) {
-        const ts = client.tokenStore;
         await interaction.deferReply();
-        await runQuestOne(interaction.user.id, ts, (opts) => interaction.followUp(opts));
+        await runQuestOne(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestOne(message.author.id, client.tokenStore, (opts) => message.channel.send(opts));
+        await runQuestOne(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
     },
 };
 
@@ -520,10 +485,10 @@ export const questAllCmd = {
     prefix: 'questall',
     async execute(interaction, client) {
         await interaction.deferReply();
-        await runQuestAll(interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts));
+        await runQuestAll(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestAll(message.author.id, client.tokenStore, (opts) => message.channel.send(opts));
+        await runQuestAll(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
     },
 };
 
@@ -532,10 +497,10 @@ export const questListCmd = {
     prefix: 'questlist',
     async execute(interaction, client) {
         await interaction.deferReply();
-        await runQuestList(interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts));
+        await runQuestList(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestList(message.author.id, client.tokenStore, (opts) => message.channel.send(opts));
+        await runQuestList(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
     },
 };
 
@@ -544,10 +509,10 @@ export const tokenCheckCmd = {
     prefix: 'tokencheck',
     async execute(interaction, client) {
         await interaction.deferReply({ flags: 64 });
-        await runTokenCheck(interaction.user.id, client.tokenStore, (opts) => interaction.editReply(opts));
+        await runTokenCheck(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.editReply(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runTokenCheck(message.author.id, client.tokenStore, (opts) => message.reply(opts));
+        await runTokenCheck(message.guild.id, message.author.id, client.tokenStore, (opts) => message.reply(opts), PREFIX);
     },
 };
 
@@ -556,165 +521,18 @@ export const autoquestCmd = {
     prefix: 'autoquest',
     async execute(interaction, client) {
         await interaction.deferReply({ flags: 64 });
-        await runAutoquestToggle(interaction.user.id, client.tokenStore, (opts) => interaction.editReply(opts));
+        await runAutoquestToggle(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.editReply(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runAutoquestToggle(message.author.id, client.tokenStore, (opts) => message.reply(opts));
+        await runAutoquestToggle(message.guild.id, message.author.id, client.tokenStore, (opts) => message.reply(opts), PREFIX);
     },
 };
-
-// ── Link / Unlink ──────────────────────────────────────────────────────────
-
-export const linkCmd = {
-    data: new SlashCommandBuilder().setName('link').setDescription('Save your Discord token so you never have to enter it again'),
-    prefix: 'link',
-
-    async execute(interaction, client) {
-        await interaction.showModal(buildLinkModal());
-    },
-
-    async prefixExecute(message, args, client) {
-        const ts = client.tokenStore;
-        const inlineToken = args.join('').trim();
-
-        if (inlineToken) {
-            try { await message.delete(); } catch {}
-            const token = sanitizeToken(inlineToken);
-
-            const sendDM = async (payload) => {
-                const user = await client.users.fetch(message.author.id).catch(() => null);
-                const dm = await user?.createDM().catch(() => null);
-                await dm?.send(payload).catch(() => {});
-            };
-
-            if (!isValidUserToken(token)) {
-                await sendDM((() => {
-                    const c = new ContainerBuilder().setAccentColor(0xED4245);
-                    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Invalid Token Format\nThat doesn't look like a valid Discord token. Copy the **Authorization** header value exactly.`));
-                    return { components: [c], flags: MessageFlags.IsComponentsV2 };
-                })());
-                return;
-            }
-
-            let accountName = '', verifyOk = false;
-            try {
-                const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
-                verifyOk = res.ok;
-                if (res.ok) {
-                    const data = await res.json();
-                    accountName = data.global_name || data.username || '';
-                }
-            } catch {}
-
-            if (!verifyOk) {
-                await sendDM((() => {
-                    const c = new ContainerBuilder().setAccentColor(0xED4245);
-                    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Token Rejected by Discord\nMake sure you copied the \`Authorization\` header and try again.`));
-                    return { components: [c], flags: MessageFlags.IsComponentsV2 };
-                })());
-                return;
-            }
-
-            ts.save(message.author.id, token);
-            const c = new ContainerBuilder().setAccentColor(0x57F287);
-            c.addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                    `# ✅ Token Linked!\nLinked as **"${accountName}"**.\n\nYou can now use \`${PREFIX}quest\`, \`${PREFIX}questall\`, and \`${PREFIX}questlist\`.\nTo remove it, use \`${PREFIX}unlink\`.`,
-                ),
-            );
-            await sendDM({ components: [c], flags: MessageFlags.IsComponentsV2 });
-            return;
-        }
-
-        await message.reply(buildLinkPrompt());
-    },
-};
-
-export const unlinkCmd = {
-    data: new SlashCommandBuilder().setName('unlink').setDescription('Remove your saved Discord token'),
-    prefix: 'unlink',
-
-    async execute(interaction, client) {
-        const ts = client.tokenStore;
-        const removed = ts.remove(interaction.user.id);
-        disableAutoquest(interaction.user.id);
-        const c = new ContainerBuilder().setAccentColor(removed ? 0xFEE75C : 0x4F545C);
-        c.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-                removed
-                    ? `# 🔓 Token Unlinked\nYour saved token has been removed.`
-                    : `# No Token Saved\nYou don't have a saved token.`,
-            ),
-        );
-        await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
-    },
-
-    async prefixExecute(message, _args, client) {
-        const ts = client.tokenStore;
-        const removed = ts.remove(message.author.id);
-        disableAutoquest(message.author.id);
-        const c = new ContainerBuilder().setAccentColor(removed ? 0xFEE75C : 0x4F545C);
-        c.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-                removed
-                    ? `# 🔓 Token Unlinked\nYour saved token has been removed.`
-                    : `# No Token Saved\nYou don't have a saved token.`,
-            ),
-        );
-        await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
-    },
-};
-
-// ── Modal Submit Handler (called from interactionCreate) ───────────────────
-export async function handleLinkModal(interaction, client) {
-    const ts = client.tokenStore;
-    const raw = interaction.fields.getTextInputValue('link_token_input');
-    const token = sanitizeToken(raw);
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    if (!isValidUserToken(token)) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Invalid Token Format\nThat doesn't look like a valid Discord token. Copy the **Authorization** header value exactly.`));
-        await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
-        return;
-    }
-
-    let accountName = '', verifyOk = false;
-    try {
-        const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
-        verifyOk = res.ok;
-        if (res.ok) {
-            const data = await res.json();
-            accountName = data.global_name || data.username || '';
-        }
-    } catch {}
-
-    if (!verifyOk) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Token Rejected by Discord\nMake sure you copied the \`Authorization\` header and try again.`));
-        await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
-        return;
-    }
-
-    ts.save(interaction.user.id, token);
-    const c = new ContainerBuilder().setAccentColor(0x57F287);
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `# ✅ Token Linked!\nLinked as **"${accountName}"**.\n\nYou can now use \`/quest\`, \`/questall\`, and \`/questlist\`.\nTo remove it, use \`/unlink\`.`,
-        ),
-    );
-    await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
-}
-
-// ── Button: link_prompt handler (called from interactionCreate) ────────────
-export async function handleLinkPromptButton(interaction) {
-    await interaction.showModal(buildLinkModal());
-}
 
 // ── AutoQuest runner (called from questWatcher) ────────────────────────────
-export async function runAutoquestForUser(userId, quest, tokenStore, discordClient) {
-    const token = tokenStore.get(userId);
+export async function runAutoquestForUser(userId, quest, tokenStore, discordClient, guildId) {
+    const active = await tokenStore.getActiveSlot(guildId, userId);
+    if (!active) { disableAutoquest(userId); return; }
+    const token = await tokenStore.getDecryptedToken(guildId, userId, active.slot);
     if (!token) { disableAutoquest(userId); return; }
 
     const { QuestClient: QC } = await import('../quest/questClient.js');
@@ -744,7 +562,7 @@ export async function runAutoquestForUser(userId, quest, tokenStore, discordClie
             const c = new ContainerBuilder().setAccentColor(0x57F287);
             c.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# 🤖 Auto-Quest Complete!\n**${live.config.messages.quest_name}** has been completed automatically.\n${claimed > 0 ? `🎁 **${claimed}** reward(s) claimed.\n` : ''}\nUse \`${PREFIX}autoquest\` to disable.`,
+                    `# 🤖 Auto-Quest Complete!\n**${live.config.messages.quest_name}** has been completed automatically on your active slot.\n${claimed > 0 ? `🎁 **${claimed}** reward(s) claimed.\n` : ''}\nUse \`${PREFIX}autoquest\` to disable.`,
                 ),
             );
             await dm.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -754,13 +572,13 @@ export async function runAutoquestForUser(userId, quest, tokenStore, discordClie
         const msg = err?.message ?? String(err);
         console.error(`[AutoQuest:${userId}] Error:`, msg);
         if (msg.includes('401')) {
-            tokenStore.remove(userId);
+            await tokenStore.removeSlot(guildId, userId, active.slot);
             disableAutoquest(userId);
             try {
                 const user = await discordClient.users.fetch(userId);
                 const dm = await user.createDM();
                 const c = new ContainerBuilder().setAccentColor(0xED4245);
-                c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Paused\nYour saved token expired. Run \`${PREFIX}link\` to re-link, then \`${PREFIX}autoquest\` to re-enable.`));
+                c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Paused\nYour active slot token expired. Run \`${PREFIX}link\` to re-configure slots.`));
                 await dm.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
             } catch {}
         }
