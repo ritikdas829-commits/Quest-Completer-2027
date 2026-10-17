@@ -1,5 +1,5 @@
 /**
- * slotSystem.js - 5 Slots Progressive - Multi Server - No Crash - FINAL
+ * slotSystem.js - Progressive Slot Display (Step-by-Step Unlock)
  * Location: src/quest/slotSystem.js
  */
 
@@ -31,7 +31,7 @@ export async function getCounts(member) {
         if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) boosts = Math.max(boosts, 1);
         if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) boosts = 2;
 
-        // Fallback role checks if DB invites are empty or lower than role threshold
+        // Fallback role checks if DB invites are lower
         if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) invites = Math.max(invites, 10);
         else if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) invites = Math.max(invites, 10);
         else if (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES)) invites = Math.max(invites, 5);
@@ -55,14 +55,18 @@ export async function getProgressiveSlots(member) {
         const hasBoost1 = invites >= 10 || boosts >= 1 || (roles.ROLE_1_BOOST && member?.roles?.cache?.has(roles.ROLE_1_BOOST));
         const hasBoost2 = boosts >= 2 || (roles.ROLE_2_BOOST && member?.roles?.cache?.has(roles.ROLE_2_BOOST));
 
-        let slotsToShow = 1;
-        if (hasRole2) slotsToShow = 2;
-        if (hasRole5) slotsToShow = 3;
-        if (hasBoost1) slotsToShow = 4;
-        if (hasBoost2) slotsToShow = 5;
+        // Kitne slots currently fully unlocked hain
+        let unlockedCount = 1;
+        if (hasRole2) unlockedCount = 2;
+        if (hasRole5) unlockedCount = 3;
+        if (hasBoost1) unlockedCount = 4;
+        if (hasBoost2) unlockedCount = 5;
+
+        // Panel me kitne slots render karne hain: Unlocked + 1 Next Locked Slot
+        const slotsToShow = Math.min(5, unlockedCount + (unlockedCount < 5 ? 1 : 0));
 
         const slots = [];
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= slotsToShow; i++) {
             let can = false;
             let reason = '';
             let needRoleId = '';
