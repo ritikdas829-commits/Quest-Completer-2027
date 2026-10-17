@@ -29,13 +29,23 @@ function getAccountAge(discordId) {
 }
 
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client) {
-    const accounts = await tokenStore.getAllSlots(guildId, ownerId);
+    let accounts = await tokenStore.getAllSlots(guildId, ownerId);
     const prefix = getClientPrefix(client, guildId);
+
+    // Strict single active slot enforcement
+    if (accounts.length > 0) {
+        const activeAccounts = accounts.filter(a => a.isActive);
+        if (activeAccounts.length !== 1) {
+            const targetActiveSlot = activeAccounts.length > 0 ? activeAccounts[0].slot : accounts[0].slot;
+            await tokenStore.setActiveSlot(guildId, ownerId, targetActiveSlot);
+            accounts = await tokenStore.getAllSlots(guildId, ownerId);
+        }
+    }
 
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}script\` if you need the exact token flow guide first.`
+        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
@@ -52,7 +62,8 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                 new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
             ));
         } else {
-            const status = linked.isActive ? 'Active' : 'Not Active';
+            const isCurrentlyActive = Boolean(linked.isActive);
+            const status = isCurrentlyActive ? 'Active' : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
             const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
             const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
@@ -66,7 +77,11 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             
             const row = new ActionRowBuilder();
             row.addComponents(new ButtonBuilder().setCustomId(`unlink_slot_${slotNum}`).setLabel('Unlink').setStyle(ButtonStyle.Danger));
-            if (!linked.isActive) row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
+            
+            if (!isCurrentlyActive) {
+                row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
+            }
+
             c2.addActionRowComponents(row);
         }
         if (slotNum < 5) c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
@@ -83,7 +98,6 @@ export function buildLinkModal(slot) {
     return m;
 }
 
-// ── SLASH + PREFIX COMMANDS ──
 const linkData = new SlashCommandBuilder().setName('link').setDescription('Premium Link - 5 Slots');
 
 export const linkCmd = {
@@ -105,7 +119,8 @@ export const unlinkCmd = {
     prefix: 'unlink',
     async execute(interaction, client) {
         await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-        await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, interaction.options.getInteger('slot'));
+        const slot = interaction.options.getInteger('slot');
+        await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, slot);
         const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
         await interaction.editReply(panel);
     },
@@ -119,24 +134,27 @@ export const unlinkCmd = {
     }
 };
 
-// ── BUTTON HANDLERS ──
 export async function handleButton(interaction, client) {
+    const guildId = interaction.guild.id;
+    const ownerId = interaction.user.id;
+
     if (interaction.customId.startsWith('link_slot_')) {
         return await interaction.showModal(buildLinkModal(parseInt(interaction.customId.split('_')[2])));
     }
     if (interaction.customId.startsWith('unlink_slot_')) {
-        await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, parseInt(interaction.customId.split('_')[2]));
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
+        const slotToUnlink = parseInt(interaction.customId.split('_')[2]);
+        await client.tokenStore.removeSlot(guildId, ownerId, slotToUnlink);
+        const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client);
         return await interaction.update(panel);
     }
     if (interaction.customId.startsWith('select_slot_')) {
-        await client.tokenStore.setActiveSlot(interaction.guild.id, interaction.user.id, parseInt(interaction.customId.split('_')[2]));
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
+        const slotToSelect = parseInt(interaction.customId.split('_')[2]);
+        await client.tokenStore.setActiveSlot(guildId, ownerId, slotToSelect);
+        const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client);
         return await interaction.update(panel);
     }
 }
 
-// ── MODAL HANDLER — Complete Fix ──
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
 
@@ -144,9 +162,11 @@ export async function handleModal(interaction, client) {
     const token = interaction.fields.getTextInputValue('token_input').trim();
     const prefix = getClientPrefix(client, interaction.guild.id);
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
         const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
-        if (!res.ok) throw new Error('Invalid token');
+        if (!res.ok) throw new Error('Invalid token - Discord rejected');
         const data = await res.json();
 
         await client.tokenStore.saveSlot({
@@ -154,20 +174,19 @@ export async function handleModal(interaction, client) {
             linkedUserId: data.id, username: data.username, avatar: data.avatar, linkedAt: new Date()
         });
 
-        // 1. Background me main Account Panel instant edit/update hoga
+        await client.tokenStore.setActiveSlot(interaction.guild.id, interaction.user.id, slot);
+
         if (interaction.message) {
             const updatedPanel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
             await interaction.message.edit(updatedPanel).catch(() => {});
         }
 
-        // 2. Green accent bar wala container card (Fast Quest + Orbie jaisa)
         const successContainer = new ContainerBuilder().setAccentColor(0x57F287);
         successContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `## ✅ Token Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink\`.`
+            `# ✅ Token Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink\`.`
         ));
 
-        // Ephemeral Response ("Only you can see this") with V2 Flags
-        await interaction.reply({ 
+        await interaction.editReply({ 
             components: [successContainer], 
             flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
         });
@@ -175,7 +194,7 @@ export async function handleModal(interaction, client) {
     } catch (e) {
         const errContainer = new ContainerBuilder().setAccentColor(0xED4245);
         errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Slot #${slot} Failed\n${e.message}`));
-        await interaction.reply({ 
+        await interaction.editReply({ 
             components: [errContainer], 
             flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
         });
