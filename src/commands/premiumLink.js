@@ -1,3 +1,8 @@
+/**
+ * premiumLink.js - Fixed Formatting, Clean UI & Dynamic Slots
+ * Location: src/commands/premiumLink.js
+ */
+
 import {
     ContainerBuilder, TextDisplayBuilder, SectionBuilder, 
     ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize, 
@@ -20,6 +25,7 @@ function getClientPrefix(client, guildId) {
 
 function getAccountAge(discordId) {
     try {
+        if (!discordId) return 'N/A';
         const ts = Number((BigInt(discordId) >> 22n) + 1420070400000n);
         const days = Math.floor((Date.now() - ts) / 86400000);
         if (days < 30) return `${days} days ago`;
@@ -32,9 +38,9 @@ function getAccountAge(discordId) {
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client, member = null) {
     const prefix = getClientPrefix(client, guildId);
 
-    // Progressive slot calculation fetch karo
+    // Fetch progressive slot calculation
     const guildMember = member || await client.guilds.cache.get(guildId)?.members.fetch(ownerId).catch(() => null);
-    const { slots, invites, boosts, slotsToShow, stage } = await getProgressiveSlots(guildMember, 0);
+    const { slots, invites, boosts, slotsToShow } = await getProgressiveSlots(guildMember, 0);
 
     let accounts = await tokenStore.getAllSlots(guildId, ownerId);
 
@@ -48,13 +54,17 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
         }
     }
 
+    // ── Panel Header Container ──
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n> **Invites:** ${invites} \vert{} **Boosts:**${boosts}`
+        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\n` +
+        `Use \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n` +
+        `> **Invites:** ${invites} \vert{} **Boosts:**${boosts}`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
+    // ── Slots Account Panel Container ──
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
     c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Account Panel (${slotsToShow} Visible Slots)`));
 
@@ -67,7 +77,12 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             if (slotData.can) {
                 // Unlocked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${slotNum} Account Configuration\n• Not Linked (${slotData.label})\n• Status: Not Active\n• Requirement: ${slotData.need} - ✅ Unlocked\n• Account Age: N/A\n• Linked At: N/A`
+                    `### #${slotNum} Account Configuration\n` +
+                    `• **User:** Not Linked (${slotData.label})\n` +
+                    `• **Status:** Not Active\n` +
+                    `• **Requirement:** ${slotData.need} - ✅ Unlocked\n` +
+                    `• **Account Age:** N/A\n` +
+                    `• **Linked At:** N/A`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
@@ -75,7 +90,11 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             } else {
                 // Locked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${slotNum} Account Configuration 🔒\n• Locked (${slotData.label})\n• Status: Locked\n• Need: ${slotData.need}\n• ${slotData.reason}`
+                    `### #${slotNum} Account Configuration 🔒\n` +
+                    `• **User:** Locked (${slotData.label})\n` +
+                    `• **Status:** Locked\n` +
+                    `• **Requirement:** ${slotData.need}\n` +
+                    `• **Note:** ${slotData.reason}`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`locked_slot_${slotNum}`).setLabel(`Locked (${slotData.need})`).setStyle(ButtonStyle.Secondary).setDisabled(true)
@@ -88,7 +107,14 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             const age = getAccountAge(linked.linkedUserId);
             const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
             const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
-            const content = `### #${slotNum} Account Configuration\n• ${linked.username} (${slotData.label})\n• Status: ${status}\n• Account Age: ${age}\n• Linked At: ${linkedAt}`;
+            
+            const content = 
+                `### #${slotNum} Account Configuration\n` +
+                `• **User:** ${linked.username} (\`${linked.linkedUserId || 'N/A'}\`)\n` +
+                `• **Slot Type:** ${slotData.label}\n` +
+                `• **Status:** ${status}\n` +
+                `• **Account Age:** ${age}\n` +
+                `• **Linked At:** ${linkedAt}`;
             
             if (avatarUrl) {
                 c2.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
@@ -105,6 +131,7 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
 
             c2.addActionRowComponents(row);
         }
+
         if (idx < slots.length - 1) {
             c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
         }
