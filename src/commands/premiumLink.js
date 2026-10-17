@@ -140,22 +140,9 @@ export const unlinkCmd = {
         const userId = interaction.user.id;
 
         try {
-            const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
+            await client.tokenStore.removeSlot(guildId, userId, slot);
             const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
-
-            if (removed) {
-                await interaction.editReply({
-                    content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
-                    components: panel.components,
-                    flags: MessageFlags.IsComponentsV2
-                });
-            } else {
-                await interaction.editReply({
-                    content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
-                    components: panel.components,
-                    flags: MessageFlags.IsComponentsV2
-                });
-            }
+            await interaction.editReply(panel);
         } catch (err) {
             await interaction.editReply({ content: `❌ Error unlinking slot: ${err.message}` });
         }
@@ -171,20 +158,9 @@ export const unlinkCmd = {
         }
 
         try {
-            const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
+            await client.tokenStore.removeSlot(guildId, userId, slot);
             const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
-
-            if (removed) {
-                await message.reply({
-                    content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
-                    ...panel
-                });
-            } else {
-                await message.reply({
-                    content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
-                    ...panel
-                });
-            }
+            await message.reply(panel);
         } catch (err) {
             await message.reply(`❌ Error unlinking slot: ${err.message}`);
         }
@@ -223,7 +199,7 @@ export async function handleModal(interaction, client) {
             linkedUserId: data.id, username: data.username, avatar: data.avatar, linkedAt: new Date()
         });
         const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
-        await interaction.editReply({ content: `✅ Slot ${slot} Linked as ${data.username}`, components: panel.components, flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply(panel);
     } catch (e) {
         await interaction.editReply({ content: `❌ ${e.message}` });
     }
