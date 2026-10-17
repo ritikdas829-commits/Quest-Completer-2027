@@ -34,8 +34,14 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
     
     const { slots, invites, boosts, slotsToShow, stage, roles } = await getProgressiveSlots(member, inviteStore);
     
-    // Fetch all linked slots from MongoDB for this user in this guild
-    const accounts = await tokenStore.getAllSlots(guildId, userId);
+    // Fetch all linked slots safely from MongoDB/TokenStore
+    let accounts = [];
+    try {
+        const res = tokenStore && typeof tokenStore.getAllSlots === 'function' ? await tokenStore.getAllSlots(guildId, userId) : [];
+        accounts = Array.isArray(res) ? res : Object.values(res || {});
+    } catch {
+        accounts = [];
+    }
 
     const c = new ContainerBuilder().setAccentColor(0x2B2D31);
 
@@ -106,10 +112,10 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(guide));
 
     const rolesText = `**Roles Setup Status:**\n` +
-        `Role 1 (2 Inv): ${roles.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}> ✅` : '❌ Not set - Use /setuproles'}\n` +
-        `Role 2 (5 Inv): ${roles.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}> ✅` : '❌ Not set'}\n` +
-        `Role 3 (10 Inv / 1 Boost): ${roles.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}> ✅` : '❌ Not set'}\n` +
-        `Role 4 (2 Boost): ${roles.ROLE_2_BOOST ? `<@&${roles.ROLE_2_BOOST}> ✅` : '❌ Not set'}`;
+        `Role 1 (2 Inv): ${roles?.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}> ✅` : '❌ Not set - Use /setuproles'}\n` +
+        `Role 2 (5 Inv): ${roles?.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}> ✅` : '❌ Not set'}\n` +
+        `Role 3 (10 Inv / 1 Boost): ${roles?.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}> ✅` : '❌ Not set'}\n` +
+        `Role 4 (2 Boost): ${roles?.ROLE_2_BOOST ? `<@&${roles.ROLE_2_BOOST}> ✅` : '❌ Not set'}`;
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`\n${rolesText}`));
 
