@@ -26,11 +26,22 @@ function getBoostRoles(guild) {
 function getBoostCount(member) {
     try {
         let boosts = 0;
-        if (member.premiumSince) boosts = 1;
+        if (member.premiumSince) {
+            boosts = 1;
+            // Check if member is boosting with multiple boosts if guild allows/tracks it
+            const guildBoostCount = member.guild?.premiumSubscriptionCount || 0;
+            if (guildBoostCount >= 2 && member.guild.members.cache.filter(m => m.premiumSince).size === 1) {
+                boosts = 2; // Agar ek hi user ne multiple boosts diye hain
+            }
+        }
+        
         const roles = getRoles(member.guild?.id);
-        if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) boosts = Math.max(boosts, 1);
-        if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) boosts = 2;
-        if (member.premiumSince && roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) boosts = 2;
+        if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) {
+            boosts = Math.max(boosts, 2);
+        } else if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) {
+            boosts = Math.max(boosts, 1);
+        }
+
         return boosts;
     } catch {
         return 0;
@@ -73,7 +84,9 @@ export async function handleBoostRemove(member) {
         const boosts = getBoostCount(member);
 
         if (boosts < 2 && boostRoles.ROLE_2_BOOST && member.roles.cache.has(boostRoles.ROLE_2_BOOST.id)) {
-            await member.roles.remove(boostRoles.ROLE_2_BOOST).catch(()=>{});
+            if (!member.premiumSince || boosts < 2) {
+                await member.roles.remove(boostRoles.ROLE_2_BOOST).catch(()=>{});
+            }
         }
         if (boosts < 1 && boostRoles.ROLE_1_BOOST && member.roles.cache.has(boostRoles.ROLE_1_BOOST.id)) {
             if (!member.premiumSince) {
@@ -90,8 +103,21 @@ export async function handleBoostUpdate(oldMember, newMember) {
     try {
         const hadBoost = Boolean(oldMember.premiumSince);
         const hasBoost = Boolean(newMember.premiumSince);
-        if (!hadBoost && hasBoost) await handleBoostAdd(newMember);
-        else if (hadBoost && !hasBoost) await handleBoostRemove(newMember);
+        
+        if (!hadBoost && hasBoost) {
+            await handleBoostAdd(newMember);
+        } else if (hadBoost && !hasBoost) {
+            await handleBoostRemove(newMember);
+        } else if (hadBoost && hasBoost) {
+            // Check for boost count changes even if premiumSince remains true
+            const oldBoosts = getBoostCount(oldMember);
+            const newBoosts = getBoostCount(newMember);
+            if (newBoosts > oldBoosts) {
+                await handleBoostAdd(newMember);
+            } else if (newBoosts < oldBoosts) {
+                await handleBoostRemove(newMember);
+            }
+        }
     } catch (err) {
         console.error("Boost update error:", err.message);
     }
