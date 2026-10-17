@@ -1,7 +1,18 @@
 import {
-    ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder,
-    SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, SlashCommandBuilder
+    ContainerBuilder,
+    TextDisplayBuilder,
+    SectionBuilder, 
+    ThumbnailBuilder,
+    SeparatorBuilder,
+    SeparatorSpacingSize, 
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
+    MessageFlags, 
+    SlashCommandBuilder
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
