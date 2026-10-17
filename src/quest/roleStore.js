@@ -7,6 +7,7 @@
  */
 
 import { getCollection } from '../utils/mongo.js';
+import InviteTracker from '../models/InviteTracker.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -15,9 +16,9 @@ const COLLECTION_NAME = 'roles_data';
 
 const DEFAULT_ROLES = {
     ROLE_2_INVITES: null, // Role 1: 2 Invites - Slot 2
-    ROLE_5_INVITES: null, // Role 2: 5 Invites - Slot 3 - 3 Slot Access
-    ROLE_1_BOOST: null,   // Role 3: 1 Boost - Slot 4
-    ROLE_2_BOOST: null,   // Role 4: 2 Boosts - Slot 5 - Full
+    ROLE_5_INVITES: null, // Role 2: 5 Invites - Slot 3
+    ROLE_1_BOOST: null,   // Role 3: 10 Invites OR 1 Boost - Slot 4 (1 Boost = 1-4)
+    ROLE_2_BOOST: null,   // Role 4: 2 Boosts - Slot 5 - Full (2 Boosts = 1-5)
 };
 
 const memoryCache = new Map(); // guildId -> roles
@@ -52,22 +53,18 @@ export function getRoles(guildId = null) {
     ensureDataFolder();
     
     if (guildId) {
-        // Per guild - memory first
         if (memoryCache.has(guildId)) {
             return { ...DEFAULT_ROLES, ...memoryCache.get(guildId) };
         }
-        // File fallback for single guild mode
         try {
             if (fs.existsSync(STORE_PATH)) {
                 const data = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
-                // If file has guildId structure or flat
                 if (data[guildId]) return { ...DEFAULT_ROLES, ...data[guildId] };
                 if (!guildId) return { ...DEFAULT_ROLES, ...data };
             }
         } catch {}
         return { ...DEFAULT_ROLES };
     } else {
-        // No guildId - legacy mode - try file
         try {
             if (fs.existsSync(STORE_PATH)) {
                 const data = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
@@ -93,10 +90,8 @@ export async function setRole(guildId, key, roleId) {
     let roles = getRoles(guildId);
     roles[key] = roleId;
 
-    // 1. Memory
     memoryCache.set(guildId, roles);
 
-    // 2. File backup (per guild structure)
     try {
         let fileData = {};
         if (fs.existsSync(STORE_PATH)) {
@@ -108,7 +103,6 @@ export async function setRole(guildId, key, roleId) {
         console.error("File save error:", err.message);
     }
 
-    // 3. MongoDB - Persistent - Multi server safe
     try {
         const col = await getCollection(COLLECTION_NAME);
         if (col) {
@@ -193,6 +187,79 @@ export async function syncRolesFromDB() {
         console.error("Sync roles error:", err.message);
         return null;
     }
+}
+
+// ── AUTOMATED ROLE & ACCESS LOGIC ──
+
+export async function checkAndUpdateRoles(guild, userId, inviteCount = 0) {
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return;
+    
+    const roles = getRoles(guild.id);
+    if (!inviteCount) {
+        const t = await InviteTracker.findOne({ guildId: guild.id, userId }).catch(() => null);
+        inviteCount = t?.invites || 0;
+    }
+    
+    const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
+
+    // 2 Boosts = Full Access (Slots 1-5)
+    if (boostCount >= 2) {
+        if (roles.ROLE_2_BOOST && !member.roles.cache.has(roles.ROLE_2_BOOST)) await member.roles.add(roles.ROLE_2_BOOST).catch(() => {});
+        if (roles.ROLE_1_BOOST && !member.roles.cache.has(roles.ROLE_1_BOOST)) await member.roles.add(roles.ROLE_1_BOOST).catch(() => {});
+        if (roles.ROLE_5_INVITES && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
+        if (roles.ROLE_2_INVITES && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
+        return;
+    }
+    
+    // 1 Boost = Slots 1-4
+    if (boostCount >= 1) {
+        if (roles.ROLE_1_BOOST && !member.roles.cache.has(roles.ROLE_1_BOOST)) await member.roles.add(roles.ROLE_1_BOOST).catch(() => {});
+        if (roles.ROLE_5_INVITES && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
+        if (roles.ROLE_2_INVITES && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
+        return;
+    }
+
+    // Incremental Invites Logic
+    if (roles.ROLE_2_INVITES) {
+        if (inviteCount >= 2 && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
+        if (inviteCount < 2 && member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.remove(roles.ROLE_2_INVITES).catch(() => {});
+    }
+    
+    if (roles.ROLE_5_INVITES) {
+        if (inviteCount >= 5 && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
+        if (inviteCount < 5 && member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.remove(roles.ROLE_5_INVITES).catch(() => {});
+    }
+    
+    if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST) && inviteCount < 10) {
+        await member.roles.remove(roles.ROLE_1_BOOST).catch(() => {});
+    }
+    
+    if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) {
+        await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
+    }
+}
+
+export async function isSlotUnlocked(guild, userId, slotNum) {
+    if (slotNum === 1) return true; // Slot 1 is always free
+    
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return false;
+    
+    const roles = getRoles(guild.id);
+    const tracker = await InviteTracker.findOne({ guildId: guild.id, userId }).catch(() => null);
+    const invites = tracker?.invites || 0;
+    const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
+    
+    if (boostCount >= 2) return true;
+    if (boostCount >= 1 && slotNum <= 4) return true;
+    
+    if (slotNum === 2) return invites >= 2 || member.roles.cache.has(roles.ROLE_2_INVITES);
+    if (slotNum === 3) return invites >= 5 || member.roles.cache.has(roles.ROLE_5_INVITES);
+    if (slotNum === 4) return invites >= 10 || member.roles.cache.has(roles.ROLE_1_BOOST);
+    if (slotNum === 5) return false; // Slot 5 only 2 boosts
+    
+    return false;
 }
 
 // Legacy support - no guildId
