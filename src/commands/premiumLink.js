@@ -1,18 +1,9 @@
 import {
-    ContainerBuilder,
-    TextDisplayBuilder,
-    SectionBuilder, 
-    ThumbnailBuilder,
-    SeparatorBuilder,
-    SeparatorSpacingSize, 
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
-    MessageFlags, 
-    SlashCommandBuilder,
+    ContainerBuilder, TextDisplayBuilder, SectionBuilder, 
+    ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize, 
+    ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    ModalBuilder, TextInputBuilder, TextInputStyle, 
+    MessageFlags, SlashCommandBuilder,
 } from 'discord.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
@@ -34,23 +25,21 @@ function getAccountAge(discordId) {
         const months = Math.floor(days / 30);
         if (months < 12) return `${months} months ago`;
         return `${Math.floor(months/12)} years ago`;
-    } catch {
-        return 'N/A';
-    }
+    } catch { return 'N/A'; }
 }
 
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client) {
     const accounts = await tokenStore.getAllSlots(guildId, ownerId);
     const prefix = getClientPrefix(client, guildId);
 
-    const c1 = new ContainerBuilder();
+    const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}guide\` if you need the exact token flow guide first.`
+        `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\nUse \`${prefix}script\` if you need the exact token flow guide first.`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
-    const c2 = new ContainerBuilder();
+    const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
     c2.addTextDisplayComponents(new TextDisplayBuilder().setContent('## Account Panel'));
 
     for (let slotNum = 1; slotNum <= 5; slotNum++) {
@@ -74,17 +63,13 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             } else {
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
             }
-
+            
             const row = new ActionRowBuilder();
             row.addComponents(new ButtonBuilder().setCustomId(`unlink_slot_${slotNum}`).setLabel('Unlink').setStyle(ButtonStyle.Danger));
-            if (!linked.isActive) {
-                row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
-            }
+            if (!linked.isActive) row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
             c2.addActionRowComponents(row);
         }
-        if (slotNum < 5) {
-            c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
-        }
+        if (slotNum < 5) c2.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
     }
     c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Active slot will run quests — Support: ${SUPPORT_SERVER}`));
     return { components: [c1, c2], flags: MessageFlags.IsComponentsV2 };
@@ -98,9 +83,8 @@ export function buildLinkModal(slot) {
     return m;
 }
 
-const linkData = new SlashCommandBuilder()
-    .setName('link')
-    .setDescription('Premium Link - Manage 5 progressive account slots');
+// ── SLASH + PREFIX COMMANDS ──
+const linkData = new SlashCommandBuilder().setName('link').setDescription('Premium Link - 5 Slots');
 
 export const linkCmd = {
     data: linkData,
@@ -116,54 +100,26 @@ export const linkCmd = {
     }
 };
 
-const unlinkData = new SlashCommandBuilder()
-    .setName('unlink')
-    .setDescription('Unlink a specific account slot and view slot manager')
-    .addIntegerOption(opt =>
-        opt.setName('slot')
-            .setDescription('Select slot number to unlink (1 to 5)')
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(5)
-    );
-
 export const unlinkCmd = {
-    data: unlinkData,
+    data: new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('1-5').setRequired(true).setMinValue(1).setMaxValue(5)),
     prefix: 'unlink',
     async execute(interaction, client) {
         await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-        const slot = interaction.options.getInteger('slot');
-        const guildId = interaction.guild.id;
-        const userId = interaction.user.id;
-
-        try {
-            await client.tokenStore.removeSlot(guildId, userId, slot);
-            const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
-            await interaction.editReply(panel);
-        } catch (err) {
-            await interaction.editReply({ content: `❌ Error unlinking slot: ${err.message}` });
-        }
+        await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, interaction.options.getInteger('slot'));
+        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
+        await interaction.editReply(panel);
     },
     async prefixExecute(message, args, client) {
-        const slot = parseInt(args[0]);
-        const guildId = message.guild.id;
-        const userId = message.author.id;
-        const prefix = getClientPrefix(client, guildId);
-
-        if (!slot || slot < 1 || slot > 5) {
-            return await message.reply(`❌ Please specify a valid slot number (1 to 5). Example: \`${prefix}unlink 1\``);
-        }
-
-        try {
-            await client.tokenStore.removeSlot(guildId, userId, slot);
-            const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
-            await message.reply(panel);
-        } catch (err) {
-            await message.reply(`❌ Error unlinking slot: ${err.message}`);
-        }
+        const prefix = getClientPrefix(client, message.guild.id);
+        const slot = parseInt(args[0]); 
+        if (!slot || slot < 1 || slot > 5) return message.reply(`Usage: \`${prefix}unlink 1\``);
+        await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
+        const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
+        await message.reply(panel);
     }
 };
 
+// ── BUTTON HANDLERS ──
 export async function handleButton(interaction, client) {
     if (interaction.customId.startsWith('link_slot_')) {
         return await interaction.showModal(buildLinkModal(parseInt(interaction.customId.split('_')[2])));
@@ -180,22 +136,48 @@ export async function handleButton(interaction, client) {
     }
 }
 
+// ── MODAL HANDLER — Complete Fix ──
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
-    await interaction.deferReply({ flags: 64 });
+
     const slot = parseInt(interaction.customId.split('_')[3]);
     const token = interaction.fields.getTextInputValue('token_input').trim();
+    const prefix = getClientPrefix(client, interaction.guild.id);
+
     try {
         const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
         if (!res.ok) throw new Error('Invalid token');
         const data = await res.json();
+
         await client.tokenStore.saveSlot({
             guildId: interaction.guild.id, ownerId: interaction.user.id, slot, token,
             linkedUserId: data.id, username: data.username, avatar: data.avatar, linkedAt: new Date()
         });
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
-        await interaction.editReply(panel);
+
+        // 1. Background me main Account Panel instant edit/update hoga
+        if (interaction.message) {
+            const updatedPanel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
+            await interaction.message.edit(updatedPanel).catch(() => {});
+        }
+
+        // 2. Green accent bar wala container card (Fast Quest + Orbie jaisa)
+        const successContainer = new ContainerBuilder().setAccentColor(0x57F287);
+        successContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `## ✅ Token Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink\`.`
+        ));
+
+        // Ephemeral Response ("Only you can see this") with V2 Flags
+        await interaction.reply({ 
+            components: [successContainer], 
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
+        });
+
     } catch (e) {
-        await interaction.editReply({ content: `❌ ${e.message}` });
+        const errContainer = new ContainerBuilder().setAccentColor(0xED4245);
+        errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Slot #${slot} Failed\n${e.message}`));
+        await interaction.reply({ 
+            components: [errContainer], 
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
+        });
     }
 }
