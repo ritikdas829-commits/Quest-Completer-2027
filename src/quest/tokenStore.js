@@ -87,6 +87,39 @@ export class TokenStore {
         }
     }
 
+    // ── CRITICAL METHODS REQUIRED BY questCommands.js ──
+
+    async getActiveSlot(guildId, userId) {
+        try {
+            // Find explicitly marked active slot
+            let activeDoc = await TokenModel.findOne({ guildId, userId, isActive: true });
+            
+            // Fallback: If no slot is marked active, get the first available slot
+            if (!activeDoc) {
+                activeDoc = await TokenModel.findOne({ guildId, userId }).sort({ slot: 1 });
+            }
+
+            if (!activeDoc) return null;
+
+            const token = decrypt(activeDoc.encryptedData, this.key);
+            return {
+                slot: activeDoc.slot,
+                token: token,
+                username: activeDoc.username,
+                linkedUserId: activeDoc.linkedUserId || userId,
+                isActive: activeDoc.isActive
+            };
+        } catch (err) {
+            console.error(`❌ Error fetching active slot for [${guildId}] ${userId}:`, err.message);
+            return null;
+        }
+    }
+
+    async getActiveToken(guildId, userId) {
+        const active = await this.getActiveSlot(guildId, userId);
+        return active ? active.token : null;
+    }
+
     // ── Methods required by premiumLink.js & linkGuard.js ──
 
     async getAllSlots(guildId, userId) {
@@ -113,12 +146,10 @@ export class TokenStore {
 
             const userId = ownerId;
             
-            // If setting active, deactivate other slots for this user in this guild
             if (isActive) {
                 await TokenModel.updateMany({ guildId, userId }, { isActive: false });
             }
 
-            // If this is the user's first slot, make it active by default
             const existingCount = await TokenModel.countDocuments({ guildId, userId });
             if (existingCount === 0) {
                 isActive = true;
@@ -143,7 +174,24 @@ export class TokenStore {
     }
 
     async removeSlot(guildId, userId, slot) {
-        return await this.remove(guildId, userId, slot);
+        try {
+            const cacheKey = this.makeCacheKey(guildId, userId, slot);
+            const existed = this.cache.has(cacheKey);
+            this.cache.delete(cacheKey);
+            await TokenModel.findOneAndDelete({ guildId, userId, slot });
+            
+            // If removed slot was active, fallback to next available slot
+            const remaining = await TokenModel.findOne({ guildId, userId }).sort({ slot: 1 });
+            if (remaining) {
+                await TokenModel.findOneAndUpdate({ guildId, userId, slot: remaining.slot }, { isActive: true });
+            }
+
+            console.log(`🗑️ Token removed [${guildId}] ${userId} slot ${slot}`);
+            return existed;
+        } catch (err) {
+            console.error(`❌ Error removing slot [${guildId}] ${userId} slot ${slot}:`, err.message);
+            return false;
+        }
     }
 
     async setActiveSlot(guildId, userId, slot) {
@@ -151,7 +199,6 @@ export class TokenStore {
             await TokenModel.updateMany({ guildId, userId }, { isActive: false });
             await TokenModel.findOneAndUpdate({ guildId, userId, slot }, { isActive: true });
             
-            // Update cache
             for (const [key, val] of this.cache.entries()) {
                 if (key.startsWith(`${guildId}_${userId}_slot_`)) {
                     val.isActive = key === this.makeCacheKey(guildId, userId, slot);
@@ -199,17 +246,7 @@ export class TokenStore {
     }
 
     async remove(guildId, userId, slot) {
-        try {
-            const cacheKey = this.makeCacheKey(guildId, userId, slot);
-            const existed = this.cache.has(cacheKey);
-            this.cache.delete(cacheKey);
-            await TokenModel.findOneAndDelete({ guildId, userId, slot });
-            console.log(`🗑️ Token removed [${guildId}] ${userId} slot ${slot}`);
-            return existed;
-        } catch (err) {
-            console.error(`❌ Error removing token [${guildId}] ${userId} slot ${slot}:`, err.message);
-            return false;
-        }
+        return await this.removeSlot(guildId, userId, slot);
     }
 
     async removeOld(userId) {
