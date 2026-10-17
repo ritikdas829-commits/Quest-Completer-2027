@@ -32,16 +32,23 @@ export default async function deployCommands(token, clientId) {
     }
 
     const commands = [];
-    const commandFiles = readdirSync(join(__dirname, '../commands')).filter(f => f.endsWith('.js'));
+    const commandsPath = join(__dirname, '../commands');
+    const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
     for (const file of commandFiles) {
-        const mod = await import(pathToFileURL(join(__dirname, '../commands', file)).href);
-        // default export
-        if (mod.default?.data) commands.push(mod.default.data.toJSON());
-        // named exports (e.g. questCommands.js)
-        for (const [key, val] of Object.entries(mod)) {
-            if (key === 'default') continue;
-            if (val?.data?.toJSON) commands.push(val.data.toJSON());
+        try {
+            const mod = await import(pathToFileURL(join(commandsPath, file)).href);
+            if (mod.default?.data?.toJSON) {
+                commands.push(mod.default.data.toJSON());
+            }
+            for (const [key, val] of Object.entries(mod)) {
+                if (key === 'default') continue;
+                if (val?.data?.toJSON) {
+                    commands.push(val.data.toJSON());
+                }
+            }
+        } catch (err) {
+            console.log(`${tag} ${col.red}  ✗ Failed to load command file ${file}: ${err.message}${col.reset}`);
         }
     }
 
@@ -59,8 +66,3 @@ export default async function deployCommands(token, clientId) {
 
     console.log(line);
 }
-
-// : ! Synora 乂 Development !
-// + Discord: its2yashpatel_
-// + Community: https://dsc.gg/synoraxdev (Synora 乂 Development)
-// + for any queries reach out Community or DM me.
