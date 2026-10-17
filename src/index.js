@@ -8,6 +8,11 @@ import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal, buildPremiumLinkPanel } from './commands/premiumLink.js';
 
+// 👇 Naye trackers import kiye hain
+import { cacheGuildInvites, handleInviteJoin, handleInviteLeave } from './handlers/inviteTracker.js';
+import { handleBoostUpdate } from './handlers/boostTracker.js';
+import { syncRolesFromDB } from './quest/roleStore.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
@@ -52,6 +57,14 @@ if (typeof connectDB === 'function') {
 banner();
 await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
 
+// 👇 Bot start hote hi roles ko database se sync kar lo taaki 'Not set' error na aaye
+try {
+    await syncRolesFromDB();
+    console.log(`${col.green}● Roles synced from MongoDB successfully${col.reset}`);
+} catch (err) {
+    console.warn(`${col.purple}● Role sync warning:${col.reset}`, err.message);
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -89,6 +102,26 @@ for (const file of commandFiles) {
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
 }
+
+// ── Ready Event (Cache Invites on Startup) ─────────────────────────────────
+client.once('ready', async () => {
+    console.log(`🤖 Logged in as ${client.user.tag}!`);
+    await cacheGuildInvites(client);
+    console.log(`⚡ Guild invites cached successfully.`);
+});
+
+// ── Invite & Boost Event Listeners ─────────────────────────────────────────
+client.on('guildMemberAdd', async (member) => {
+    await handleInviteJoin(member);
+});
+
+client.on('guildMemberRemove', async (member) => {
+    await handleInviteLeave(member);
+});
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    await handleBoostUpdate(oldMember, newMember);
+});
 
 // ── Interaction Create Handler ─────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
