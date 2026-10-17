@@ -31,11 +31,12 @@ function getAccountAge(discordId) {
     }
 }
 
+// FIXED: getPrefix ab server ka custom prefix pehle check karega
 function getPrefix(client, guildId) {
     try {
+        if (client?.getPrefix) return client.getPrefix(guildId);
         if (client?.config?.prefix) return client.config.prefix;
         if (client?.prefix) return client.prefix;
-        if (client?.getPrefix) return client.getPrefix(guildId);
     } catch {}
     return DEFAULT_PREFIX;
 }
