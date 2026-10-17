@@ -51,19 +51,14 @@ export async function getProgressiveSlots(member, inviteStore) {
         const roles = getRoles(guildId);
         const { invites, boosts } = getCounts(member, inviteStore);
         
-        // Check with Invite count OR Role
         const hasRole2 = roles.ROLE_2_INVITES ? member.roles.cache.has(roles.ROLE_2_INVITES) || invites >= 2 : invites >= 2;
         const hasRole5 = roles.ROLE_5_INVITES ? member.roles.cache.has(roles.ROLE_5_INVITES) || invites >= 5 : invites >= 5;
-        // Slot 4 = 10 invite OR 1 Boost — Do either one!
         const hasBoost1 = roles.ROLE_1_BOOST ? member.roles.cache.has(roles.ROLE_1_BOOST) || boosts >= 1 || invites >= 10 : boosts >= 1 || invites >= 10;
         const hasBoost2 = roles.ROLE_2_BOOST ? member.roles.cache.has(roles.ROLE_2_BOOST) || boosts >= 2 : boosts >= 2;
 
         let slotsToShow = 2;
         let stage = '';
 
-        // Ek ek karke show logic:
-        // Pehle 2 slot show hoga toh uske pass 2 slot ka role access hoga toh slot 3 show karega
-        // Jab 3 ka mile toh 4 ka, jab 4 ka mile toh 5 ka
         if (!hasRole2) {
             slotsToShow = 2;
             stage = 'No role - 2 slots: Free + 2 invite locked';
@@ -101,7 +96,6 @@ export async function getProgressiveSlots(member, inviteStore) {
             } else if (i === 4) {
                 can = hasBoost1;
                 needRoleId = roles.ROLE_1_BOOST || '';
-                // UPDATED: 10 Invite OR 1 Boost
                 reason = hasBoost1 ? '10 invites OR 1 boost done - Role 3 unlocked - 1 Boost = Slots 1-4 unlock!' : `Need Role 3: 10 invites OR 1 Boost${needRoleId ? ` - <@&${needRoleId}>` : ''} - You have ${invites}/10 invites, ${boosts}/1 boost - Do either one!`;
             } else if (i === 5) {
                 can = hasBoost2;
@@ -127,7 +121,6 @@ export async function getProgressiveSlots(member, inviteStore) {
     }
 }
 
-// Extra helper for slotUI.js — same as before but updated
 export async function getMaxVisibleSlots(guild, userId) {
     try {
         if (!guild) return 2;
@@ -139,7 +132,7 @@ export async function getMaxVisibleSlots(guild, userId) {
         if (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES)) max = 4;
         if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) max = 5;
         if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) max = 5;
-        // Also check invite count directly for safety
+        
         const { invites, boosts } = getCounts(member, 0);
         if (invites >= 2) max = Math.max(max, 3);
         if (invites >= 5) max = Math.max(max, 4);
