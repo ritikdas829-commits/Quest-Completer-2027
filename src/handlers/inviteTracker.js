@@ -217,6 +217,8 @@ export async function handleInviteJoin(member) {
         const inviterMember = await guild.members.fetch(inviter.id).catch(() => null);
         if (!inviterMember) return;
 
+        const boostCount = guild.premiumSubscriptionCount || (inviterMember.premiumSince ? 1 : 0);
+
         // Role 1: 2 Invites -> Slot 2
         if (inviterData.count >= 2 && targetRoles.ROLE_2_INVITES) {
             if (!inviterMember.roles.cache.has(targetRoles.ROLE_2_INVITES.id)) {
@@ -233,11 +235,19 @@ export async function handleInviteJoin(member) {
             }
         }
 
-        // Role 3: 10 Invites -> Slot 4
-        if (inviterData.count >= 10 && targetRoles.ROLE_1_BOOST) {
+        // Role 3: 10 Invites OR 1 Boost -> Slot 4
+        if ((inviterData.count >= 10 || boostCount >= 1) && targetRoles.ROLE_1_BOOST) {
             if (!inviterMember.roles.cache.has(targetRoles.ROLE_1_BOOST.id)) {
                 await inviterMember.roles.add(targetRoles.ROLE_1_BOOST).catch(() => {});
-                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_1_BOOST.name}**! Slot 4 unlocked (10 Invites)`).catch(() => {});
+                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_1_BOOST.name}**! Slot 4 unlocked`).catch(() => {});
+            }
+        }
+
+        // Role 4: 2 Boosts -> Slot 5 (Full)
+        if (boostCount >= 2 && targetRoles.ROLE_2_BOOST) {
+            if (!inviterMember.roles.cache.has(targetRoles.ROLE_2_BOOST.id)) {
+                await inviterMember.roles.add(targetRoles.ROLE_2_BOOST).catch(() => {});
+                if (joinChannel) await joinChannel.send(`👑 <@${inviter.id}> unlocked **${targetRoles.ROLE_2_BOOST.name}**! Slot 5 Full Access unlocked`).catch(() => {});
             }
         }
 
@@ -298,7 +308,7 @@ export async function handleInviteLeave(member) {
         if (inviterMember) {
             if (inviterData.count < 10 && boostCount < 1 && targetRoles.ROLE_1_BOOST && inviterMember.roles.cache.has(targetRoles.ROLE_1_BOOST.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_1_BOOST).catch(() => {});
-                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_1_BOOST.name}** (invites < 10)`).catch(() => {});
+                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_1_BOOST.name}** (invites < 10 and no boost)`).catch(() => {});
             }
             if (inviterData.count < 5 && targetRoles.ROLE_5_INVITES && inviterMember.roles.cache.has(targetRoles.ROLE_5_INVITES.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_5_INVITES).catch(() => {});
