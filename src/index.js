@@ -63,7 +63,7 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
 });
 
-const activePrefix    = process.env.BOT_PREFIX || process.env.PREFIX || '?';
+const activePrefix    = process.env.BOT_PREFIX;
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
 client.tokenStore     = new TokenStore(TOKEN);
@@ -71,7 +71,7 @@ client.config         = { prefix: activePrefix };
 client.prefix         = activePrefix;
 
 client.getPrefix = function(guildId) {
-    return this.config?.prefix || process.env.BOT_PREFIX || process.env.PREFIX || '?';
+    return process.env.BOT_PREFIX;
 };
 
 // Load Commands Dynamically
@@ -126,7 +126,7 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    const prefix = client.getPrefix(message.guild.id);
+    const prefix = process.env.BOT_PREFIX;
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
@@ -150,10 +150,7 @@ client.on('messageCreate', async (message) => {
             }
             await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
             const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
-            return await message.reply({
-                content: `✅ Slot #${slot} unlinked successfully! Here is your updated slot manager panel:`,
-                ...panel
-            });
+            return await message.reply(panel);
         }
     } catch (err) {
         console.error(`❌ Prefix Error [${commandName}]:`, err);
