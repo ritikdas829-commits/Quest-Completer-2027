@@ -17,14 +17,13 @@ import {
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
 
-// Helper to get dynamic prefix matching questCommands.js
 function getClientPrefix(client, guildId) {
     try {
         if (client?.getPrefix) return client.getPrefix(guildId);
         if (client?.config?.prefix) return client.config.prefix;
         if (client?.prefix) return client.prefix;
     } catch {}
-    return process.env.PREFIX || '?';
+    return process.env.BOT_PREFIX || '?';
 }
 
 function getAccountAge(discordId) {
@@ -99,7 +98,6 @@ export function buildLinkModal(slot) {
     return m;
 }
 
-// ── 1. LINK COMMAND (Slash + Prefix) ───────────────────────────────────────
 const linkData = new SlashCommandBuilder()
     .setName('link')
     .setDescription('Premium Link - Manage 5 progressive account slots');
@@ -118,7 +116,6 @@ export const linkCmd = {
     }
 };
 
-// ── 2. UNLINK COMMAND (Slash + Prefix) ─────────────────────────────────────
 const unlinkData = new SlashCommandBuilder()
     .setName('unlink')
     .setDescription('Unlink a specific account slot and view slot manager')
@@ -167,7 +164,6 @@ export const unlinkCmd = {
     }
 };
 
-// ── BUTTON HANDLERS ────────────────────────────────────────────────────────
 export async function handleButton(interaction, client) {
     if (interaction.customId.startsWith('link_slot_')) {
         return await interaction.showModal(buildLinkModal(parseInt(interaction.customId.split('_')[2])));
@@ -184,7 +180,6 @@ export async function handleButton(interaction, client) {
     }
 }
 
-// ── MODAL HANDLERS ─────────────────────────────────────────────────────────
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
     await interaction.deferReply({ flags: 64 });
