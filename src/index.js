@@ -8,7 +8,7 @@ import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal, buildPremiumLinkPanel } from './commands/premiumLink.js';
 
-// 👇 Naye trackers import kiye hain
+// Trackers & Role Store Imports
 import { cacheGuildInvites, handleInviteJoin, handleInviteLeave } from './handlers/inviteTracker.js';
 import { handleBoostUpdate } from './handlers/boostTracker.js';
 import { syncRolesFromDB } from './quest/roleStore.js';
@@ -57,7 +57,7 @@ if (typeof connectDB === 'function') {
 banner();
 await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
 
-// 👇 Bot start hote hi roles ko database se sync kar lo taaki 'Not set' error na aaye
+// Sync roles from DB on startup to avoid 'Not set' error
 try {
     await syncRolesFromDB();
     console.log(`${col.green}● Roles synced from MongoDB successfully${col.reset}`);
@@ -103,8 +103,8 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Ready Event (Cache Invites on Startup) ─────────────────────────────────
-client.once('ready', async () => {
+// ── Client Ready Event (Cache Invites on Startup) ──────────────────────────
+client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
     await cacheGuildInvites(client);
     console.log(`⚡ Guild invites cached successfully.`);
@@ -191,7 +191,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Load Events
+// Load Events from folder if any
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
