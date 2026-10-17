@@ -1,39 +1,43 @@
 /**
- * linkGuard.js - Link Check Guard
+ * linkGuard.js - Link Check Guard (5-Slot MongoDB Integrated)
  * Location: src/quest/linkGuard.js
- * If user not linked and uses any command, show link panel
+ * If user not linked and uses any command, show premium link panel
  * Until linked, quest will not run
  */
 
-import { buildSlotPanel } from './slotUI.js';
+import { buildPremiumLinkPanel } from '../commands/premiumLink.js';
 
-export function hasAnyLinkedSlot(userId, tokenStore) {
-    for (let i = 1; i <= 5; i++) {
-        const token = tokenStore.get(`${userId}_slot_${i}`);
-        if (token) return true;
+export async function hasAnyLinkedSlot(guildId, userId, tokenStore) {
+    try {
+        if (!tokenStore || typeof tokenStore.getAllSlots !== 'function') return false;
+        const slots = await tokenStore.getAllSlots(guildId, userId);
+        return Array.isArray(slots) && slots.length > 0;
+    } catch {
+        return false;
     }
-    return false;
 }
 
-export function getLinkedSlotsCount(userId, tokenStore) {
-    let count = 0;
-    for (let i = 1; i <= 5; i++) {
-        if (tokenStore.get(`${userId}_slot_${i}`)) count++;
+export async function getLinkedSlotsCount(guildId, userId, tokenStore) {
+    try {
+        if (!tokenStore || typeof tokenStore.getAllSlots !== 'function') return 0;
+        const slots = await tokenStore.getAllSlots(guildId, userId);
+        return Array.isArray(slots) ? slots.length : 0;
+    } catch {
+        return 0;
     }
-    return count;
 }
 
-export async function requireLink(member, tokenStore, inviteStore, commandName = 'quest') {
+export async function requireLink(guildId, member, tokenStore, client, commandName = 'quest') {
     const userId = member.id || member.user?.id;
-    const hasLinked = hasAnyLinkedSlot(userId, tokenStore);
+    const hasLinked = await hasAnyLinkedSlot(guildId, userId, tokenStore);
 
     if (!hasLinked) {
-        const panel = await buildSlotPanel(member, inviteStore, tokenStore);
+        const panel = await buildPremiumLinkPanel(guildId, userId, tokenStore, client);
         return {
             linked: false,
             hasLinked: false,
             panel: panel,
-            message: `❌ Link Required - Please link first - Use /link or ?link - Until then ${commandName} will not run`,
+            message: `❌ Link Required — Please link an account slot first using \`/link\` before running \`${commandName}\`.`,
         };
     }
 
@@ -45,14 +49,15 @@ export async function requireLink(member, tokenStore, inviteStore, commandName =
     };
 }
 
-export async function requireLinkForQuest(member, tokenStore, inviteStore) {
-    return await requireLink(member, tokenStore, inviteStore, 'quest');
+export async function requireLinkForQuest(guildId, member, tokenStore, client) {
+    return await requireLink(guildId, member, tokenStore, client, 'quest');
 }
 
 export function withLinkGuard(commandExecute) {
     return async (interaction, client, ...args) => {
+        const guildId = interaction.guild?.id;
         const member = interaction.member || interaction.user;
-        const check = await requireLink(member, client.tokenStore, client.inviteStore, interaction.commandName || 'command');
+        const check = await requireLink(guildId, member, client.tokenStore, client, interaction.commandName || 'command');
         
         if (!check.linked) {
             if (interaction.replied || interaction.deferred) {
@@ -70,7 +75,9 @@ export function withLinkGuard(commandExecute) {
 
 export function withLinkGuardPrefix(prefixExecute) {
     return async (message, args, client, ...rest) => {
-        const check = await requireLink(message.member, client.tokenStore, client.inviteStore, 'quest');
+        const guildId = message.guild?.id;
+        const member = message.member || message.author;
+        const check = await requireLink(guildId, member, client.tokenStore, client, 'quest');
         
         if (!check.linked) {
             await message.reply({ ...check.panel }).catch(async () => {
