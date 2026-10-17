@@ -86,8 +86,6 @@ function getTargetRoles(guild) {
         if (stored.ROLE_2_INVITES) {
             const r = guild.roles.cache.get(stored.ROLE_2_INVITES);
             if (r) roles.ROLE_2_INVITES = r;
-        } else {
-            roles.ROLE_2_INVITES = guild.roles.cache.find(r => r.name.toLowerCase().replace(/\s+/g, '') === 'questaccess');
         }
         if (stored.ROLE_5_INVITES) {
             const r = guild.roles.cache.get(stored.ROLE_5_INVITES);
@@ -219,19 +217,27 @@ export async function handleInviteJoin(member) {
         const inviterMember = await guild.members.fetch(inviter.id).catch(() => null);
         if (!inviterMember) return;
 
+        // Role 1: 2 Invites -> Slot 2
         if (inviterData.count >= 2 && targetRoles.ROLE_2_INVITES) {
             if (!inviterMember.roles.cache.has(targetRoles.ROLE_2_INVITES.id)) {
                 await inviterMember.roles.add(targetRoles.ROLE_2_INVITES).catch(() => {});
-                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_2_INVITES.name}**! Slot 2 - 2 invites - Now 3 slots visible`).catch(() => {});
-                await sendSafeDM(inviterMember, `🎉 2 invites completed! **${targetRoles.ROLE_2_INVITES.name}** unlocked - Slot 2`);
+                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_2_INVITES.name}**! Slot 2 unlocked`).catch(() => {});
             }
         }
 
+        // Role 2: 5 Invites -> Slot 3
         if (inviterData.count >= 5 && targetRoles.ROLE_5_INVITES) {
             if (!inviterMember.roles.cache.has(targetRoles.ROLE_5_INVITES.id)) {
                 await inviterMember.roles.add(targetRoles.ROLE_5_INVITES).catch(() => {});
-                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_5_INVITES.name}**! Slot 3 - 5 invites - Now 4 slots visible - Say boost!`).catch(() => {});
-                await sendSafeDM(inviterMember, `🎉 5 invites completed! **${targetRoles.ROLE_5_INVITES.name}** unlocked - Slot 3 - Now 4 slots - Boost required`);
+                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_5_INVITES.name}**! Slot 3 unlocked`).catch(() => {});
+            }
+        }
+
+        // Role 3: 10 Invites -> Slot 4
+        if (inviterData.count >= 10 && targetRoles.ROLE_1_BOOST) {
+            if (!inviterMember.roles.cache.has(targetRoles.ROLE_1_BOOST.id)) {
+                await inviterMember.roles.add(targetRoles.ROLE_1_BOOST).catch(() => {});
+                if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_1_BOOST.name}**! Slot 4 unlocked (10 Invites)`).catch(() => {});
             }
         }
 
@@ -255,8 +261,6 @@ export async function handleInviteLeave(member) {
     for (const [key, data] of memoryCache.entries()) {
         if (!key.startsWith(`${guild.id}_`)) continue;
         if (data.invitedUsers?.includes(member.id)) {
-            inviterId = key.split('_').slice(1).join('_'); // userId may have underscore? but Discord IDs don't
-            // Actually key is guildId_userId, guildId is numeric, userId numeric, so split
             const parts = key.split('_');
             inviterId = parts[1];
             inviterData = data;
@@ -289,15 +293,20 @@ export async function handleInviteLeave(member) {
 
         const targetRoles = getTargetRoles(guild);
         const inviterMember = await guild.members.fetch(inviterId).catch(() => null);
+        const boostCount = guild.premiumSubscriptionCount || (inviterMember?.premiumSince ? 1 : 0);
 
         if (inviterMember) {
+            if (inviterData.count < 10 && boostCount < 1 && targetRoles.ROLE_1_BOOST && inviterMember.roles.cache.has(targetRoles.ROLE_1_BOOST.id)) {
+                await inviterMember.roles.remove(targetRoles.ROLE_1_BOOST).catch(() => {});
+                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_1_BOOST.name}** (invites < 10)`).catch(() => {});
+            }
             if (inviterData.count < 5 && targetRoles.ROLE_5_INVITES && inviterMember.roles.cache.has(targetRoles.ROLE_5_INVITES.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_5_INVITES).catch(() => {});
-                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_5_INVITES.name}** (invites < 5 - ${inviterData.count})`).catch(() => {});
+                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_5_INVITES.name}** (invites < 5)`).catch(() => {});
             }
             if (inviterData.count < 2 && targetRoles.ROLE_2_INVITES && inviterMember.roles.cache.has(targetRoles.ROLE_2_INVITES.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_2_INVITES).catch(() => {});
-                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_2_INVITES.name}** (invites < 2 - ${inviterData.count})`).catch(() => {});
+                if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_2_INVITES.name}** (invites < 2)`).catch(() => {});
             }
         }
     }
