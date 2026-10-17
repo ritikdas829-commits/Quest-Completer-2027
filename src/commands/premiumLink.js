@@ -99,14 +99,58 @@ export function buildLinkModal(slot) {
     return m;
 }
 
-export const data = new SlashCommandBuilder().setName('link').setDescription('Premium Link - 5 slots');
+// ── 1. SLASH COMMAND: /link ────────────────────────────────────────────────
+const linkData = new SlashCommandBuilder()
+    .setName('link')
+    .setDescription('Premium Link - Manage 5 progressive account slots');
 
-export async function execute(interaction, client) {
+async function executeLink(interaction, client) {
     await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
     const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client);
     await interaction.editReply(panel);
 }
 
+// ── 2. SLASH COMMAND: /unlink (With Smart Slot Manager Panel) ──────────────
+const unlinkData = new SlashCommandBuilder()
+    .setName('unlink')
+    .setDescription('Unlink a specific account slot and view slot manager')
+    .addIntegerOption(opt =>
+        opt.setName('slot')
+            .setDescription('Select slot number to unlink (1 to 5)')
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(5)
+    );
+
+async function executeUnlink(interaction, client) {
+    await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
+    const slot = interaction.options.getInteger('slot');
+    const guildId = interaction.guild.id;
+    const userId = interaction.user.id;
+
+    try {
+        const removed = await client.tokenStore.removeSlot(guildId, userId, slot);
+        const panel = await buildPremiumLinkPanel(guildId, userId, client.tokenStore, client);
+
+        if (removed) {
+            await interaction.editReply({
+                content: `✅ **Slot #${slot} successfully unlinked!** Here is your updated slot manager panel:`,
+                components: panel.components,
+                flags: MessageFlags.IsComponentsV2
+            });
+        } else {
+            await interaction.editReply({
+                content: `⚠️ **Slot #${slot} was already empty or not linked.** Here is your current slot status:`,
+                components: panel.components,
+                flags: MessageFlags.IsComponentsV2
+            });
+        }
+    } catch (err) {
+        await interaction.editReply({ content: `❌ Error unlinking slot: ${err.message}` });
+    }
+}
+
+// ── BUTTON HANDLERS ────────────────────────────────────────────────────────
 export async function handleButton(interaction, client) {
     if (interaction.customId.startsWith('link_slot_')) {
         return await interaction.showModal(buildLinkModal(parseInt(interaction.customId.split('_')[2])));
@@ -123,6 +167,7 @@ export async function handleButton(interaction, client) {
     }
 }
 
+// ── MODAL HANDLERS ─────────────────────────────────────────────────────────
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
     await interaction.deferReply({ flags: 64 });
@@ -142,3 +187,7 @@ export async function handleModal(interaction, client) {
         await interaction.editReply({ content: `❌ ${e.message}` });
     }
 }
+
+// ── DYNAMIC EXPORTS FOR LOADER ─────────────────────────────────────────────
+export const linkCmd = { data: linkData, execute: executeLink };
+export const unlinkCmd = { data: unlinkData, execute: executeUnlink };
