@@ -43,7 +43,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
         `# Premium Link\n## Terms & Privacy\n> By linking your Discord token, you allow premium bot to use it for quest completion. Use \`${DEFAULT_PREFIX}guide\` if you need guide first.\n> **Stage:** ${stage}\n> Invites: ${invites} | Boosts: ${boosts}\n`
     ));
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true));
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# Account Panel - ${slotsToShow} Slots - 4 Roles System`));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# Account Panel - ${slotsToShow} Slots - Progressive System`));
 
     for (const s of slots) {
         const linked = accounts.find(a => a.slot === s.slot);
@@ -99,19 +99,95 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
     let guide = '';
     if (slotsToShow === 2) guide = `-# 📌 No role: 2 slots → Free + 2 invites (Role 1) → Invite 2 members for Slot 2!`;
     else if (slotsToShow === 3) guide = `-# 📌 Invite access: 3 slots → 2 access + 3rd needs Role 2: 5 invite per - Invite 3 more for Slot 3!`;
-    else if (slotsToShow === 4) guide = `-# 📌 3 slot access: 4 slots visible - Say boost! Role 3: 1 Boost needed for Slot 4`;
-    else if (slotsToShow === 5 && boosts < 2) guide = `-# 📌 1 boost: 5 slots visible - Role 4: 2 Boosts required for Slot 5 full access!`;
-    else guide = `-# 👑 Full 5 slots - 4 Roles completed - All access - 5 accounts!`;
+    else if (slotsToShow === 4) guide = `-# 📌 3 slot access: 4 slots visible - Say boost! Role 3: 10 Invites OR 1 Boost needed for Slot 4`;
+    else if (slotsToShow === 5 && boosts < 2) guide = `-# 📌 1 boost/10 invites: 5 slots visible - Role 4: 2 Boosts required for Slot 5 full access!`;
+    else guide = `-# 👑 Full 5 slots - All access - 5 accounts!`;
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(guide));
 
-    const rolesText = `**4 Roles Setup:**\n` +
+    const rolesText = `**Roles Setup Status:**\n` +
         `Role 1 (2 Inv): ${roles.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}> ✅` : '❌ Not set - Use /setuproles'}\n` +
         `Role 2 (5 Inv): ${roles.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}> ✅` : '❌ Not set'}\n` +
-        `Role 3 (1 Boost): ${roles.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}> ✅` : '❌ Not set'}\n` +
+        `Role 3 (10 Inv / 1 Boost): ${roles.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}> ✅` : '❌ Not set'}\n` +
         `Role 4 (2 Boost): ${roles.ROLE_2_BOOST ? `<@&${roles.ROLE_2_BOOST}> ✅` : '❌ Not set'}`;
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`\n${rolesText}`));
 
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
+
+export async function handleButton(interaction, client) {
+    const guildId = interaction.guild.id; 
+    const ownerId = interaction.user.id; 
+    const member = interaction.member;
+
+    if (interaction.customId.startsWith('link_slot_') && interaction.customId.endsWith('_btn')) {
+        const slotNum = parseInt(interaction.customId.split('_')[2]);
+        const prog = await getProgressiveSlots(member, 0);
+        const slotData = prog.slots.find(s => s.slot === slotNum);
+        if (!slotData?.can) {
+            const c = new ContainerBuilder().setAccentColor(0xFEE75C);
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔒 Slot #${slotNum} Locked\n**Need:** ${slotData?.need}\n${slotData?.reason}`));
+            return await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+        }
+        return await interaction.showModal(buildLinkModal(slotNum));
+    }
+    
+    if (interaction.customId.startsWith('unlink_slot_') && interaction.customId.endsWith('_btn')) {
+        const slot = parseInt(interaction.customId.split('_')[2]);
+        await client.tokenStore.removeSlot(guildId, ownerId, slot);
+        const panel = await buildSlotPanel(member, 0, client.tokenStore);
+        return await interaction.update(panel);
+    }
+    
+    if (interaction.customId.startsWith('select_slot_') && interaction.customId.endsWith('_btn')) {
+        const slot = parseInt(interaction.customId.split('_')[2]);
+        await client.tokenStore.setActiveSlot(guildId, ownerId, slot);
+        const panel = await buildSlotPanel(member, 0, client.tokenStore);
+        return await interaction.update(panel);
+    }
+    
+    if (interaction.customId.startsWith('locked_slot_') && interaction.customId.endsWith('_btn')) {
+        const slotNum = parseInt(interaction.customId.split('_')[2]);
+        const prog = await getProgressiveSlots(member, 0);
+        const slotData = prog.slots.find(s => s.slot === slotNum);
+        const c = new ContainerBuilder().setAccentColor(0xFEE75C);
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔒 Slot #${slotNum} Locked\n**${slotData?.reason}**\nNeed: ${slotData?.need}`));
+        return await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    }
+}
+
+export async function handleModal(interaction, client) {
+    if (!interaction.customId.startsWith('link_modal_slot_')) return;
+    const slot = parseInt(interaction.customId.split('_')[3]);
+    const token = interaction.fields.getTextInputValue('token_input').trim();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+        const prog = await getProgressiveSlots(interaction.member, 0);
+        const slotData = prog.slots.find(s => s.slot === slot);
+        if (!slotData?.can) throw new Error(`Slot #${slot} locked. ${slotData?.reason}`);
+        
+        const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
+        if (!res.ok) throw new Error('Invalid Discord Token provided');
+        const data = await res.json();
+        
+        await client.tokenStore.saveSlot({ 
+            guildId: interaction.guild.id, 
+            ownerId: interaction.user.id, 
+            slot, 
+            token, 
+            linkedUserId: data.id, 
+            username: data.username, 
+            avatar: data.avatar, 
+            linkedAt: new Date() 
+        });
+        
+        await client.tokenStore.setActiveSlot(interaction.guild.id, interaction.user.id, slot);
+        const panel = await buildSlotPanel(interaction.member, 0, client.tokenStore);
+        await interaction.editReply(panel);
+    } catch (e) {
+        const c = new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Failed to Link\n${e.message}`));
+        await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    }
 }
