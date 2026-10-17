@@ -4,7 +4,7 @@ import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
-import { makeTokenStore } from './commands/questCommands.js';
+import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from './commands/premiumLink.js';
 
@@ -65,7 +65,7 @@ const client = new Client({
 
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
-client.tokenStore     = makeTokenStore(TOKEN);
+client.tokenStore     = new TokenStore(TOKEN);
 client.config         = { prefix: process.env.PREFIX || ';' };
 client.prefix         = process.env.PREFIX || ';';
 
@@ -120,7 +120,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// Load Events (If any exist in events folder)
+// Load Events
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
