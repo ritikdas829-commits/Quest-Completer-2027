@@ -1,58 +1,55 @@
-// 📍 FILE 9: src/commands/setupRolesCommand.js
-// 【entity-GitHub¦canonical_name=GitHub】: Quest-Completer-2027/src/commands/setupRolesCommand.js — NAYA FILE — Create
-
 import { SlashCommandBuilder, PermissionFlagsBits, ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
 import { getRoles, setRole, removeRole, syncRolesFromDB } from '../quest/roleStore.js';
 
-export const data = new SlashCommandBuilder()
-   .setName('setuproles')
-   .setDescription('Setup 4 roles for progressive slots — Per guild — Multi server')
-   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-   .addSubcommand(sub =>
+const data = new SlashCommandBuilder()
+    .setName('setuproles')
+    .setDescription('Setup 4 roles for progressive slots — Per guild — Multi server')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand(sub =>
         sub.setName('set')
-         .setDescription('Set a role for progressive system')
-         .addStringOption(opt =>
+            .setDescription('Set a role for progressive system')
+            .addStringOption(opt =>
                 opt.setName('key')
-                 .setDescription('Which role slot — 4 roles')
-                 .setRequired(true)
-                 .addChoices(
+                    .setDescription('Which role slot — 4 roles')
+                    .setRequired(true)
+                    .addChoices(
                         { name: 'Role1 — 2 Invites — Slot2 need', value: 'ROLE_2_INVITES' },
                         { name: 'Role2 — 5 Invite per — Slot3 need', value: 'ROLE_5_INVITES' },
                         { name: 'Role3 — 1 Boost — Slot4 need', value: 'ROLE_1_BOOST' },
                         { name: 'Role4 — 2 Boosts — Slot5 need — Full', value: 'ROLE_2_BOOST' },
-                  )
-          )
-         .addRoleOption(opt =>
+                    )
+            )
+            .addRoleOption(opt =>
                 opt.setName('role')
-                 .setDescription('Select role to set — Mention role')
-                 .setRequired(true)
-          )
+                    .setDescription('Select role to set — Mention role')
+                    .setRequired(true)
+            )
     )
-   .addSubcommand(sub =>
+    .addSubcommand(sub =>
         sub.setName('remove')
-         .setDescription('Remove a role')
-         .addStringOption(opt =>
+            .setDescription('Remove a role')
+            .addStringOption(opt =>
                 opt.setName('key')
-                 .setDescription('Which role to remove')
-                 .setRequired(true)
-                 .addChoices(
+                    .setDescription('Which role to remove')
+                    .setRequired(true)
+                    .addChoices(
                         { name: 'Role1 — 2 Invites', value: 'ROLE_2_INVITES' },
                         { name: 'Role2 — 5 Invite per', value: 'ROLE_5_INVITES' },
                         { name: 'Role3 — 1 Boost', value: 'ROLE_1_BOOST' },
                         { name: 'Role4 — 2 Boosts', value: 'ROLE_2_BOOST' },
-                  )
-          )
+                    )
+            )
     )
-   .addSubcommand(sub =>
+    .addSubcommand(sub =>
         sub.setName('view')
-         .setDescription('View current 4 roles — Per guild')
+            .setDescription('View current 4 roles — Per guild')
     )
-   .addSubcommand(sub =>
+    .addSubcommand(sub =>
         sub.setName('sync')
-         .setDescription('Sync roles from MongoDB — Reset safe')
+            .setDescription('Sync roles from MongoDB — Reset safe')
     );
 
-export async function execute(interaction) {
+async function execute(interaction) {
     try {
         const guildId = interaction.guild.id;
         const sub = interaction.options.getSubcommand();
@@ -64,10 +61,10 @@ export async function execute(interaction) {
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# ⚙️ SetupRoles — Current 4 Roles — ${interaction.guild.name}\n` +
                 `**GuildId:** ${guildId} — Multi server — Per guild separate\n\n` +
-                `**Role1 — 2 Invites — Slot2 need:** ${roles.ROLE_2_INVITES? `<@&${roles.ROLE_2_INVITES}> — ${roles.ROLE_2_INVITES}` : '❌ Not set'}\n` +
-                `**Role2 — 5 Invite per — Slot3 need:** ${roles.ROLE_5_INVITES? `<@&${roles.ROLE_5_INVITES}> — ${roles.ROLE_5_INVITES}` : '❌ Not set'}\n` +
-                `**Role3 — 1 Boost — Slot4 need:** ${roles.ROLE_1_BOOST? `<@&${roles.ROLE_1_BOOST}> — ${roles.ROLE_1_BOOST}` : '❌ Not set'}\n` +
-                `**Role4 — 2 Boosts — Slot5 need — Full:** ${roles.ROLE_2_BOOST? `<@&${roles.ROLE_2_BOOST}> — ${roles.ROLE_2_BOOST}` : '❌ Not set'}\n\n` +
+                `**Role1 — 2 Invites — Slot2 need:** ${roles.ROLE_2_INVITES? `<@&${roles.ROLE_2_INVITES}> —${roles.ROLE_2_INVITES}` : '❌ Not set'}\n` +
+                `**Role2 — 5 Invite per — Slot3 need:** ${roles.ROLE_5_INVITES? `<@&${roles.ROLE_5_INVITES}> —${roles.ROLE_5_INVITES}` : '❌ Not set'}\n` +
+                `**Role3 — 1 Boost — Slot4 need:** ${roles.ROLE_1_BOOST? `<@&${roles.ROLE_1_BOOST}> —${roles.ROLE_1_BOOST}` : '❌ Not set'}\n` +
+                `**Role4 — 2 Boosts — Slot5 need — Full:** ${roles.ROLE_2_BOOST? `<@&${roles.ROLE_2_BOOST}> —${roles.ROLE_2_BOOST}` : '❌ Not set'}\n\n` +
                 `**Progressive Flow:**\n` +
                 `No role → 2 slots (Free + 2 inv) → Role1 (2 inv) → 3 slots → Role2 (5 inv) → 4 slots → Role3 (1 boost) → 5 slots → Role4 (2 boosts) → Full 5 slots 👑\n\n` +
                 `-# Use /setuproles set — To set roles — /setuproles sync — Reset safe`
@@ -92,7 +89,7 @@ export async function execute(interaction) {
                 `# ✅ Role Set — Per Guild — Multi Server Safe\n` +
                 `**${roleNames[key]}** → ${role} — ${role.id}\n` +
                 `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
-                `**Saved:** 【entity-MongoDB¦canonical_name=MongoDB】 + File + Memory — Reset safe — No crash\n\n` +
+                `**Saved:** MongoDB + File + Memory — Reset safe — No crash\n\n` +
                 `-# Use /setuproles view — To see all 4 roles`
             ));
             await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -107,7 +104,7 @@ export async function execute(interaction) {
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# 🗑️ Role Removed — ${key}\n` +
                 `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
-                `**Removed from:** 【entity-MongoDB¦canonical_name=MongoDB】 + File + Memory\n\n` +
+                `**Removed from:** MongoDB + File + Memory\n\n` +
                 `-# Use /setuproles view — To see remaining`
             ));
             await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -120,10 +117,10 @@ export async function execute(interaction) {
             const roles = getRoles(guildId);
             const c = new ContainerBuilder().setAccentColor(0x5865F2);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                `# 🔄 Synced from 【entity-MongoDB¦canonical_name=MongoDB】 — Reset Safe\n` +
+                `# 🔄 Synced from MongoDB — Reset Safe\n` +
                 `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
                 `**Loaded:** ${Object.keys(roles).filter(k=>roles[k]).length}/4 roles set\n\n` +
-                `-# 【entity-MongoDB¦canonical_name=MongoDB】 → File → Memory — 3 layer — No data loss`
+                `-# MongoDB → File → Memory — 3 layer — No data loss`
             ));
             await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
             return;
@@ -138,4 +135,9 @@ export async function execute(interaction) {
             else await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | 64 });
         } catch {}
     }
-                                                       }
+}
+
+export const setupRolesCmd = {
+    data,
+    execute
+};
