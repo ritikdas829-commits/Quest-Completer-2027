@@ -1,7 +1,12 @@
+/**
+ * setupRolesCommand.js - Final Clean Version
+ * Location: src/commands/setupRolesCommand.js
+ */
+
 import { SlashCommandBuilder, PermissionFlagsBits, ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
 import { getRoles, setRole, removeRole, syncRolesFromDB } from '../quest/roleStore.js';
 
-const data = new SlashCommandBuilder()
+export const data = new SlashCommandBuilder()
     .setName('setuproles')
     .setDescription('Setup 4 roles for progressive slots — Per guild — Multi server')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -49,7 +54,7 @@ const data = new SlashCommandBuilder()
             .setDescription('Sync roles from MongoDB — Reset safe')
     );
 
-async function execute(interaction) {
+export async function execute(interaction) {
     try {
         const guildId = interaction.guild.id;
         const sub = interaction.options.getSubcommand();
@@ -61,10 +66,10 @@ async function execute(interaction) {
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# ⚙️ SetupRoles — Current 4 Roles — ${interaction.guild.name}\n` +
                 `**GuildId:** ${guildId} — Multi server — Per guild separate\n\n` +
-                `**Role1 — 2 Invites — Slot2 need:** ${roles.ROLE_2_INVITES? `<@&${roles.ROLE_2_INVITES}> —${roles.ROLE_2_INVITES}` : '❌ Not set'}\n` +
-                `**Role2 — 5 Invite per — Slot3 need:** ${roles.ROLE_5_INVITES? `<@&${roles.ROLE_5_INVITES}> —${roles.ROLE_5_INVITES}` : '❌ Not set'}\n` +
-                `**Role3 — 1 Boost — Slot4 need:** ${roles.ROLE_1_BOOST? `<@&${roles.ROLE_1_BOOST}> —${roles.ROLE_1_BOOST}` : '❌ Not set'}\n` +
-                `**Role4 — 2 Boosts — Slot5 need — Full:** ${roles.ROLE_2_BOOST? `<@&${roles.ROLE_2_BOOST}> —${roles.ROLE_2_BOOST}` : '❌ Not set'}\n\n` +
+                `**Role1 — 2 Invites — Slot2 need:** ${roles.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}>` : '❌ Not set'}\n` +
+                `**Role2 — 5 Invite per — Slot3 need:** ${roles.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}>` : '❌ Not set'}\n` +
+                `**Role3 — 1 Boost — Slot4 need:** ${roles.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}>` : '❌ Not set'}\n` +
+                `**Role4 — 2 Boosts — Slot5 need — Full:** ${roles.ROLE_2_BOOST ? `<@&${roles.ROLE_2_BOOST}>` : '❌ Not set'}\n\n` +
                 `**Progressive Flow:**\n` +
                 `No role → 2 slots (Free + 2 inv) → Role1 (2 inv) → 3 slots → Role2 (5 inv) → 4 slots → Role3 (1 boost) → 5 slots → Role4 (2 boosts) → Full 5 slots 👑\n\n` +
                 `-# Use /setuproles set — To set roles — /setuproles sync — Reset safe`
@@ -87,8 +92,8 @@ async function execute(interaction) {
             };
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# ✅ Role Set — Per Guild — Multi Server Safe\n` +
-                `**${roleNames[key]}** → ${role} — ${role.id}\n` +
-                `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
+                `**${roleNames[key]}** → ${role}\n` +
+                `**Guild:** ${interaction.guild.name}\n` +
                 `**Saved:** MongoDB + File + Memory — Reset safe — No crash\n\n` +
                 `-# Use /setuproles view — To see all 4 roles`
             ));
@@ -103,7 +108,7 @@ async function execute(interaction) {
             const c = new ContainerBuilder().setAccentColor(0xED4245);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# 🗑️ Role Removed — ${key}\n` +
-                `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
+                `**Guild:** ${interaction.guild.name}\n` +
                 `**Removed from:** MongoDB + File + Memory\n\n` +
                 `-# Use /setuproles view — To see remaining`
             ));
@@ -118,8 +123,8 @@ async function execute(interaction) {
             const c = new ContainerBuilder().setAccentColor(0x5865F2);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# 🔄 Synced from MongoDB — Reset Safe\n` +
-                `**Guild:** ${interaction.guild.name} — ${guildId}\n` +
-                `**Loaded:** ${Object.keys(roles).filter(k=>roles[k]).length}/4 roles set\n\n` +
+                `**Guild:** ${interaction.guild.name}\n` +
+                `**Loaded:** ${Object.keys(roles).filter(k => roles[k]).length}/4 roles set\n\n` +
                 `-# MongoDB → File → Memory — 3 layer — No data loss`
             ));
             await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
