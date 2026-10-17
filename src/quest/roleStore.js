@@ -7,7 +7,7 @@
  */
 
 import { getCollection } from '../utils/mongo.js';
-import InviteTracker from '../models/InviteTracker.js';
+import InviteTracker from '../handlers/inviteTracker.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -17,8 +17,8 @@ const COLLECTION_NAME = 'roles_data';
 const DEFAULT_ROLES = {
     ROLE_2_INVITES: null, // Role 1: 2 Invites - Slot 2
     ROLE_5_INVITES: null, // Role 2: 5 Invites - Slot 3
-    ROLE_1_BOOST: null,   // Role 3: 10 Invites OR 1 Boost - Slot 4 (1 Boost = 1-4)
-    ROLE_2_BOOST: null,   // Role 4: 2 Boosts - Slot 5 - Full (2 Boosts = 1-5)
+    ROLE_1_BOOST: null,   // Role 3: 10 Invites OR 1 Boost - Slot 4
+    ROLE_2_BOOST: null,   // Role 4: 2 Boosts - Slot 5 - Full
 };
 
 const memoryCache = new Map(); // guildId -> roles
@@ -31,7 +31,6 @@ function ensureDataFolder() {
     } catch {}
 }
 
-// Load all guild roles from MongoDB to memory
 async function preloadCache() {
     try {
         const col = await getCollection(COLLECTION_NAME);
@@ -60,7 +59,6 @@ export function getRoles(guildId = null) {
             if (fs.existsSync(STORE_PATH)) {
                 const data = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
                 if (data[guildId]) return { ...DEFAULT_ROLES, ...data[guildId] };
-                if (!guildId) return { ...DEFAULT_ROLES, ...data };
             }
         } catch {}
         return { ...DEFAULT_ROLES };
@@ -81,10 +79,7 @@ export async function getRolesAsync(guildId) {
 }
 
 export async function setRole(guildId, key, roleId) {
-    if (!guildId || !key) {
-        console.error("❌ setRole: guildId and key required");
-        return null;
-    }
+    if (!guildId || !key) return null;
     
     ensureDataFolder();
     let roles = getRoles(guildId);
@@ -203,45 +198,45 @@ export async function checkAndUpdateRoles(guild, userId, inviteCount = 0) {
     
     const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
 
-    // 2 Boosts = Full Access (Slots 1-5)
-    if (boostCount >= 2) {
-        if (roles.ROLE_2_BOOST && !member.roles.cache.has(roles.ROLE_2_BOOST)) await member.roles.add(roles.ROLE_2_BOOST).catch(() => {});
-        if (roles.ROLE_1_BOOST && !member.roles.cache.has(roles.ROLE_1_BOOST)) await member.roles.add(roles.ROLE_1_BOOST).catch(() => {});
-        if (roles.ROLE_5_INVITES && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
-        if (roles.ROLE_2_INVITES && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
-        return;
-    }
-    
-    // 1 Boost = Slots 1-4
-    if (boostCount >= 1) {
-        if (roles.ROLE_1_BOOST && !member.roles.cache.has(roles.ROLE_1_BOOST)) await member.roles.add(roles.ROLE_1_BOOST).catch(() => {});
-        if (roles.ROLE_5_INVITES && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
-        if (roles.ROLE_2_INVITES && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
-        return;
-    }
-
-    // Incremental Invites Logic
-    if (roles.ROLE_2_INVITES) {
-        if (inviteCount >= 2 && !member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
-        if (inviteCount < 2 && member.roles.cache.has(roles.ROLE_2_INVITES)) await member.roles.remove(roles.ROLE_2_INVITES).catch(() => {});
-    }
-    
-    if (roles.ROLE_5_INVITES) {
-        if (inviteCount >= 5 && !member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
-        if (inviteCount < 5 && member.roles.cache.has(roles.ROLE_5_INVITES)) await member.roles.remove(roles.ROLE_5_INVITES).catch(() => {});
-    }
-    
-    if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST) && inviteCount < 10) {
-        await member.roles.remove(roles.ROLE_1_BOOST).catch(() => {});
-    }
-    
-    if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) {
-        await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
+    try {
+        if (roles.ROLE_2_INVITES) {
+            if (inviteCount >= 2 && !member.roles.cache.has(roles.ROLE_2_INVITES)) {
+                await member.roles.add(roles.ROLE_2_INVITES).catch(() => {});
+            } else if (inviteCount < 2 && member.roles.cache.has(roles.ROLE_2_INVITES) && boostCount < 1) {
+                await member.roles.remove(roles.ROLE_2_INVITES).catch(() => {});
+            }
+        }
+        
+        if (roles.ROLE_5_INVITES) {
+            if (inviteCount >= 5 && !member.roles.cache.has(roles.ROLE_5_INVITES)) {
+                await member.roles.add(roles.ROLE_5_INVITES).catch(() => {});
+            } else if (inviteCount < 5 && member.roles.cache.has(roles.ROLE_5_INVITES) && boostCount < 1) {
+                await member.roles.remove(roles.ROLE_5_INVITES).catch(() => {});
+            }
+        }
+        
+        if (roles.ROLE_1_BOOST) {
+            if ((inviteCount >= 10 || boostCount >= 1) && !member.roles.cache.has(roles.ROLE_1_BOOST)) {
+                await member.roles.add(roles.ROLE_1_BOOST).catch(() => {});
+            } else if (inviteCount < 10 && boostCount < 1 && member.roles.cache.has(roles.ROLE_1_BOOST)) {
+                await member.roles.remove(roles.ROLE_1_BOOST).catch(() => {});
+            }
+        }
+        
+        if (roles.ROLE_2_BOOST) {
+            if (boostCount >= 2 && !member.roles.cache.has(roles.ROLE_2_BOOST)) {
+                await member.roles.add(roles.ROLE_2_BOOST).catch(() => {});
+            } else if (boostCount < 2 && member.roles.cache.has(roles.ROLE_2_BOOST)) {
+                await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
+            }
+        }
+    } catch (e) {
+        console.error("checkAndUpdateRoles error:", e.message);
     }
 }
 
 export async function isSlotUnlocked(guild, userId, slotNum) {
-    if (slotNum === 1) return true; // Slot 1 is always free
+    if (slotNum === 1) return true;
     
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return false;
@@ -251,21 +246,10 @@ export async function isSlotUnlocked(guild, userId, slotNum) {
     const invites = tracker?.invites || 0;
     const boostCount = guild.premiumSubscriptionCount || (member.premiumSince ? 1 : 0);
     
-    if (boostCount >= 2) return true;
-    if (boostCount >= 1 && slotNum <= 4) return true;
-    
     if (slotNum === 2) return invites >= 2 || member.roles.cache.has(roles.ROLE_2_INVITES);
     if (slotNum === 3) return invites >= 5 || member.roles.cache.has(roles.ROLE_5_INVITES);
-    if (slotNum === 4) return invites >= 10 || member.roles.cache.has(roles.ROLE_1_BOOST);
-    if (slotNum === 5) return false; // Slot 5 only 2 boosts
+    if (slotNum === 4) return invites >= 10 || boostCount >= 1 || member.roles.cache.has(roles.ROLE_1_BOOST);
+    if (slotNum === 5) return boostCount >= 2 || member.roles.cache.has(roles.ROLE_2_BOOST);
     
     return false;
-}
-
-// Legacy support - no guildId
-export function setRoleLegacy(key, roleId) {
-    return setRole('global', key, roleId);
-}
-export function removeRoleLegacy(key) {
-    return removeRole('global', key);
 }
