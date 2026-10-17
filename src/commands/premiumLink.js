@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Fixed Formatting, Clean UI & Dynamic Slots
+ * premiumLink.js - Fixed Formatting & Clean UI Panel
  * Location: src/commands/premiumLink.js
  */
 
