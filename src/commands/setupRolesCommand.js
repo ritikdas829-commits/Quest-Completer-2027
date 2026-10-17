@@ -1,10 +1,10 @@
 /**
- * setupRolesCommand.js - Final Clean Version
+ * setupRolesCommand.js - Final Clean Version with Async DB Fetching
  * Location: src/commands/setupRolesCommand.js
  */
 
 import { SlashCommandBuilder, PermissionFlagsBits, ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
-import { getRoles, setRole, removeRole, syncRolesFromDB } from '../quest/roleStore.js';
+import { getRolesAsync, setRole, removeRole, syncRolesFromDB } from '../quest/roleStore.js';
 
 export const data = new SlashCommandBuilder()
     .setName('setuproles')
@@ -61,7 +61,7 @@ export async function execute(interaction) {
 
         if (sub === 'view') {
             await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-            const roles = getRoles(guildId);
+            const roles = await getRolesAsync(guildId); // 👈 FIXED: Async call to load from DB/Cache
             const c = new ContainerBuilder().setAccentColor(0x5865F2);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# ⚙️ SetupRoles — Current 4 Roles — ${interaction.guild.name}\n` +
@@ -119,7 +119,7 @@ export async function execute(interaction) {
         if (sub === 'sync') {
             await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
             await syncRolesFromDB();
-            const roles = getRoles(guildId);
+            const roles = await getRolesAsync(guildId); // 👈 FIXED: Async call
             const c = new ContainerBuilder().setAccentColor(0x5865F2);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                 `# 🔄 Synced from MongoDB — Reset Safe\n` +
