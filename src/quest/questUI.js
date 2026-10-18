@@ -25,8 +25,8 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         id: 'firefox', game: "Firefox's Brand New Look", publisher: 'Mozilla', questName: 'Firefox Browser', 
         enrolledAt: '10/17/2026', expiresAt: '10/29/2026', progress: { total: 0, web: 0, mobile: 0 }, 
         rewards: '200 Orbs', tasks: ['Watch Video for 2m', 'Watch Video On Mobile for 2m'], 
-        banner: 'https://cdn.discordapp.com/app-assets/1011682074587152384/quest-assets/1267890123456.png', 
-        url: 'https://discord.com/quests',
+        banner: '[https://cdn.discordapp.com/app-assets/1011682074587152384/quest-assets/1267890123456.png](https://cdn.discordapp.com/app-assets/1011682074587152384/quest-assets/1267890123456.png)', 
+        url: '[https://discord.com/quests](https://discord.com/quests)',
         config: { messages: { game_title: "Firefox's Brand New Look", game_publisher: 'Mozilla', quest_name: 'Firefox Browser' } }
     }];
     
@@ -36,9 +36,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🔮 Quest Solver'));
     c1.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `• Game: ${selected.game || selected.config?.messages.game_title}\n` +
-        `• Publisher: ${selected.publisher || selected.config?.messages.game_publisher}\n` +
-        `• Quest Name: ${selected.questName || selected.config?.messages.quest_name}\n` +
+        `• Game: ${selected.game || selected.config?.messages?.game_title}\n` +
+        `• Publisher: ${selected.publisher || selected.config?.messages?.game_publisher}\n` +
+        `• Quest Name: ${selected.questName || selected.config?.messages?.quest_name}\n` +
         `• Enrolled At: ${selected.enrolledAt || '10/17/2026'}\n` +
         `• Expires At: ${selected.expiresAt || '10/29/2026'}\n` +
         `• **Progress:**\n✅ ${selected.progress?.total ?? 0}%\n🎬 Web/Desktop: ${selected.progress?.web ?? 0}\%\n📱 Mobile: ${selected.progress?.mobile ?? 0}%\n\n` +
@@ -48,7 +48,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     if (selected.banner || selected.config?.assets) {
         const appId = selected.config?.application?.id || '1011682074587152384';
         const hero = selected.config?.assets?.hero || selected.config?.assets?.game_tile;
-        const bannerUrl = selected.banner || `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${hero}.png`;
+        const bannerUrl = selected.banner || `[https://cdn.discordapp.com/app-assets/$](https://cdn.discordapp.com/app-assets/$){appId}/quest-assets/${hero}.png`;
         c1.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(bannerUrl)));
     }
     
@@ -69,10 +69,10 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             new ButtonBuilder().setCustomId(`quest_stop_${selected.id}`).setLabel('Stop').setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
             new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
         ),
-        new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(selected.url || 'https://discord.com/quests').setEmoji('🔗'))
+        new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(selected.url || '[https://discord.com/quests').setEmoji](https://discord.com/quests').setEmoji)('🔗'))
     );
     
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent('## 📄 Quest Logs'), new TextDisplayBuilder().setContent(````ansi\n🧭 Quest selected: ${selected.questName || selected.config?.messages?.quest_name}\n````));
+    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent('## 📄 Quest Logs'), new TextDisplayBuilder().setContent(`\`\`\`ansi\n🧭 Quest selected: ${selected.questName || selected.config?.messages?.quest_name}\n\`\`\``));
     return { components: [c1, c2], flags: MessageFlags.IsComponentsV2 };
 }
