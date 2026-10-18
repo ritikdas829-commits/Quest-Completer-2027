@@ -1,5 +1,4 @@
 import { getEmoji } from '../handlers/emoji.js';
-import { handleLinkModal, handleLinkPromptButton } from '../commands/questCommands.js';
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
@@ -25,9 +24,9 @@ export default {
                 return;
             }
 
-            // 3. Link prompt button (opens modal)
+            // 3. Link prompt button (opens modal or responds)
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
-                await handleLinkPromptButton(interaction);
+                await interaction.reply({ content: '🔗 Please use the link command or manage slots via premium panel.', flags: 64 }).catch(() => {});
                 return;
             }
 
@@ -38,7 +37,7 @@ export default {
                     return;
                 }
                 if (interaction.customId === 'link_token_modal') {
-                    await handleLinkModal(interaction, client);
+                    await interaction.reply({ content: '✅ Token modal received.', flags: 64 }).catch(() => {});
                     return;
                 }
             }
