@@ -2,7 +2,7 @@
  * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FINAL FIXED
  * Location: src/quest/questUI.js
  */
-import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from '【entity-discord¦canonical_name=Discord】.js';
 import { QuestClient } from './questClient.js';
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null) {
@@ -27,7 +27,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             is401 
-            ? `# ❌ Token Expired\nSlot #${active.slot} ka token expire ho gaya! Use \`;link\` se dubara link karo.`
+            ? `# ❌ Token Expired\nSlot #${active.slot} token is expired! Use \`;link\` to relink.`
             : `# ❌ Error\n${err.message.slice(0,200)}`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -40,7 +40,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             id: q.id,
             game: msgs.game_title || 'Unknown Game',
             publisher: msgs.game_publisher || 'Unknown Publisher',
-            questName: msgs.quest_name || 'Discord Quest',
+            questName: msgs.quest_name || '【entity-Discord¦canonical_name=Discord】 Quest',
             enrolledAt: q.userStatus?.enrolled_at ? new Date(q.userStatus.enrolled_at).toLocaleDateString() : 'N/A',
             expiresAt: cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString() : 'N/A',
             rewards: cfg.rewards_config?.rewards?.map(r => `${r.messages?.name} ${r.orb_quantity ? `(${r.orb_quantity} Orbs)` : ''}`.trim()).join(', ') || 'Quest Reward',
@@ -57,7 +57,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(0x4F545C);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# 🔍 No Quests Available\nActive slot **${active.username || 'Slot #' + active.slot}** pe abhi koi active quest nahi hai.\n\nDiscord roz naye quests deta hai — Check back later!\n\n-# Tip: \`;questlist\` se sab quests ka status dekh sakte ho`
+            `# 🔍 No Quests Available\nActive slot **${active.username || 'Slot #' + active.slot}** has no active quests right now.\n\nDiscord drops new quests daily — Check back later!\n\n-# Tip: Use \`;questlist\` to see all quest statuses`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
