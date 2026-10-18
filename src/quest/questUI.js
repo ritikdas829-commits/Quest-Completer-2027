@@ -1,5 +1,5 @@
 /**
- * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FIXED TOKEN SANITIZATION
+ * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FINAL FIXED
  * Location: src/quest/questUI.js
  */
 import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
@@ -7,19 +7,26 @@ import { QuestClient } from './questClient.js';
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null) {
     const tokenStore = client.tokenStore;
+    // Dynamic prefix resolution from client config or env variable
     const prefix = client.config?.prefix || process.env.PREFIX || ';';
 
-    const accounts = await tokenStore.getAllSlots(guildId, userId);
-    const active = accounts.find(a => a.isActive) || accounts[0];
+    if (!tokenStore) {
+        const c = new ContainerBuilder().setAccentColor(0xED4245); 
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Token Store Error\nToken store is not initialized.`)); 
+        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+    }
+
+    // Using exact active slot lookup like questCommands.js
+    const active = await tokenStore.getActiveSlot(guildId, userId);
+    const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     
-    if (!active || !active.token) { 
+    if (!active || !token) { 
         const c = new ContainerBuilder().setAccentColor(0xED4245); 
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Active Slot\nUse \`${prefix}link\` to link token!`)); 
         return { components: [c], flags: MessageFlags.IsComponentsV2 }; 
     }
     
-    // Clean token string to avoid 401 errors caused by hidden spaces or quotes
-    const cleanToken = typeof active.token === 'string' ? active.token.trim().replace(/['"]+/g, '') : active.token;
+    const cleanToken = typeof token === 'string' ? token.trim().replace(/['"]+/g, '') : token;
 
     let rawQuests = [];
     try {
@@ -32,7 +39,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             is401 
-            ? `# ❌ Token Validation Failed\nSlot #${active.slot} token returned 401. Try unlinking and relinking with \`${prefix}link\`.`
+            ? `# ❌ Token Expired\nSlot #${active.slot} ka token expire ho gaya! Use \`${prefix}link\` se dubara link karo.`
             : `# ❌ Error\n${err.message.slice(0,200)}`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
