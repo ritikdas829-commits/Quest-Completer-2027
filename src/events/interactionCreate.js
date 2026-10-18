@@ -3,13 +3,14 @@ import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
+import { QuestManager } from '../quest/questManager.js';
 
 export default {
     name: 'interactionCreate',
     once: false,
     async execute(interaction, client) {
         try {
-            // 1. Guide Buttons handler (btn_pc, btn_android, btn_ios)
+            // 1. Guide Buttons handler
             if (interaction.isButton() && ['btn_pc', 'btn_android', 'btn_ios'].includes(interaction.customId)) {
                 await handleGuideButtons(interaction);
                 return;
@@ -77,9 +78,26 @@ export default {
                     await interaction.deferReply({ flags: 64 });
                     
                     try {
-                        // Discord Quest Enroll / Start API call
-                        await qc.post(`/quests/${questId}/enroll`, {});
-                        await interaction.editReply({ content: `▶️ Successfully enrolled and started tracking quest ID: \`${questId}\`!` });
+                        // Fetch quests and initialize manager using the provided QuestManager class
+                        const manager = await qc.fetchQuests();
+                        const quest = manager.get(questId);
+
+                        if (!quest) {
+                            await interaction.editReply({ content: `❌ Quest with ID \`${questId}\` not found or expired.` });
+                            return;
+                        }
+
+                        // Run the quest automation logic using QuestManager's doingQuest method
+                        await interaction.editReply({ content: `▶️ Starting automation for quest: \`${questId}\`...` });
+                        
+                        // Execute in background or await based on preference
+                        manager.doingQuest(quest, async (msg) => {
+                            console.log(`[Quest Log] ${msg}`);
+                        }).then(async (success) => {
+                            try {
+                                await interaction.followUp({ content: success ? `✅ Quest completed successfully!` : `⚠️ Quest execution finished with warnings.`, flags: 64 });
+                            } catch {}
+                        });
                     } catch (err) {
                         console.error('Quest Start Error:', err);
                         await interaction.editReply({ content: `❌ Failed to start quest: ${err.message}` });
@@ -89,7 +107,7 @@ export default {
 
                 if (interaction.customId.startsWith('quest_stop_')) {
                     const questId = interaction.customId.replace('quest_stop_', '');
-                    await interaction.reply({ content: `⏹️ Quest automation stopped for ID: \`${questId}\`.`, flags: 64 });
+                    await interaction.reply({ content: `⏹️ Quest automation stop signal sent for ID: \`${questId}\`.`, flags: 64 });
                     return;
                 }
             }
