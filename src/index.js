@@ -6,7 +6,6 @@ import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
-import { buildPremiumLinkPanel } from './commands/premiumLink.js';
 
 // Trackers & Role Store Imports
 import { cacheGuildInvites, handleInviteJoin, handleInviteLeave } from './handlers/inviteTracker.js';
@@ -76,15 +75,15 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
 });
 
-const activePrefix    = process.env.BOT_PREFIX;
+const activePrefix    = process.env.PREFIX || process.env.BOT_PREFIX || ';';
 client.commands       = new Collection();
 client.prefixCommands = new Collection();
-client.tokenStore     = new TokenStore(TOKEN);
+client.tokenStore     = new TokenStore();
 client.config         = { prefix: activePrefix };
 client.prefix         = activePrefix;
 
 client.getPrefix = function(guildId) {
-    return process.env.BOT_PREFIX;
+    return activePrefix;
 };
 
 // Load Commands Dynamically
@@ -103,7 +102,7 @@ for (const file of commandFiles) {
     }
 }
 
-// Load Events from folder dynamically (Yeh ab upar aa gaya hai taकि interactionCreate event load ho sake)
+// Load Events from folder dynamically
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
@@ -139,42 +138,6 @@ client.on('guildMemberRemove', async (member) => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     await handleBoostUpdate(oldMember, newMember);
-});
-
-// ── Message Create Handler ────────────────────────────────________________
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-
-    const prefix = process.env.BOT_PREFIX;
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
-
-    try {
-        const prefixCmd = client.prefixCommands.get(commandName);
-        if (prefixCmd && typeof prefixCmd.prefixExecute === 'function') {
-            return await prefixCmd.prefixExecute(message, args, client);
-        }
-
-        if (commandName === 'link') {
-            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
-            return await message.reply(panel);
-        }
-
-        if (commandName === 'unlink') {
-            const slot = parseInt(args[0]);
-            if (!slot || slot < 1 || slot > 5) {
-                return await message.reply(`❌ Please specify a valid slot number (1 to 5). Example: \`${prefix}unlink 1\``);
-            }
-            await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
-            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client);
-            return await message.reply(panel);
-        }
-    } catch (err) {
-        console.error(`❌ Prefix Error [${commandName}]:`, err);
-        await message.reply(`❌ Error executing \`${prefix}${commandName}\`.`).catch(() => {});
-    }
 });
 
 client.login(TOKEN);
