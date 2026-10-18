@@ -9,7 +9,7 @@ import {
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
     ModalBuilder, TextInputBuilder, TextInputStyle, 
     MessageFlags, SlashCommandBuilder,
-} from '【entity-discord¦canonical_name=Discord】.js';
+} from 'discord.js';
 import { getProgressiveSlots } from '../quest/slotSystem.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
@@ -56,7 +56,7 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
         `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\n` +
         `Use \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n` +
-        `> **Invites:** ${invites} | **Boosts:** ${boosts}`
+        `> **Invites:** ${invites} \vert{} **Boosts:**${boosts}`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
