@@ -1,5 +1,5 @@
 /**
- * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FINAL FIXED
+ * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FIXED TOKEN SANITIZATION
  * Location: src/quest/questUI.js
  */
 import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
@@ -7,21 +7,23 @@ import { QuestClient } from './questClient.js';
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null) {
     const tokenStore = client.tokenStore;
-    // Dynamic prefix resolution from client config or env variable
     const prefix = client.config?.prefix || process.env.PREFIX || ';';
 
     const accounts = await tokenStore.getAllSlots(guildId, userId);
     const active = accounts.find(a => a.isActive) || accounts[0];
     
-    if (!active) { 
+    if (!active || !active.token) { 
         const c = new ContainerBuilder().setAccentColor(0xED4245); 
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Active Slot\nUse \`${prefix}link\` to link token!`)); 
         return { components: [c], flags: MessageFlags.IsComponentsV2 }; 
     }
     
+    // Clean token string to avoid 401 errors caused by hidden spaces or quotes
+    const cleanToken = typeof active.token === 'string' ? active.token.trim().replace(/['"]+/g, '') : active.token;
+
     let rawQuests = [];
     try {
-        const qc = new QuestClient(active.token);
+        const qc = new QuestClient(cleanToken);
         const manager = await qc.fetchQuests();
         rawQuests = manager.list() || [];
     } catch (err) {
@@ -30,7 +32,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             is401 
-            ? `# ❌ Token Expired\nSlot #${active.slot} ka token expire ho gaya! Use \`${prefix}link\` se dubara link karo.`
+            ? `# ❌ Token Validation Failed\nSlot #${active.slot} token returned 401. Try unlinking and relinking with \`${prefix}link\`.`
             : `# ❌ Error\n${err.message.slice(0,200)}`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
