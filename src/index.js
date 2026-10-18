@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import deployCommands from './utils/deployCommands.js';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
-import { handleButton as handlePremiumButton, handleModal as handlePremiumModal, buildPremiumLinkPanel } from './commands/premiumLink.js';
+import { buildPremiumLinkPanel } from './commands/premiumLink.js';
 
 // Trackers & Role Store Imports
 import { cacheGuildInvites, handleInviteJoin, handleInviteLeave } from './handlers/inviteTracker.js';
@@ -30,7 +30,7 @@ function banner() {
         `${col.blue}${col.bright}  ██║   ██║██║     ██║   ██║╚██║${col.reset}`,
         `${col.blue}${col.bright}  ██║▄▄ ██║██║     ╚██╗ ██╔╝ ██║${col.reset}`,
         `${col.white}${col.bright}  ╚██████╔╝╚██████╗ ╚████╔╝  ██║${col.reset}`,
-        `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═══╝   ╚═╝${col.reset}`,
+        `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═════╝   ╚═╝${col.reset}`,
         '',
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
         `  ${col.green}●${col.reset} ${col.white}Quest Completer V1 - 5 Slots${col.reset}  ${col.dim}\vert{}${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
@@ -103,6 +103,24 @@ for (const file of commandFiles) {
     }
 }
 
+// Load Events from folder dynamically (Yeh ab upar aa gaya hai taकि interactionCreate event load ho sake)
+try {
+    const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
+    for (const file of eventFiles) {
+        const mod   = await import(pathToFileURL(join(__dirname, 'events', file)).href);
+        const event = mod.default;
+        if (event?.name && event?.execute) {
+            if (event.once) {
+                client.once(event.name, (...args) => event.execute(...args, client));
+            } else {
+                client.on(event.name, (...args) => event.execute(...args, client));
+            }
+        }
+    }
+} catch (err) {
+    console.error('❌ Error loading events:', err);
+}
+
 // ── Client Ready Event (Cache Invites on Startup) ──────────────────────────
 client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
@@ -123,39 +141,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     await handleBoostUpdate(oldMember, newMember);
 });
 
-// ── Interaction Create Handler ─────────────────────────────────────────────
-client.on('interactionCreate', async (interaction) => {
-    try {
-        if (interaction.isButton()) {
-            if (
-                interaction.customId.startsWith('link_slot_') ||
-                interaction.customId.startsWith('unlink_slot_') ||
-                interaction.customId.startsWith('select_slot_')
-            ) {
-                return await handlePremiumButton(interaction, client);
-            }
-        }
-
-        if (interaction.isModalSubmit()) {
-            if (interaction.customId.startsWith('link_modal_slot_')) {
-                return await handlePremiumModal(interaction, client);
-            }
-        }
-
-        if (interaction.isChatInputCommand()) {
-            const command = client.commands.get(interaction.commandName);
-            if (!command) return;
-            await command.execute(interaction, client);
-        }
-    } catch (err) {
-        console.error('❌ Interaction Error:', err);
-        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ An error occurred while executing this action.', ephemeral: true }).catch(() => {});
-        }
-    }
-});
-
-// ── Message Create Handler ────────────────────────────────────────────────
+// ── Message Create Handler ────────────────────────────────________________
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
@@ -190,21 +176,5 @@ client.on('messageCreate', async (message) => {
         await message.reply(`❌ Error executing \`${prefix}${commandName}\`.`).catch(() => {});
     }
 });
-
-// Load Events from folder if any
-try {
-    const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
-    for (const file of eventFiles) {
-        const mod   = await import(pathToFileURL(join(__dirname, 'events', file)).href);
-        const event = mod.default;
-        if (event?.name && event?.execute) {
-            if (event.once) {
-                client.once(event.name, (...args) => event.execute(...args, client));
-            } else {
-                client.on(event.name, (...args) => event.execute(...args, client));
-            }
-        }
-    }
-} catch {}
 
 client.login(TOKEN);
