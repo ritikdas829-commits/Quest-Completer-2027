@@ -3,6 +3,7 @@
  * Location: src/quest/questUI.js
  */
 import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { QuestClient } from './questClient.js';
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null) {
     const tokenStore = client.tokenStore;
@@ -15,78 +16,85 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return { components: [c], flags: MessageFlags.IsComponentsV2 }; 
     }
     
-    let allQuests = [];
-    try { 
-        if (client.questManager?.getQuests) allQuests = await client.questManager.getQuests(active.token); 
-        if (!allQuests.length && active.lastQuests) allQuests = active.lastQuests; 
-    } catch { allQuests = []; }
+    let rawQuests = [];
+    try {
+        const qc = new QuestClient(active.token);
+        const manager = await qc.fetchQuests();
+        rawQuests = manager.list() || [];
+    } catch (err) {
+        console.error('[QuestUI] Failed to fetch quests:', err);
+        rawQuests = [];
+    }
     
+    let allQuests = rawQuests.map(q => {
+        const cfg = q.config || {};
+        const msgs = cfg.messages || {};
+        return {
+            id: q.id,
+            game: msgs.game_title || 'Unknown Game',
+            publisher: msgs.game_publisher || 'Unknown Publisher',
+            questName: msgs.quest_name || 'Discord Quest',
+            expiresAt: cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString() : 'N/A',
+            rewards: cfg.rewards_config?.rewards?.[0]?.messages?.name || 'Quest Reward',
+            tasks: Object.keys((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}),
+            banner: cfg.assets?.game_tile ? `https://cdn.discordapp.com/app-assets/${cfg.application?.id}/quest-assets/${cfg.assets.game_tile}.png` : null,
+            url: 'https://discord.com/quests',
+            progress: { total: q.isCompleted?.() ? 100 : 0 },
+            config: cfg
+        };
+    });
+
     if (!allQuests.length) {
         allQuests = [{ 
             id: 'firefox', 
-            game: "Firefox's Brand New Look", 
-            publisher: 'Mozilla', 
-            questName: 'Firefox Browser', 
-            enrolledAt: '10/17/2026', 
-            expiresAt: '10/29/2026', 
-            progress: { total: 0, web: 0, mobile: 0 }, 
-            rewards: '200 Orbs', 
-            tasks: ['Watch Video for 2m', 'Watch Video On Mobile for 2m'], 
-            banner: 'https://cdn.discordapp.com/app-assets/1011682074587152384/quest-assets/1267890123456.png', 
+            game: "No Active Quests Found", 
+            publisher: 'Discord', 
+            questName: 'Check back later', 
+            expiresAt: 'N/A', 
+            progress: { total: 0 }, 
+            rewards: 'None', 
+            tasks: ['No quests currently available on this token.'], 
+            banner: null, 
             url: 'https://discord.com/quests',
-            config: { 
-                messages: { 
-                    game_title: "Firefox's Brand New Look", 
-                    game_publisher: 'Mozilla', 
-                    quest_name: 'Firefox Browser' 
-                } 
-            }
+            config: { messages: { game_title: 'No Quests', game_publisher: 'Discord', quest_name: 'None' } }
         }];
     }
     
     const selected = allQuests.find(q => q.id === selectedQuestId) || allQuests[0];
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     
-    const gameTitle = selected.game || selected.config?.messages?.game_title || 'Unknown Game';
-    const publisher = selected.publisher || selected.config?.messages?.game_publisher || 'Unknown Publisher';
-    const questName = selected.questName || selected.config?.messages?.quest_name || 'Unknown Quest';
-    const enrolledAt = selected.enrolledAt || '10/17/2026';
-    const expiresAt = selected.expiresAt || '10/29/2026';
+    const gameTitle = selected.game;
+    const publisher = selected.publisher;
+    const questName = selected.questName;
+    const expiresAt = selected.expiresAt;
     const progressTotal = selected.progress?.total ?? 0;
-    const progressWeb = selected.progress?.web ?? 0;
-    const progressMobile = selected.progress?.mobile ?? 0;
-    const rewards = selected.rewards || '200 Orbs';
-    const tasks = selected.tasks || ['Watch Video for 2m'];
+    const rewards = selected.rewards;
+    const tasks = selected.tasks;
     const taskListString = tasks.map(function(t) { return '• ' + t; }).join('\n');
 
     const contentText = 
         '• Game: ' + gameTitle + '\n' +
         '• Publisher: ' + publisher + '\n' +
         '• Quest Name: ' + questName + '\n' +
-        '• Enrolled At: ' + enrolledAt + '\n' +
         '• Expires At: ' + expiresAt + '\n' +
-        '• **Progress:**\n✅ ' + progressTotal + '%\n🎬 Web/Desktop: ' + progressWeb + '%\n📱 Mobile: ' + progressMobile + '%\n\n' +
+        '• **Progress:**\n✅ ' + progressTotal + '%\n\n' +
         '## Rewards:\n• ' + rewards + '\n\n## Tasks:\n' + taskListString;
 
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🔮 Quest Solver'));
     c1.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(contentText));
     
-    const appId = selected.config?.application?.id || '1011682074587152384';
-    const hero = selected.config?.assets?.hero || selected.config?.assets?.game_tile || '1267890123456';
-    const bannerUrl = selected.banner || ('https://cdn.discordapp.com/app-assets/' + appId + '/quest-assets/' + hero + '.png');
-    
-    c1.addMediaGalleryComponents(
-        new MediaGalleryBuilder().addItems(
-            new MediaGalleryItemBuilder().setURL(bannerUrl)
-        )
-    );
+    if (selected.banner) {
+        c1.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+                new MediaGalleryItemBuilder().setURL(selected.banner)
+            )
+        );
+    }
     
     const menuOptions = allQuests.slice(0, 25).map(function(q) {
-        const qGame = q.game || q.config?.messages?.game_title || q.config?.messages?.quest_name || 'Quest';
-        const qName = q.questName || q.config?.messages?.quest_name || 'Details';
-        const labelText = (qGame + ': ' + qName).slice(0, 100);
-        const descText = (q.rewards || '200 Orbs').slice(0, 100);
+        const labelText = (q.game + ': ' + q.questName).slice(0, 100);
+        const descText = (q.rewards || 'Reward').slice(0, 100);
         
         const opt = new StringSelectMenuOptionBuilder()
             .setLabel(labelText)
