@@ -18,9 +18,14 @@ export class QuestManager {
     }
 
     static fromResponse(client, response) {
+        // Safe check: Handle both direct array responses and object responses containing quests/items
+        const questsArray = Array.isArray(response) 
+            ? response 
+            : (response?.quests || response?.items || []);
+            
         return new QuestManager(
             client,
-            response.quests.map((quest) => Quest.create(quest)),
+            questsArray.map((quest) => Quest.create(quest)),
         );
     }
 
@@ -51,7 +56,8 @@ export class QuestManager {
     async claimRewards(log = console.log) {
         try {
             const fresh = await this.client.get('/quests/@me');
-            for (const q of fresh.quests) {
+            const freshQuests = Array.isArray(fresh) ? fresh : (fresh?.quests || []);
+            for (const q of freshQuests) {
                 const existing = this.#quests.get(q.id);
                 if (existing && q.user_status) existing.updateUserStatus(q.user_status);
             }
@@ -89,7 +95,8 @@ export class QuestManager {
     async #refreshQuestStatus(quest) {
         try {
             const fresh = await this.client.get('/quests/@me');
-            const updated = fresh.quests.find((q) => q.id === quest.id);
+            const freshQuests = Array.isArray(fresh) ? fresh : (fresh?.quests || []);
+            const updated = freshQuests.find((q) => q.id === quest.id);
             if (updated?.user_status) quest.updateUserStatus(updated.user_status);
         } catch { /* ignore */ }
     }
