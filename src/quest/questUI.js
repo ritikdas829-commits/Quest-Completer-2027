@@ -1,4 +1,8 @@
-import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from '【entity-discord¦canonical_name=Discord】.js';
+/**
+ * questUI.js — UI Builder — Banner + SelectMenu + Rewards + Progress + View Button — FINAL FIXED
+ * Location: src/quest/questUI.js
+ */
+import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { QuestClient } from './questClient.js';
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null) {
@@ -18,11 +22,12 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const manager = await qc.fetchQuests();
         rawQuests = manager.list() || [];
     } catch (err) {
+        console.error('[QuestUI] Failed to fetch quests:', err.message);
         const is401 = err.message.includes('401');
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             is401 
-            ? `# ❌ Token Expired\nSlot #${active.slot} token expired! Use \`;link\` to relink.`
+            ? `# ❌ Token Expired\nSlot #${active.slot} ka token expire ho gaya! Use \`;link\` se dubara link karo.`
             : `# ❌ Error\n${err.message.slice(0,200)}`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -33,23 +38,26 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const msgs = cfg.messages || {};
         return {
             id: q.id,
-            game: msgs.game_title || 'Unknown',
-            publisher: msgs.game_publisher || 'Unknown',
-            questName: msgs.quest_name || '【entity-Discord¦canonical_name=Discord】 Quest',
+            game: msgs.game_title || 'Unknown Game',
+            publisher: msgs.game_publisher || 'Unknown Publisher',
+            questName: msgs.quest_name || 'Discord Quest',
+            enrolledAt: q.userStatus?.enrolled_at ? new Date(q.userStatus.enrolled_at).toLocaleDateString() : 'N/A',
             expiresAt: cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString() : 'N/A',
-            rewards: cfg.rewards_config?.rewards?.map(r => r.messages?.name).join(', ') || 'Reward',
+            rewards: cfg.rewards_config?.rewards?.map(r => `${r.messages?.name} ${r.orb_quantity ? `(${r.orb_quantity} Orbs)` : ''}`.trim()).join(', ') || 'Quest Reward',
             tasks: Object.keys((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}),
-            banner: cfg.assets?.hero ? `https://cdn.discordapp.com/app-assets/${cfg.application?.id}/quest-assets/${cfg.assets.hero}.png` : null,
+            banner: cfg.assets?.hero ? `https://cdn.discordapp.com/app-assets/${cfg.application?.id}/quest-assets/${cfg.assets.hero}.png` : (cfg.assets?.game_tile ? `https://cdn.discordapp.com/app-assets/${cfg.application?.id}/quest-assets/${cfg.assets.game_tile}.png` : null),
             url: `https://discord.com/quests`,
-            progress: { total: q.isCompleted?.() ? 100 : 0 },
-            isCompleted: q.isCompleted?.()
+            progress: { total: q.isCompleted?.() ? 100 : (q.getProgress?.() || 0) },
+            config: cfg,
+            isCompleted: q.isCompleted?.(),
+            hasClaimed: q.hasClaimedRewards?.()
         };
     });
 
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(0x4F545C);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# 🔍 No Quests Available\nSlot **${active.username || active.slot}** has no active quests now.\n\nCheck back later!`
+            `# 🔍 No Quests Available\nActive slot **${active.username || 'Slot #' + active.slot}** pe abhi koi active quest nahi hai.\n\nDiscord roz naye quests deta hai — Check back later!\n\n-# Tip: \`;questlist\` se sab quests ka status dekh sakte ho`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
@@ -58,13 +66,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const c1 = new ContainerBuilder().setAccentColor(selected.isCompleted ? 0x57F287 : 0x5865F2);
     
     const contentText = 
-        `• Game: ${selected.game}\n` +
-        `• Publisher: ${selected.publisher}\n` +
-        `• Quest Name: ${selected.questName}\n` +
-        `• Expires At: ${selected.expiresAt}\n` +
-        `• Progress: ${selected.progress?.total ?? 0}%\n\n` +
-        `Rewards: ${selected.rewards}\n` +
-        `Tasks: ${selected.tasks.join(', ')}`;
+        `• **Game:** ${selected.game}\n` +
+        `• **Publisher:** ${selected.publisher}\n` +
+        `• **Quest Name:** ${selected.questName}\n` +
+        `• **Enrolled At:** ${selected.enrolledAt}\n` +
+        `• **Expires At:** ${selected.expiresAt}\n` +
+        `• **Progress:**\n✅ ${selected.progress?.total ?? 0}%\n\n` +
+        `## Rewards:\n• ${selected.rewards}\n\n## Tasks:\n${selected.tasks.map(t => `• ${t}`).join('\n')}`;
 
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🔮 Quest Solver'));
     c1.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
@@ -89,10 +97,15 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     
     c1.addActionRowComponents(
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(ButtonStyle.Success).setEmoji('▶️'),
+            new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel(selected.isCompleted ? 'Claim' : 'Start').setStyle(ButtonStyle.Success).setEmoji(selected.isCompleted ? '🎁' : '▶️'),
+            new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
             new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
-        )
+        ),
+        new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(selected.url).setEmoji('🔗'))
     );
     
-    return { components: [c1], flags: MessageFlags.IsComponentsV2 };
+    const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
+    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent('## 📄 Quest Logs'), new TextDisplayBuilder().setContent('```ansi\n🧭 Quest selected: ' + selected.questName + '\n```'));
+    
+    return { components: [c1, c2], flags: MessageFlags.IsComponentsV2 };
 }
