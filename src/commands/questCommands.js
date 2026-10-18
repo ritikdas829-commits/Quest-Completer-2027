@@ -1,14 +1,14 @@
 /**
- * questCommands.js - Interactive Quest Solver & Management System (Updated)
+ * questCommands.js - QuestAll, QuestList, TokenCheck & AutoQuest Runner Support
  * Location: src/commands/questCommands.js
  */
 
 import {
-    ContainerBuilder, TextDisplayBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    StringSelectMenuBuilder, MessageFlags, SlashCommandBuilder, SectionBuilder, ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize
+    ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize,
+    SectionBuilder, ThumbnailBuilder, MessageFlags, SlashCommandBuilder
 } from 'discord.js';
 import { QuestClient } from '../quest/questClient.js';
-import { enableAutoquest, disableAutoquest, isAutoquestEnabled } from '../quest/autoquestStore.js';
+import { disableAutoquest } from '../quest/autoquestStore.js';
 import { PREFIX } from '../utils/config.js';
 
 // ── Helper: Get active token for user from 5-Slot Store ────────────────────
@@ -19,7 +19,7 @@ async function getActiveToken(guildId, userId, tokenStore) {
     return active.token || await tokenStore.get(guildId, userId, active.slot);
 }
 
-// ── UI Cards (Errors & Prompts) ────────────────────────────────────────────
+// ── UI Cards ───────────────────────────────────────────────────────────────
 
 function buildLinkPrompt(prefix) {
     const c = new ContainerBuilder().setAccentColor(0xFEE75C);
@@ -65,18 +65,11 @@ function buildErrorCard(err, prefix) {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-/**
- * Modern Interactive Quest Solver Panel (Banner/Thumbnail + SelectMenu + Progress + Rewards + Buttons + Logs)
- */
-function buildQuestSolverPanel(quest, allQuests, phase = 'ready', failReason = '') {
-    const cfg = quest.config;
+function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
+    const cfg  = quest.config;
     const msgs = cfg.messages;
     const appId = cfg.application.id;
     const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
-
-    const enrolled = cfg.enrolled_at ? new Date(cfg.enrolled_at).toLocaleDateString() : 'N/A';
-    const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
-    const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
     const TASK_META = {
         PLAY_ON_DESKTOP:       { icon: '🖥️', label: 'Play on Desktop' },
@@ -95,7 +88,7 @@ function buildQuestSolverPanel(quest, allQuests, phase = 'ready', failReason = '
             const s = task.target;
             dur = s >= 60 ? `  •  **${Math.ceil(s / 60)} min**` : `  •  **${s}s**`;
         }
-        return `${meta.icon} ${meta.label}${dur}`;
+        return `${meta.icon}${meta.label}${dur}${phase === 'done' ? '  ✅' : ''}`;
     });
 
     const rewardLines = cfg.rewards_config.rewards.map((r) => {
@@ -105,145 +98,110 @@ function buildQuestSolverPanel(quest, allQuests, phase = 'ready', failReason = '
         return line;
     });
 
+    const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
+    const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
+
     const PHASE = {
-        ready:    { color: 0x5865F2, title: '🛡️ Quest Solver', bar: '`░░░░░░░░░░`  **0%**' },
-        starting: { color: 0x5865F2, title: '⚙️ Solving Quest...', bar: '`████░░░░░░`  **40%**  —  *Running...*' },
-        done:     { color: 0x57F287, title: '✅ Quest Complete!', bar: '`██████████`  **100%**' },
-        failed:   { color: 0xED4245, title: '❌ Quest Failed', bar: '' },
+        starting: { color: 0x5865F2, title: '⚙️  Solving Quest...',  bar: '`░░░░░░░░░░`  **0%**  —  *Working on it...*' },
+        done:     { color: 0x57F287, title: '✅  Quest Complete!',    bar: '`██████████`  **100%**' },
+        failed:   { color: 0xED4245, title: '❌  Quest Failed',       bar: '' },
     };
 
-    const p = PHASE[phase] || PHASE.ready;
+    const p = PHASE[phase];
     const progressText = phase === 'failed' && failReason
         ? `\`░░░░░░░░░░\`  **0%**\n\`\`\`\n${failReason.slice(0, 300)}\n\`\`\``
         : p.bar;
 
-    const c1 = new ContainerBuilder().setAccentColor(p.color);
+    const footerNote = phase === 'done' && claimed > 0
+        ? `-# 🎁 ${claimed} reward(s) claimed`
+        : phase === 'starting'
+        ? `-# Quest Bot  •  Please wait...`
+        : phase === 'failed'
+        ? `-# Requires manual completion in the Discord app`
+        : '';
 
-    // Section with Thumbnail/Banner Image (Jaise 2nd screenshot me hai)
-    c1.addSectionComponents(
+    const c = new ContainerBuilder().setAccentColor(p.color);
+    c.addSectionComponents(
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${p.title}\n\n` +
-                    `• **Game:** ${msgs.game_title}\n` +
-                    `• **Publisher:** ${msgs.game_publisher}\n` +
-                    `• **Quest Name:** ${msgs.quest_name}\n` +
-                    `• **Enrolled At:** ${enrolled}\n` +
-                    `• **Expires At:** <t:${expiresEpoch}:R> *(${daysLeft}d left)*\n` +
-                    `• **Progress:**\n  ${progressText}\n\n` +
-                    `### Rewards:\n${rewardLines.join('\n') || '• No rewards listed'}\n\n` +
-                    `### Tasks:\n${taskLines.join('\n') || '• Complete in-game tasks'}`
+                    `# ${p.title}\n### ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
                 ),
             )
-            .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl || 'https://i.imgur.com/AfFp7pu.png')),
+            .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl)),
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+            `📋 **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
+            `📅 **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
+            `📊 **Progress**\n${progressText || '`░░░░░░░░░░`  0%'}\n\n` +
+            `🎁 **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
+        ),
     );
 
-    c1.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    if (footerNote) {
+        c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(footerNote));
+    }
 
-    // Select Menu Dropdown (Banner ke theek niche saare active quests select karne ke liye)
-    const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('quest_select_dropdown')
-        .setPlaceholder(msgs.quest_name.slice(0, 100))
-        .addOptions(
-            allQuests.slice(0, 25).map((q) => {
-                const qCfg = q.config;
-                return {
-                    label: qCfg.messages.quest_name.slice(0, 100),
-                    description: qCfg.messages.game_title.slice(0, 100),
-                    value: q.id,
-                    default: q.id === quest.id,
-                    emoji: '🎯',
-                };
-            }),
-        );
-
-    const selectRow = new ActionRowBuilder().addComponents(selectMenu);
-
-    // Action Buttons (Start, Stop, Refresh, View Quest Link)
-    const btnRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`quest_start_${quest.id}`).setLabel('Start').setStyle(ButtonStyle.Success).setEmoji('▶️'),
-        new ButtonBuilder().setCustomId(`quest_stop_${quest.id}`).setLabel('Stop').setStyle(ButtonStyle.Danger).setEmoji('⏹️'),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
-        new ButtonBuilder().setURL('https://discord.com/quests').setLabel('View Quest').setStyle(ButtonStyle.Link).setEmoji('🔗')
-    );
-
-    // Quest Logs Container
-    const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent('## 📄 Quest Logs'));
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`\`\`\`ansi\n🧭 Quest selected: ${msgs.quest_name} - ${msgs.game_title}\n\`\`\``));
-
-    return {
-        components: [c1, selectRow, btnRow, c2],
-        flags: MessageFlags.IsComponentsV2,
-    };
+    return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ── Quest Runner (Interactive Panel with Select Menu & Buttons) ────────────
+// ── Quest Runners Logic ────────────────────────────────────────────────────
 
-async function runQuestInteractive(guildId, userId, tokenStore, send, prefix) {
+async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
     const token = await getActiveToken(guildId, userId, tokenStore);
-    if (!token) { await send(buildLinkPrompt(prefix)); return; }
+    if (!token) { await send(buildLinkPrompt(prefix)); return false; }
 
     const qc = new QuestClient(token);
     try {
         const manager = await qc.fetchQuests();
         const valid = manager.filterQuestsValid();
-        if (valid.length === 0) { await send(buildNoQuestsCard()); return; }
+        if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        let currentQuest = valid[0];
-        const panelMsg = await send(buildQuestSolverPanel(currentQuest, valid, 'ready'));
+        const progressMsgs = await Promise.all(valid.map((q) => send(buildQuestInfoCard(q, 'starting'))));
+        const questLogs = valid.map(() => []);
+        const questResults = await Promise.allSettled(
+            valid.map((quest, i) => {
+                const log = (m) => { console.log(m); questLogs[i].push(m); };
+                return manager.doingQuest(quest, log);
+            }),
+        );
 
-        const collector = panelMsg.createMessageComponentCollector({
-            filter: (i) => i.user.id === userId,
-            time: 300_000, // 5 minutes active session
-        });
+        const completed = valid.filter((_, i) => questResults[i].status === 'fulfilled' && questResults[i].value === true);
+        const skipped   = valid.filter((_, i) => questResults[i].status === 'rejected' || (questResults[i].status === 'fulfilled' && questResults[i].value === false));
 
-        collector.on('collect', async (interaction) => {
-            try {
-                if (interaction.isStringSelectMenu() && interaction.customId === 'quest_select_dropdown') {
-                    await interaction.deferUpdate();
-                    const selectedId = interaction.values[0];
-                    const found = valid.find(q => q.id === selectedId);
-                    if (found) {
-                        currentQuest = found;
-                        await interaction.editReply(buildQuestSolverPanel(currentQuest, valid, 'ready'));
-                    }
-                } else if (interaction.isButton()) {
-                    if (interaction.customId === 'quest_refresh') {
-                        await interaction.deferUpdate();
-                        const freshManager = await qc.fetchQuests().catch(() => manager);
-                        const freshValid = freshManager.filterQuestsValid();
-                        await interaction.editReply(buildQuestSolverPanel(currentQuest, freshValid.length ? freshValid : valid, 'ready'));
-                    } else if (interaction.customId.startsWith('quest_start_')) {
-                        await interaction.deferUpdate();
-                        await interaction.editReply(buildQuestSolverPanel(currentQuest, valid, 'starting'));
+        await Promise.allSettled(skipped.map((q) => {
+            const idx = valid.indexOf(q);
+            const failLogs = questLogs[idx].filter(l => l.startsWith('[FAIL]'));
+            const reason = questResults[idx].status === 'rejected'
+                ? questResults[idx].reason?.message ?? 'Unknown error'
+                : failLogs.slice(-2).join('\n') || questLogs[idx].slice(-3).join('\n') || 'Could not be completed automatically.';
+            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'failed', 0, reason));
+        }));
 
-                        const logs = [];
-                        const log = (m) => { console.log(m); logs.push(m); };
-                        const questDone = await manager.doingQuest(currentQuest, log);
+        if (completed.length === 0) {
+            const c = new ContainerBuilder().setAccentColor(0xFEE75C);
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⚠️ No Quests Auto-Completed\nAll quests require manual completion via the Discord desktop or mobile app.`));
+            await send({ components: [c], flags: MessageFlags.IsComponentsV2 });
+            return false;
+        }
 
-                        if (!questDone) {
-                            const failReason = logs.filter(l => l.startsWith('[FAIL]')).slice(-2).join('\n') || logs.slice(-3).join('\n') || 'Could not complete automatically.';
-                            await interaction.editReply(buildQuestSolverPanel(currentQuest, valid, 'failed', failReason));
-                        } else {
-                            await manager.claimRewards(log).catch(() => 0);
-                            await interaction.editReply(buildQuestSolverPanel(currentQuest, valid, 'done'));
-                        }
-                    } else if (interaction.customId.startsWith('quest_stop_')) {
-                        await interaction.deferUpdate();
-                        await interaction.editReply(buildQuestSolverPanel(currentQuest, valid, 'ready'));
-                    }
-                }
-            } catch (err) {
-                console.error("Interaction error:", err);
-            }
-        });
+        // Fixed claimRewards per completed quest loop
+        let totalClaimed = 0;
+        for (const q of completed) {
+            const cCount = await manager.claimRewards(console.log, q.id).catch(() => 0);
+            totalClaimed += cCount;
+        }
+        const claimed = totalClaimed;
+        const claimedPer = completed.length > 0 ? Math.floor(claimed / completed.length) : 0;
 
-        collector.on('end', async () => {
-            try {
-                await panelMsg.edit({ components: [], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-            } catch {}
-        });
+        await Promise.allSettled(completed.map((q, i) => {
+            const idx = valid.indexOf(q);
+            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'done', i === 0 ? claimed : claimedPer));
+        }));
+        return true;
 
     } catch (err) {
         const msg = err?.message ?? String(err);
@@ -255,6 +213,88 @@ async function runQuestInteractive(guildId, userId, tokenStore, send, prefix) {
         } else {
             await send(buildErrorCard(err, prefix)).catch(() => {});
         }
+        return false;
+    }
+}
+
+async function runQuestList(guildId, userId, tokenStore, send, prefix) {
+    const token = await getActiveToken(guildId, userId, tokenStore);
+    if (!token) { await send(buildLinkPrompt(prefix)); return; }
+
+    const qc = new QuestClient(token);
+    try {
+        const manager = await qc.fetchQuests();
+        const all = manager.list();
+        if (all.length === 0) { await send(buildNoQuestsCard()); return; }
+
+        const TASK_META = {
+            PLAY_ON_DESKTOP:       { icon: '🖥️', label: 'Play on Desktop' },
+            WATCH_VIDEO:           { icon: '🎬', label: 'Watch Video' },
+            STREAM_ON_DESKTOP:     { icon: '📺', label: 'Stream on Desktop' },
+            PLAY_ACTIVITY:         { icon: '🎮', label: 'Play Activity' },
+            WATCH_VIDEO_ON_MOBILE: { icon: '📱', label: 'Watch Video on Mobile' },
+        };
+
+        for (const q of all.slice(0, 10)) {
+            const cfg = q.config;
+            const msgs = cfg.messages;
+            const appId = cfg.application.id;
+            const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
+            const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
+            const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
+
+            const st = q.isCompleted() ? { color: 0x57F287, icon: '✅', label: 'Completed' }
+                : q.isExpired()        ? { color: 0xED4245, icon: '🔴', label: 'Expired' }
+                : q.isEnrolledQuest()  ? { color: 0xFEE75C, icon: '⏳', label: 'In Progress' }
+                :                        { color: 0x5865F2, icon: '🔵', label: 'Available' };
+
+            const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
+                const meta = TASK_META[type] ?? { icon: '⚙️', label: type };
+                let dur = '';
+                if (type === 'PLAY_ON_DESKTOP' || type === 'STREAM_ON_DESKTOP') dur = `  •  **${Math.ceil(task.target / 60)} min**`;
+                else if (type === 'WATCH_VIDEO' || type === 'WATCH_VIDEO_ON_MOBILE') {
+                    const s = task.target;
+                    dur = s >= 60 ? `  •  **${Math.ceil(s / 60)} min**` : `  •  **${s}s**`;
+                }
+                return `${meta.icon} ${meta.label}${dur}`;
+            });
+
+            const rewardLines = cfg.rewards_config.rewards.map((r) => {
+                let line = `**${r.messages.name}**`;
+                if (r.orb_quantity) line += `  ✦ *(${r.orb_quantity} Orbs)*`;
+                else if (r.quantity) line += `  *(${r.quantity}d Nitro)*`;
+                return line;
+            });
+
+            const c = new ContainerBuilder().setAccentColor(st.color);
+            c.addSectionComponents(
+                new SectionBuilder()
+                    .addTextDisplayComponents(
+                        new TextDisplayBuilder().setContent(
+                            `# ${st.icon}  ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
+                        ),
+                    )
+                    .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl)),
+            );
+            c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+            c.addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `📊 **Status:** ${st.label}   📅 **Expires:** <t:${expiresEpoch}:R> *(${daysLeft}d)*\n\n` +
+                    `📋 **Task**\n${taskLines.join('\n') || '*Unknown*'}\n\n` +
+                    `🎁 **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
+                ),
+            );
+            await send({ components: [c], flags: MessageFlags.IsComponentsV2 });
+        }
+
+        if (all.length > 10) {
+            const c = new ContainerBuilder().setAccentColor(0x4F545C);
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# …and **${all.length - 10}** more quest(s) not shown.`));
+            await send({ components: [c], flags: MessageFlags.IsComponentsV2 });
+        }
+
+    } catch (err) {
+        await send(buildErrorCard(err, prefix)).catch(() => {});
     }
 }
 
@@ -292,42 +332,29 @@ async function runTokenCheck(guildId, userId, tokenStore, replyFn, prefix) {
     }
 }
 
-async function runAutoquestToggle(guildId, userId, tokenStore, replyFn, prefix) {
-    if (isAutoquestEnabled(userId)) {
-        disableAutoquest(userId);
-        const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Disabled\nI'll no longer auto-run new quests for you.\nUse \`${prefix}autoquest\` again to turn it back on.`));
-        await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
-        return;
-    }
-    const token = await getActiveToken(guildId, userId, tokenStore);
-    if (!token) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Active Token\nAuto-Quest needs an active linked slot.\n\n**Use \`${prefix}link\` first** to select or add a token slot.`));
-        await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
-        return;
-    }
-    enableAutoquest(userId);
-    const c = new ContainerBuilder().setAccentColor(0x57F287);
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `# 🤖 Auto-Quest Enabled!\nEvery new Discord quest that drops will be **auto-completed for you** using your active slot.\n\nI'll DM you a summary once each quest finishes.\n\nUse \`${prefix}autoquest\` again to turn this off.\n\n-# Keep your token fresh with \`${prefix}tokencheck\`.`,
-        ),
-    );
-    await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
-}
+// ── Exports ────────────────────────────────────────────────────────────────
 
-// ── Slash + Prefix exports ─────────────────────────────────────────────────
-
-export const questCmd = {
-    data: new SlashCommandBuilder().setName('quest').setDescription('Open interactive quest solver panel'),
-    prefix: ['quest', 'q'],
+export const questAllCmd = {
+    data: new SlashCommandBuilder().setName('questall').setDescription('Complete all quests at once'),
+    prefix: 'questall',
     async execute(interaction, client) {
         await interaction.deferReply();
-        await runQuestInteractive(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
+        await runQuestAll(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestInteractive(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
+        await runQuestAll(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
+    },
+};
+
+export const questListCmd = {
+    data: new SlashCommandBuilder().setName('questlist').setDescription('List all Discord quests and their status'),
+    prefix: 'questlist',
+    async execute(interaction, client) {
+        await interaction.deferReply();
+        await runQuestList(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
+    },
+    async prefixExecute(message, _args, client) {
+        await runQuestList(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
     },
 };
 
@@ -340,18 +367,6 @@ export const tokenCheckCmd = {
     },
     async prefixExecute(message, _args, client) {
         await runTokenCheck(message.guild.id, message.author.id, client.tokenStore, (opts) => message.reply(opts), PREFIX);
-    },
-};
-
-export const autoquestCmd = {
-    data: new SlashCommandBuilder().setName('autoquest').setDescription('Auto-complete every new quest the moment it drops'),
-    prefix: 'autoquest',
-    async execute(interaction, client) {
-        await interaction.deferReply({ flags: 64 });
-        await runAutoquestToggle(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.editReply(opts), PREFIX);
-    },
-    async prefixExecute(message, _args, client) {
-        await runAutoquestToggle(message.guild.id, message.author.id, client.tokenStore, (opts) => message.reply(opts), PREFIX);
     },
 };
 
@@ -381,7 +396,7 @@ export async function runAutoquestForUser(userId, quest, tokenStore, discordClie
         let claimManager = manager;
         try { claimManager = await qc.fetchQuests(); } catch { if (!manager.hasQuest(live.id)) manager.upsert(live); }
 
-        const claimed = await claimManager.claimRewards(log).catch(() => 0);
+        const claimed = await claimManager.claimRewards(log, live.id).catch(() => 0);
 
         try {
             const user = await discordClient.users.fetch(userId);
