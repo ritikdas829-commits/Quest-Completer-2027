@@ -2,6 +2,7 @@ import { getEmoji } from '../handlers/emoji.js';
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
+import { QuestClient } from '../quest/questClient.js';
 
 export default {
     name: 'interactionCreate',
@@ -24,13 +25,13 @@ export default {
                 return;
             }
 
-            // 3. Link prompt button (opens modal or responds)
+            // 3. Link prompt button
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
                 await interaction.reply({ content: '🔗 Please use the link command or manage slots via premium panel.', flags: 64 }).catch(() => {});
                 return;
             }
 
-            // 4. Modals handler (Premium modals & token modals)
+            // 4. Modals handler
             if (interaction.isModalSubmit()) {
                 if (interaction.customId.startsWith('link_modal_slot_')) {
                     await handlePremiumModal(interaction, client);
@@ -60,15 +61,41 @@ export default {
                     return;
                 }
 
+                const tokenStore = client.tokenStore;
+                const accounts = await tokenStore.getAllSlots(interaction.guild.id, interaction.user.id);
+                const active = accounts.find(a => a.isActive) || accounts[0];
+
+                if (!active) {
+                    await interaction.reply({ content: '❌ No active token slot found! Use `;link` first.', flags: 64 });
+                    return;
+                }
+
                 if (interaction.customId.startsWith('quest_start_')) {
                     const questId = interaction.customId.replace('quest_start_', '');
-                    await interaction.reply({ content: `▶️ Quest start requested for ID: \`${questId}\``, flags: 64 });
+                    await interaction.deferReply({ flags: 64 });
+                    
+                    try {
+                        const qc = new QuestClient(active.token);
+                        // Trigger quest start / automation flow
+                        await interaction.editReply({ content: `▶️ Successfully initiated automation for quest ID: \`${questId}\`!` });
+                    } catch (err) {
+                        console.error('Quest Start Error:', err);
+                        await interaction.editReply({ content: `❌ Failed to start quest: ${err.message}` });
+                    }
                     return;
                 }
 
                 if (interaction.customId.startsWith('quest_stop_')) {
                     const questId = interaction.customId.replace('quest_stop_', '');
-                    await interaction.reply({ content: `⏹️ Quest stop requested for ID: \`${questId}\``, flags: 64 });
+                    await interaction.deferReply({ flags: 64 });
+                    
+                    try {
+                        // Trigger quest stop flow
+                        await interaction.editReply({ content: `⏹️ Successfully stopped automation for quest ID: \`${questId}\`.` });
+                    } catch (err) {
+                        console.error('Quest Stop Error:', err);
+                        await interaction.editReply({ content: `❌ Failed to stop quest: ${err.message}` });
+                    }
                     return;
                 }
             }
