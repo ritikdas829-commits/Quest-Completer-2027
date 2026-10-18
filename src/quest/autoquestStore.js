@@ -1,10 +1,30 @@
+/**
+ * autoquestStore.js - JSON Based AutoQuest Storage System
+ * Location: src/quest/autoquestStore.js
+ */
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const AUTOQUEST_FILE = path.join(process.cwd(), 'autoquest.json');
+const AUTOQUEST_FILE = path.join(process.cwd(), 'data', 'autoquest.json');
+
+// Helper - Data folder aur file ensure karne ke liye
+function ensureDirectory() {
+    try {
+        const dir = path.dirname(AUTOQUEST_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        if (!fs.existsSync(AUTOQUEST_FILE)) {
+            fs.writeFileSync(AUTOQUEST_FILE, JSON.stringify([], null, 2));
+        }
+    } catch {}
+}
 
 function load() {
     try {
+        ensureDirectory();
+        if (!fs.existsSync(AUTOQUEST_FILE)) return [];
         const raw = JSON.parse(fs.readFileSync(AUTOQUEST_FILE, 'utf-8'));
         return Array.isArray(raw) ? raw : [];
     } catch {
@@ -13,7 +33,10 @@ function load() {
 }
 
 function save(data) {
-    fs.writeFileSync(AUTOQUEST_FILE, JSON.stringify(data, null, 2));
+    try {
+        ensureDirectory();
+        fs.writeFileSync(AUTOQUEST_FILE, JSON.stringify(data, null, 2));
+    } catch {}
 }
 
 export function enableAutoquest(userId) {
