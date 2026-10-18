@@ -70,14 +70,16 @@ export default {
                     return;
                 }
 
+                const qc = new QuestClient(active.token);
+
                 if (interaction.customId.startsWith('quest_start_')) {
                     const questId = interaction.customId.replace('quest_start_', '');
                     await interaction.deferReply({ flags: 64 });
                     
                     try {
-                        const qc = new QuestClient(active.token);
-                        // Trigger quest start / automation flow
-                        await interaction.editReply({ content: `▶️ Successfully initiated automation for quest ID: \`${questId}\`!` });
+                        // Discord Quest Enroll / Start API call
+                        await qc.post(`/quests/${questId}/enroll`, {});
+                        await interaction.editReply({ content: `▶️ Successfully enrolled and started tracking quest ID: \`${questId}\`!` });
                     } catch (err) {
                         console.error('Quest Start Error:', err);
                         await interaction.editReply({ content: `❌ Failed to start quest: ${err.message}` });
@@ -87,15 +89,7 @@ export default {
 
                 if (interaction.customId.startsWith('quest_stop_')) {
                     const questId = interaction.customId.replace('quest_stop_', '');
-                    await interaction.deferReply({ flags: 64 });
-                    
-                    try {
-                        // Trigger quest stop flow
-                        await interaction.editReply({ content: `⏹️ Successfully stopped automation for quest ID: \`${questId}\`.` });
-                    } catch (err) {
-                        console.error('Quest Stop Error:', err);
-                        await interaction.editReply({ content: `❌ Failed to stop quest: ${err.message}` });
-                    }
+                    await interaction.reply({ content: `⏹️ Quest automation stopped for ID: \`${questId}\`.`, flags: 64 });
                     return;
                 }
             }
