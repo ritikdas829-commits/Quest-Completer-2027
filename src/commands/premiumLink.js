@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Fixed Formatting & Clean UI Panel
+ * premiumLink.js - Fixed Formatting & Clean UI Panel - FINAL
  * Location: src/commands/premiumLink.js
  */
 
@@ -9,7 +9,7 @@ import {
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
     ModalBuilder, TextInputBuilder, TextInputStyle, 
     MessageFlags, SlashCommandBuilder,
-} from 'discord.js';
+} from '【entity-discord¦canonical_name=Discord】.js';
 import { getProgressiveSlots } from '../quest/slotSystem.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
@@ -37,14 +37,11 @@ function getAccountAge(discordId) {
 
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client, member = null) {
     const prefix = getClientPrefix(client, guildId);
-
-    // Fetch progressive slot calculation
     const guildMember = member || await client.guilds.cache.get(guildId)?.members.fetch(ownerId).catch(() => null);
-    const { slots, invites, boosts, slotsToShow } = await getProgressiveSlots(guildMember, 0);
+    const { slots, invites, boosts, slotsToShow } = await getProgressiveSlots(guildMember);
 
     let accounts = await tokenStore.getAllSlots(guildId, ownerId);
 
-    // Strict single active slot enforcement
     if (accounts.length > 0) {
         const activeAccounts = accounts.filter(a => a.isActive);
         if (activeAccounts.length !== 1) {
@@ -54,17 +51,15 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
         }
     }
 
-    // ── Panel Header Container ──
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
         `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\n` +
         `Use \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n` +
-        `> **Invites:** ${invites} \vert{} **Boosts:**${boosts}`
+        `> **Invites:** ${invites} | **Boosts:** ${boosts}`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
-    // ── Slots Account Panel Container ──
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
     c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Account Panel (${slotsToShow} Visible Slots)`));
 
@@ -75,7 +70,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
 
         if (!linked) {
             if (slotData.can) {
-                // Unlocked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                     `### #${slotNum} Account Configuration\n` +
                     `• **User:** Not Linked (${slotData.label})\n` +
@@ -88,7 +82,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                     new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
                 ));
             } else {
-                // Locked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                     `### #${slotNum} Account Configuration 🔒\n` +
                     `• **User:** Locked (${slotData.label})\n` +
@@ -101,7 +94,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                 ));
             }
         } else {
-            // Linked Slot
             const isCurrentlyActive = Boolean(linked.isActive);
             const status = isCurrentlyActive ? 'Active ✅' : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
@@ -124,11 +116,9 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             
             const row = new ActionRowBuilder();
             row.addComponents(new ButtonBuilder().setCustomId(`unlink_slot_${slotNum}`).setLabel('Unlink').setStyle(ButtonStyle.Danger));
-            
             if (!isCurrentlyActive) {
                 row.addComponents(new ButtonBuilder().setCustomId(`select_slot_${slotNum}`).setLabel('Select').setStyle(ButtonStyle.Primary));
             }
-
             c2.addActionRowComponents(row);
         }
 
@@ -192,9 +182,8 @@ export async function handleButton(interaction, client) {
 
     if (interaction.customId.startsWith('link_slot_')) {
         const slotNum = parseInt(interaction.customId.split('_')[2]);
-        const prog = await getProgressiveSlots(member, 0);
+        const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
-        
         if (!slotData?.can) {
             return await interaction.reply({ 
                 content: `🔒 **Slot #${slotNum} Locked!**\n**Requirement:** ${slotData?.need}\n${slotData?.reason}`, 
@@ -221,50 +210,34 @@ export async function handleButton(interaction, client) {
 
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
-
     const slot = parseInt(interaction.customId.split('_')[3]);
     const token = interaction.fields.getTextInputValue('token_input').trim();
     const prefix = getClientPrefix(client, interaction.guild.id);
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
     try {
-        const prog = await getProgressiveSlots(interaction.member, 0);
+        const prog = await getProgressiveSlots(interaction.member);
         const slotData = prog.slots.find(s => s.slot === slot);
         if (!slotData?.can) throw new Error(`Slot #${slot} is locked! ${slotData?.reason}`);
-
         const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: token } });
         if (!res.ok) throw new Error('Invalid token provided - Discord rejected request');
         const data = await res.json();
-
         await client.tokenStore.saveSlot({
             guildId: interaction.guild.id, ownerId: interaction.user.id, slot, token,
             linkedUserId: data.id, username: data.username, avatar: data.avatar, linkedAt: new Date()
         });
-
         await client.tokenStore.setActiveSlot(interaction.guild.id, interaction.user.id, slot);
-
         if (interaction.message) {
             const updatedPanel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client, interaction.member);
             await interaction.message.edit(updatedPanel).catch(() => {});
         }
-
         const successContainer = new ContainerBuilder().setAccentColor(0x57F287);
         successContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `# ✅ Slot #${slot} Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink${slot}\`.`
         ));
-
-        await interaction.editReply({ 
-            components: [successContainer], 
-            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
-        });
-
+        await interaction.editReply({ components: [successContainer], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     } catch (e) {
         const errContainer = new ContainerBuilder().setAccentColor(0xED4245);
         errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Slot #${slot} Failed\n${e.message}`));
-        await interaction.editReply({ 
-            components: [errContainer], 
-            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral 
-        });
+        await interaction.editReply({ components: [errContainer], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 }
