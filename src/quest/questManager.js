@@ -1,4 +1,3 @@
-
 import { Quest } from './quest.js';
 
 const QuestTaskConfigType = {
