@@ -1,5 +1,5 @@
 /**
- * questCommands.js - QuestAll, QuestList, TokenCheck, AutoQuest Runner Support & Shortcut 'q'
+ * questCommands.js - QuestAll, QuestList, TokenCheck, AutoQuest Runner Support, Live % Tracker & 'q' Shortcut
  * Location: src/commands/questCommands.js
  */
 
@@ -77,7 +77,7 @@ function buildErrorCard(err, prefix) {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
+function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', percent = 0) {
     const cfg  = quest.config;
     const msgs = cfg.messages;
     const thumbUrl = getThumbUrl(cfg);
@@ -112,8 +112,14 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
     const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
     const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
+    // Dynamic Live Progress Bar & % Renderer (10 Blocks)
+    const currentPercent = Math.min(100, Math.max(0, Math.floor(percent)));
+    const filledBlocks = Math.floor(currentPercent / 10);
+    const emptyBlocks = 10 - filledBlocks;
+    const progressBar = '`' + '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks) + '`' + `  **${currentPercent}%**`;
+
     const PHASE = {
-        starting: { color: 0x5865F2, title: '⚙️  Solving Quest...',  bar: '`░░░░░░░░░░`  **0%**  —  *Working on it...*' },
+        starting: { color: 0x5865F2, title: '⚙️  Solving Quest...',  bar: progressBar + '  —  *Working on it...*' },
         done:     { color: 0x57F287, title: '✅  Quest Complete!',    bar: '`██████████`  **100%**' },
         failed:   { color: 0xED4245, title: '❌  Quest Failed',       bar: '' },
     };
@@ -132,7 +138,6 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
         : '';
 
     const c = new ContainerBuilder().setAccentColor(p.color);
-    
     const section = new SectionBuilder().addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             `# ${p.title}\n### ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
@@ -149,7 +154,7 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
         new TextDisplayBuilder().setContent(
             `📋 **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
             `📅 **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
-            `📊 **Progress**\n${progressText || '`░░░░░░░░░░`  0%'}\n\n` +
+            `📊 **Progress**\n${progressText}\n\n` +
             `🎁 **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
         ),
     );
@@ -174,12 +179,26 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
         const valid = manager.filterQuestsValid();
         if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        const progressMsgs = await Promise.all(valid.map((q) => send(buildQuestInfoCard(q, 'starting'))));
+        const progressMsgs = await Promise.all(valid.map((q) => send(buildQuestInfoCard(q, 'starting', 0, '', 0))));
         const questLogs = valid.map(() => []);
+
         const questResults = await Promise.allSettled(
             valid.map((quest, i) => {
+                const progressMsg = progressMsgs[i];
+                let lastPct = -1;
+
+                // Live Progress % Callback function
+                const onProgress = async (done, total) => {
+                    const pct = Math.min(100, Math.floor((done / total) * 100));
+                    // Rate-limit safety: edit message if % increases by at least 3% or reaches 100%
+                    if (pct >= lastPct + 3 || pct === 100) {
+                        lastPct = pct;
+                        await progressMsg.edit(buildQuestInfoCard(quest, 'starting', 0, '', pct)).catch(() => {});
+                    }
+                };
+
                 const log = (m) => { console.log(m); questLogs[i].push(m); };
-                return manager.doingQuest(quest, log);
+                return manager.doingQuest(quest, log, onProgress);
             }),
         );
 
@@ -212,7 +231,7 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
 
         await Promise.allSettled(completed.map((q, i) => {
             const idx = valid.indexOf(q);
-            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'done', i === 0 ? claimed : claimedPer));
+            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'done', i === 0 ? claimed : claimedPer, '', 100));
         }));
         return true;
 
@@ -285,9 +304,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
                 )
             );
 
-            if (thumbUrl) {
-                section.setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl));
-            }
+            if (thumbUrl) section.setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl));
 
             c.addSectionComponents(section);
             c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
@@ -360,7 +377,6 @@ export const questAllCmd = {
     },
 };
 
-// ── Short Command: q (Alias for questall) ──────────────────────────────────
 export const qCmd = {
     data: new SlashCommandBuilder().setName('q').setDescription('Complete all quests at once (Shortcut)'),
     prefix: 'q',
@@ -397,7 +413,6 @@ export const tokenCheckCmd = {
     },
 };
 
-// ── AutoQuest runner ───────────────────────────────────────────────────────
 export async function runAutoquestForUser(userId, quest, tokenStore, discordClient, guildId) {
     const active = await tokenStore.getActiveSlot(guildId, userId);
     if (!active) { disableAutoquest(userId); return; }
