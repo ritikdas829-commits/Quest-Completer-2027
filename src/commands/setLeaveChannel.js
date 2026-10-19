@@ -22,7 +22,8 @@ export const setLeaveChannelCmd = {
 
     async execute(interaction) {
         const channel = interaction.options.getChannel('channel');
-        const col = await getCollection('guild_settings');
+        // Fixed collection name to match guildSettings
+        const col = await getCollection('guildSettings');
 
         if (!col) return interaction.reply({ content: '❌ Database error!', ephemeral: true });
 
@@ -45,7 +46,8 @@ export const setLeaveChannelCmd = {
             return message.reply('Usage: `?setleave #channel`');
         }
 
-        const col = await getCollection('guild_settings');
+        // Fixed collection name to match guildSettings
+        const col = await getCollection('guildSettings');
         if (!col) return message.reply('❌ Database error!');
 
         await col.updateOne(
