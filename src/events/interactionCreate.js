@@ -48,8 +48,8 @@ export default {
                 }
             }
 
-            // 5. Quest Select Menu handler
-            if (interaction.isStringSelectMenu() && interaction.customId.startsWith('quest_select_')) {
+            // 5. Quest Select Menu handler (FIXED: matching exact 'quest_select' from questUI.js)
+            if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
                 const panel = await buildQuestSolverPanel(client, interaction.guild.id, interaction.user.id, selectedQuestId);
@@ -80,6 +80,7 @@ export default {
 
                 if (interaction.customId.startsWith('quest_start_')) {
                     const questId = interaction.customId.replace('quest_start_', '');
+                    // Immediately defer reply to prevent "didn't respond in time" timeout error
                     await interaction.deferReply({ flags: 64 });
                     
                     try {
@@ -92,10 +93,24 @@ export default {
                             return;
                         }
 
+                        // Check if quest is already completed, try to claim reward
+                        if (quest.isCompleted()) {
+                            await interaction.editReply({ content: `🎁 Attempting to claim reward for quest \`${questId}\`...` });
+                            const claimedCount = await manager.claimRewards(async (msg) => {
+                                console.log(`[Claim Log] ${msg}`);
+                            }, questId);
+
+                            if (claimedCount > 0) {
+                                await interaction.editReply({ content: `✅ Successfully claimed reward for quest!` });
+                            } else {
+                                await interaction.editReply({ content: `⚠️ Quest is completed, but reward claim could not be verified or was already claimed.` });
+                            }
+                            return;
+                        }
+
                         // Run the quest automation logic using QuestManager's doingQuest method
                         await interaction.editReply({ content: `▶️ Starting automation for quest: \`${questId}\`...` });
                         
-                        // Execute in background or await based on preference
                         manager.doingQuest(quest, async (msg) => {
                             console.log(`[Quest Log] ${msg}`);
                         }).then(async (success) => {
