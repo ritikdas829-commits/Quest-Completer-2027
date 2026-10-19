@@ -1,5 +1,5 @@
 /**
- * questClient.js — Final Combined Version with Full Headers & Safe Retries
+ * questClient.js — Updated & Optimized with Full Browser Headers & Timeouts
  * Location: src/quest/questClient.js
  */
 
@@ -85,24 +85,24 @@ export class QuestClient {
 
     #buildHeaders() {
         return {
-            'Authorization': this.#token,
-            'User-Agent': Constants.USER_AGENT,
-            'Content-Type': 'application/json',
-            'accept': 'application/json',
-            'accept-language': 'en-US,en;q=0.9',
-            'origin': 'https://discord.com',
-            'pragma': 'no-cache',
-            'priority': 'u=1, i',
-            'referer': 'https://discord.com/channels/@me',
-            'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138"',
-            'sec-ch-ua-mobile': '?0',
+            'Authorization':      this.#token,
+            'User-Agent':         Constants.USER_AGENT,
+            'Content-Type':       'application/json',
+            'accept':             'application/json',
+            'accept-language':    'vi',
+            'origin':             'https://discord.com',
+            'pragma':             'no-cache',
+            'priority':           'u=1, i',
+            'referer':            'https://discord.com/channels/@me',
+            'sec-ch-ua':          '"Not)A;Brand";v="8", "Chromium";v="138"',
+            'sec-ch-ua-mobile':   '?0',
             'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'x-debug-options': 'bugReporterEnabled',
-            'x-discord-locale': 'en-US',
-            'x-discord-timezone': 'UTC',
+            'sec-fetch-dest':     'empty',
+            'sec-fetch-mode':     'cors',
+            'sec-fetch-site':     'same-origin',
+            'x-debug-options':    'bugReporterEnabled',
+            'x-discord-locale':   'en-US',
+            'x-discord-timezone': 'Asia/Saigon',
             'x-super-properties': Buffer.from(
                 JSON.stringify(Constants.Properties)
             ).toString('base64'),
