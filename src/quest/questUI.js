@@ -1,4 +1,3 @@
-
 /**
  * questUI.js — Quest Solver Dashboard
  * Location: src/quest/questUI.js
@@ -105,17 +104,25 @@ function getTaskProgress(taskType, taskConfig, status) {
 }
 
 function getBannerUrl(config, questId) {
-    const applicationId = config?.application?.id;
+    const applicationId =
+        config?.application?.id ||
+        config?.application_id ||
+        config?.applicationId;
+
     const assets = config?.assets ?? {};
 
-    const rawAsset = assets.hero || assets.game_tile;
+    const rawAsset =
+        assets.hero ||
+        assets.hero_video ||
+        assets.game_tile ||
+        assets.quest_tile ||
+        assets.game_tile_video;
 
     if (!applicationId || !rawAsset) {
         console.warn('[QuestUI] Banner data missing:', {
             questId,
-            hasApplicationId: Boolean(applicationId),
-            hasHero: Boolean(assets.hero),
-            hasGameTile: Boolean(assets.game_tile),
+            applicationId: applicationId ?? null,
+            assets,
         });
 
         return null;
@@ -134,10 +141,8 @@ function getBannerUrl(config, questId) {
         `https://cdn.discordapp.com/app-assets/` +
         `${applicationId}/quest-assets/${filename}`;
 
-    console.log('[QuestUI] Banner debug:', {
+    console.log('[QuestUI] Banner URL:', {
         questId,
-        applicationId,
-        asset: filename,
         url,
     });
 
@@ -426,7 +431,7 @@ export async function buildQuestSolverPanel(
                 label: taskType,
             };
 
-            return `${meta.icon} **${meta.label}:** ${percentage}%`;
+            return `${meta.icon} **${meta.label}:**${percentage}%`;
         });
 
     if (breakdown.length) {
@@ -488,7 +493,7 @@ export async function buildQuestSolverPanel(
     const menuOptions = allQuests.slice(0, 25).map((quest) => {
         const option = new StringSelectMenuOptionBuilder()
             .setLabel(
-                shorten(`${quest.game}: ${quest.questName}`, 100)
+                shorten(`${quest.game}:${quest.questName}`, 100)
             )
             .setValue(quest.id)
             .setDescription(shorten(quest.rewards || 'Reward', 100))
