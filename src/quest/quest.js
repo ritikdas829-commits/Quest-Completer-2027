@@ -8,13 +8,14 @@
  * - Task progress calculation
  * - Multiple progress data formats
  * - Enrollment, expiration and reward status
+ * - Safe partial status updates
  */
 
 export class Quest {
     #data;
 
-    constructor(data) {
-        this.#data = data;
+    constructor(data = {}) {
+        this.#data = { ...data };
     }
 
     static create(data) {
@@ -41,6 +42,10 @@ export class Quest {
         return this.#data.preview;
     }
 
+    // -----------------------------
+    // STATUS
+    // -----------------------------
+
     isExpired(reference = new Date()) {
         const expiresAt = this.config?.expires_at;
 
@@ -50,7 +55,7 @@ export class Quest {
 
         if (!Number.isFinite(expiry)) return false;
 
-        return reference.getTime() > expiry;
+        return reference.getTime() >= expiry;
     }
 
     isCompleted() {
@@ -65,9 +70,19 @@ export class Quest {
         return Boolean(this.userStatus?.claimed_at);
     }
 
-    /**
-     * Get progress percentage for one task.
-     */
+    getStatus() {
+        if (this.hasClaimedRewards()) return 'CLAIMED';
+        if (this.isCompleted()) return 'COMPLETED';
+        if (this.isExpired()) return 'EXPIRED';
+        if (this.isEnrolledQuest()) return 'IN_PROGRESS';
+
+        return 'NOT_STARTED';
+    }
+
+    // -----------------------------
+    // TASK PROGRESS
+    // -----------------------------
+
     getTaskProgress(taskType, taskConfig = {}) {
         if (this.isCompleted()) return 100;
 
@@ -107,18 +122,14 @@ export class Quest {
         let current = 0;
 
         for (const candidate of candidates) {
-            if (candidate === undefined || candidate === null) {
-                continue;
-            }
+            if (candidate == null) continue;
 
             const rawValue =
                 typeof candidate === 'object'
                     ? candidate.value ?? candidate.progress
                     : candidate;
 
-            if (rawValue === undefined || rawValue === null) {
-                continue;
-            }
+            if (rawValue == null) continue;
 
             const number = Number(rawValue);
 
@@ -128,7 +139,6 @@ export class Quest {
             }
         }
 
-        // Support a separate stream-progress field if present.
         if (
             taskType === 'STREAM_ON_DESKTOP' &&
             status.stream_progress_seconds != null
@@ -148,13 +158,10 @@ export class Quest {
         );
     }
 
-    /**
-     * Estimate overall quest progress using the average
-     * of its task percentages.
-     *
-     * This is an estimate, not Discord's confirmed
-     * internal overall-progress calculation.
-     */
+    // -----------------------------
+    // OVERALL PROGRESS
+    // -----------------------------
+
     getProgress() {
         if (this.isCompleted()) return 100;
 
@@ -167,32 +174,65 @@ export class Quest {
 
         if (!entries.length) return 0;
 
-        let total = 0;
-        let count = 0;
+        const percentages = entries.map(([taskType, taskConfig]) =>
+            this.getTaskProgress(taskType, taskConfig)
+        );
 
-        for (const [taskType, taskConfig] of entries) {
-            const percentage = this.getTaskProgress(
-                taskType,
-                taskConfig
-            );
+        const total = percentages.reduce(
+            (sum, percentage) => sum + percentage,
+            0
+        );
 
-            total += percentage;
-            count++;
-        }
-
-        return count
-            ? Math.floor(total / count)
-            : 0;
+        // This is an estimate based on task percentages.
+        return Math.floor(total / percentages.length);
     }
 
-    /**
-     * Update quest status from a fresh API response.
-     */
+    // -----------------------------
+    // UPDATE STATUS
+    // -----------------------------
+
     updateUserStatus(userStatus) {
-        if (!userStatus || typeof userStatus !== 'object') {
+        if (
+            !userStatus ||
+            typeof userStatus !== 'object' ||
+            Array.isArray(userStatus)
+        ) {
             return;
         }
 
-        this.#data.user_status = userStatus;
+        const previous = this.#data.user_status ?? {};
+
+        this.#data.user_status = {
+            ...previous,
+            ...userStatus,
+
+            // Preserve existing progress entries if the
+            // API sends only a partial progress update.
+            ...(previous.progress || userStatus.progress
+                ? {
+                    progress: {
+                        ...(previous.progress ?? {}),
+                        ...(userStatus.progress ?? {}),
+                    },
+                }
+                : {}),
+
+            ...(previous.details || userStatus.details
+                ? {
+                    details: {
+                        ...(previous.details ?? {}),
+                        ...(userStatus.details ?? {}),
+                    },
+                }
+                : {}),
+        };
+    }
+
+    // -----------------------------
+    // RAW DATA
+    // -----------------------------
+
+    toJSON() {
+        return { ...this.#data };
     }
 }
