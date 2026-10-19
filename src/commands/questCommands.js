@@ -1,5 +1,5 @@
 /**
- * questCommands.js - QuestAll, QuestList, TokenCheck & AutoQuest Runner Support
+ * questCommands.js - QuestAll, QuestList, TokenCheck, AutoQuest Runner Support & Shortcut 'q'
  * Location: src/commands/questCommands.js
  */
 
@@ -17,6 +17,18 @@ async function getActiveToken(guildId, userId, tokenStore) {
     const active = await tokenStore.getActiveSlot(guildId, userId);
     if (!active) return null;
     return active.token || await tokenStore.get(guildId, userId, active.slot);
+}
+
+// ── Helper: Safe Thumbnail Asset Extractor ────────────────────────────────
+function getThumbUrl(cfg) {
+    const appId = cfg?.application?.id;
+    const assets = cfg?.assets;
+    if (!appId || !assets) return null;
+
+    const assetKey = assets.game_tile || assets.hero || assets.quest_bar || assets.card || Object.values(assets)[0];
+    if (!assetKey) return null;
+
+    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${assetKey}.png`;
 }
 
 // ── UI Cards ───────────────────────────────────────────────────────────────
@@ -68,8 +80,7 @@ function buildErrorCard(err, prefix) {
 function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
     const cfg  = quest.config;
     const msgs = cfg.messages;
-    const appId = cfg.application.id;
-    const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
+    const thumbUrl = getThumbUrl(cfg);
 
     const TASK_META = {
         PLAY_ON_DESKTOP:       { icon: '🖥️', label: 'Play on Desktop' },
@@ -121,15 +132,18 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
         : '';
 
     const c = new ContainerBuilder().setAccentColor(p.color);
-    c.addSectionComponents(
-        new SectionBuilder()
-            .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                    `# ${p.title}\n### ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
-                ),
-            )
-            .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl)),
+    
+    const section = new SectionBuilder().addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+            `# ${p.title}\n### ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
+        )
     );
+
+    if (thumbUrl) {
+        section.setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl));
+    }
+
+    c.addSectionComponents(section);
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -148,7 +162,7 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ── Quest Runners Logic ────────────────────────────────────────────────────
+// ── Quest Runners Logic ────────────────────────────────────────────────    
 
 async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
     const token = await getActiveToken(guildId, userId, tokenStore);
@@ -188,7 +202,6 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
             return false;
         }
 
-        // Fixed claimRewards per completed quest loop
         let totalClaimed = 0;
         for (const q of completed) {
             const cCount = await manager.claimRewards(console.log, q.id).catch(() => 0);
@@ -238,8 +251,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
         for (const q of all.slice(0, 10)) {
             const cfg = q.config;
             const msgs = cfg.messages;
-            const appId = cfg.application.id;
-            const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
+            const thumbUrl = getThumbUrl(cfg);
             const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
             const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
@@ -267,15 +279,17 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             });
 
             const c = new ContainerBuilder().setAccentColor(st.color);
-            c.addSectionComponents(
-                new SectionBuilder()
-                    .addTextDisplayComponents(
-                        new TextDisplayBuilder().setContent(
-                            `# ${st.icon}  ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
-                        ),
-                    )
-                    .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl)),
+            const section = new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `# ${st.icon}  ${msgs.quest_name}\n*${msgs.game_title}*  •  ${msgs.game_publisher}`,
+                )
             );
+
+            if (thumbUrl) {
+                section.setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl));
+            }
+
+            c.addSectionComponents(section);
             c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
             c.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
@@ -346,6 +360,19 @@ export const questAllCmd = {
     },
 };
 
+// ── Short Command: q (Alias for questall) ──────────────────────────────────
+export const qCmd = {
+    data: new SlashCommandBuilder().setName('q').setDescription('Complete all quests at once (Shortcut)'),
+    prefix: 'q',
+    async execute(interaction, client) {
+        await interaction.deferReply();
+        await runQuestAll(interaction.guild.id, interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
+    },
+    async prefixExecute(message, _args, client) {
+        await runQuestAll(message.guild.id, message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
+    },
+};
+
 export const questListCmd = {
     data: new SlashCommandBuilder().setName('questlist').setDescription('List all Discord quests and their status'),
     prefix: 'questlist',
@@ -370,7 +397,7 @@ export const tokenCheckCmd = {
     },
 };
 
-// ── AutoQuest runner (called from questWatcher) ────────────────────────────
+// ── AutoQuest runner ───────────────────────────────────────────────────────
 export async function runAutoquestForUser(userId, quest, tokenStore, discordClient, guildId) {
     const active = await tokenStore.getActiveSlot(guildId, userId);
     if (!active) { disableAutoquest(userId); return; }
