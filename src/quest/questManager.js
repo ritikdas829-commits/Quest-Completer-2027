@@ -1,4 +1,3 @@
-
 import { Quest } from './quest.js';
 
 const EXCLUDED_QUEST_ID = '1412491570820812933';
@@ -251,7 +250,6 @@ export class QuestManager {
             const name =
                 quest.config?.messages?.quest_name || quest.id;
 
-            // Do not use a stale completion status.
             if (
                 quest.isExpired() ||
                 !quest.isCompleted() ||
@@ -280,7 +278,6 @@ export class QuestManager {
                 continue;
             }
 
-            // The claim request alone is not proof of a granted reward.
             const refreshed = await this.#refreshOne(quest);
 
             if (!refreshed.success) {
@@ -331,6 +328,11 @@ export class QuestManager {
 
         const response = await this.client.post(
             `/quests/${encodeURIComponent(questId)}/enroll`,
+            {
+                location: 11,
+                is_targeted: false,
+                metadata_raw: null,
+            }
         );
 
         const status = extractStatus(response);
@@ -343,7 +345,6 @@ export class QuestManager {
             quest.updateUserStatus(status);
         }
 
-        // Verify enrollment against refreshed server state.
         const refreshed = await this.#refreshOne(quest);
 
         if (!refreshed.success) {
@@ -362,7 +363,7 @@ export class QuestManager {
     }
 
     // ------------------------------------------
-    // TASK STATUS
+    // TASK EXECUTION
     // ------------------------------------------
 
     async doingQuest(quest, log = console.log) {
@@ -378,7 +379,6 @@ export class QuestManager {
         const name =
             quest.config?.messages?.quest_name || quest.id;
 
-        // Refresh first so decisions use current server status.
         const refreshed = await this.#refreshOne(quest);
 
         if (!refreshed.success) {
@@ -419,6 +419,20 @@ export class QuestManager {
             return true;
         }
 
+        // Auto-enroll if not enrolled
+        if (!quest.isEnrolledQuest()) {
+            safeLog(log, `[Quest] Enrolling in "${name}"...`);
+            try {
+                quest = await this.acceptQuest(quest.id);
+            } catch (error) {
+                safeLog(
+                    log,
+                    `[Quest] Enrollment failed for "${name}": ${error.message}`
+                );
+                return false;
+            }
+        }
+
         const taskConfig =
             quest.config?.task_config ??
             quest.config?.task_config_v2;
@@ -441,11 +455,10 @@ export class QuestManager {
             `[Quest] Task types: ${taskTypes.join(', ') || 'none'}`,
         );
 
-        const supported = taskTypes.filter(
-            (type) => SUPPORTED_TASK_TYPES.has(type),
-        );
+        // Find active supported task
+        const taskName = taskTypes.find((type) => SUPPORTED_TASK_TYPES.has(type));
 
-        if (!supported.length) {
+        if (!taskName) {
             safeLog(
                 log,
                 `[Quest] "${name}" has no supported task type.`,
@@ -454,18 +467,64 @@ export class QuestManager {
             return false;
         }
 
+        // ------------------------------------------
+        // VIDEO / MOBILE VIDEO PROGRESSION
+        // ------------------------------------------
+        if (
+            taskName === 'WATCH_VIDEO' ||
+            taskName === 'WATCH_VIDEO_ON_MOBILE'
+        ) {
+            safeLog(log, `[Quest] Sending video progress for "${name}"...`);
+
+            const task = tasks[taskName];
+            const target = Number(task?.target ?? 30);
+
+            try {
+                // Send video progress request
+                const progressRes = await this.client.post(
+                    `/quests/${encodeURIComponent(quest.id)}/video-progress`,
+                    { timestamp: target }
+                );
+
+                const status = extractStatus(progressRes);
+
+                if (status) {
+                    quest.updateUserStatus(status);
+                }
+
+                // Verify status after sending progress
+                const doubleCheck = await this.#refreshOne(quest);
+
+                if (doubleCheck.quest.isCompleted()) {
+                    safeLog(
+                        log,
+                        `[Quest] "${name}" completion confirmed by server!`,
+                    );
+                    return true;
+                }
+
+                safeLog(
+                    log,
+                    `[Quest] Progress sent, but completion is not yet confirmed by server.`,
+                );
+                return false;
+            } catch (error) {
+                safeLog(
+                    log,
+                    isExpiredError(error)
+                        ? `[Quest] "${name}" has expired.`
+                        : `[Quest] Video progress request failed: ${error.message}`
+                );
+                return false;
+            }
+        }
+
+        // For desktop/stream/activity tasks that require actual application client
         safeLog(
             log,
-            `[Quest] "${name}" requires its task to be completed ` +
-            'through the supported Discord experience.',
+            `[Quest] Task type "${taskName}" requires native Discord client activity.`,
         );
 
-        safeLog(
-            log,
-            '[Quest] Refresh the dashboard after completing the task.',
-        );
-
-        // Finding a supported task does not mean it is completed.
         return false;
     }
 }
