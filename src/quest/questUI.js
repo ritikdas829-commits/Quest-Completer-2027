@@ -1,18 +1,18 @@
 /**
- * questUI.js — Quest Solver Dashboard (Filtered Active Quests Only)
- * Location: src/quest/questUI.js
+ * questUI.js — Premium Neon Purple Quest Solver Dashboard
+ * Merged & Optimized Edition: Active Quests Filter + Accurate Progress & Banners
  */
 
 import {
     ContainerBuilder,
     TextDisplayBuilder,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
     SeparatorBuilder,
     SeparatorSpacingSize,
+    ActionRowBuilder,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
-    SectionBuilder,
-    ThumbnailBuilder,
-    ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
     MessageFlags,
@@ -20,12 +20,32 @@ import {
 
 import { QuestClient } from './questClient.js';
 
+const PURPLE = 0x9B4DFF;
+
+const icons = {
+    game: '✦',
+    publisher: '👤',
+    quest: '📋',
+    enrolled: '🔎',
+    expires: '🔥',
+    progress: '◌',
+    desktop: '🖥️',
+    mobile: '📱',
+    xbox: '🟢',
+    playstation: '🔵',
+    rewards: '💎',
+    tasks: '🔗',
+};
+
+function safeText(value, fallback = 'Not available') {
+    if (value === undefined || value === null || value === '') {
+        return fallback;
+    }
+    return String(value);
+}
+
 function getTasks(config) {
-    return (
-        config?.task_config?.tasks ??
-        config?.task_config_v2?.tasks ??
-        {}
-    );
+    return config?.task_config?.tasks ?? config?.task_config_v2?.tasks ?? {};
 }
 
 function getTaskProgress(taskType, taskConfig, status) {
@@ -45,43 +65,46 @@ function getTaskProgress(taskType, taskConfig, status) {
     ];
 
     let current = 0;
-    for (const candidate of candidates) {
-        if (candidate === undefined || candidate === null) continue;
-        const value = typeof candidate === 'object' ? candidate.value ?? candidate.progress : candidate;
-        const number = Number(value);
-        if (Number.isFinite(number)) {
-            current = Math.max(0, number);
-            break;
-        }
+    for (const c of candidates) {
+        if (c == null) continue;
+        const v = typeof c === 'object' ? (c.value ?? c.progress) : c;
+        const n = Number(v);
+        if (Number.isFinite(n)) { current = Math.max(0, n); break; }
     }
+
+    if (taskType === 'STREAM_ON_DESKTOP' && status.stream_progress_seconds != null) {
+        const sp = Number(status.stream_progress_seconds);
+        if (Number.isFinite(sp)) current = Math.max(current, sp);
+    }
+
     return Math.min(100, Math.floor((current / target) * 100));
 }
 
 function getBannerUrl(config) {
-    const applicationId = config?.application?.id || config?.application_id || config?.applicationId;
+    const appId = config?.application?.id || config?.application_id || config?.applicationId;
     const assets = config?.assets ?? {};
-    const rawAsset = assets.hero || assets.hero_video || assets.game_tile || assets.quest_tile || assets.game_tile_video || assets.quest_bar || assets.card || Object.values(assets)[0];
+    const raw = assets.hero || assets.hero_video || assets.game_tile || assets.quest_tile || assets.game_tile_video || assets.quest_bar || assets.card || Object.values(assets)[0];
 
-    if (!applicationId || !rawAsset) return null;
-    const asset = String(rawAsset).trim();
+    if (!appId || !raw) return null;
+    const asset = String(raw).trim();
     if (!asset) return null;
 
     const filename = /\.(png|jpe?g|webp|gif)$/i.test(asset) ? asset : `${asset}.png`;
-    return `https://cdn.discordapp.com/app-assets/${applicationId}/quest-assets/${filename}`;
+    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
 }
 
 function formatDate(value) {
-    if (!value) return 'N/A';
+    if (!value) return '—';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('en-GB');
 }
 
 function buildRewardText(config) {
     const rewards = config?.rewards_config?.rewards ?? [];
-    if (!rewards.length) return 'Quest Reward';
-    return rewards.map((reward) => {
-        const name = reward?.messages?.name || 'Reward';
-        return reward?.orb_quantity ? `${name} (${reward.orb_quantity} Orbs)` : name;
+    if (!rewards.length) return '200 Orbs';
+    return rewards.map(r => {
+        const name = r?.messages?.name || 'Reward';
+        return r?.orb_quantity ? `${r.orb_quantity} ${name}` : name;
     }).join(', ');
 }
 
@@ -102,21 +125,42 @@ function formatTaskDuration(type, task) {
     };
     const label = TASK_NAMES[type] ?? type;
     if (type.includes('VIDEO')) {
-        return `${label} for${target}s`;
+        return `${label} for ${target}s`;
     } else if (type.includes('DESKTOP') || type.includes('PLAY')) {
         const mins = Math.ceil(target / 60);
-        return mins > 1 ? `${label} for${mins}m` : `${label} for${target}s`;
+        return mins > 1 ? `${label} for ${mins}m` : `${label} for ${target}s`;
     }
     return `${label} (${target}s)`;
 }
 
-export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null, customLogs = null) {
+function progressBar(percent) {
+    const filled = Math.round(percent / 10);
+    return `${'▰'.repeat(filled)}${'▱'.repeat(10 - filled)} ${percent}%`;
+}
+
+function text(content) {
+    return new TextDisplayBuilder().setContent(content);
+}
+
+function separator() {
+    return new SeparatorBuilder()
+        .setDivider(true)
+        .setSpacing(SeparatorSpacingSize.Small);
+}
+
+export async function buildQuestSolverPanel(
+    client,
+    guildId,
+    userId,
+    selectedQuestId = null,
+    customLogs = null
+) {
     const prefix = client.config?.prefix || process.env.PREFIX || ';';
     const tokenStore = client.tokenStore;
 
     if (!tokenStore) {
         const container = new ContainerBuilder().setAccentColor(0xED4245);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# ❌ Token Store Error\nToken store is not initialized.'));
+        container.addTextDisplayComponents(text('# ❌ Token Store Error\nToken store is not initialized.'));
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -126,13 +170,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     } catch {
         const container = new ContainerBuilder().setAccentColor(0xED4245);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# ❌ Token Store Error\nCould not load token.'));
+        container.addTextDisplayComponents(text('# ❌ Token Store Error\nCould not load token.'));
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
     if (!active || !token) {
         const container = new ContainerBuilder().setAccentColor(0xED4245);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Active Slot\nUse \`${prefix}link\` to link a token.`));
+        container.addTextDisplayComponents(text(`# ❌ No Active Slot\nUse \`${prefix}link\` to link a token.`));
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -143,32 +187,30 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         rawQuests = manager.list() ?? [];
     } catch (error) {
         const container = new ContainerBuilder().setAccentColor(0xED4245);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Quest Fetch Error\n${shorten(error.message, 250)}`));
+        container.addTextDisplayComponents(text(`# ❌ Quest Fetch Error\n${shorten(error.message, 250)}`));
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
-    // ── Filter Out Completed / Expired Quests (Only Active To-Do Quests) ──
-    const activeQuests = rawQuests.filter((quest) => {
-        const isComp = quest.isCompleted?.() ?? false;
-        const isExp = quest.isExpired?.() ?? false;
-        return !isComp && !isExp;
+    // ── Filter to ONLY show active/uncompleted quests ──
+    const activeQuests = rawQuests.filter(quest => {
+        const completed = quest.isCompleted?.() ?? false;
+        const expired = quest.isExpired?.() ?? false;
+        return !completed && !expired;
     });
 
-    const allQuests = activeQuests.map((quest) => {
+    const allQuests = activeQuests.map(quest => {
         const config = quest.config ?? {};
         const messages = config.messages ?? {};
         const tasks = getTasks(config);
         const status = quest.userStatus ?? {};
-        
+
         const platformProgress = {};
-        for (const [taskType, taskConfig] of Object.entries(tasks)) {
-            platformProgress[taskType] = getTaskProgress(taskType, taskConfig, status);
+        for (const [type, tConf] of Object.entries(tasks)) {
+            platformProgress[type] = getTaskProgress(type, tConf, status);
         }
 
-        const percentages = Object.values(platformProgress);
-        const overallProgress = percentages.length 
-            ? Math.floor(percentages.reduce((a, b) => a + b, 0) / percentages.length) 
-            : 0;
+        const perc = Object.values(platformProgress);
+        const total = perc.length ? Math.floor(perc.reduce((a, b) => a + b, 0) / perc.length) : 0;
 
         return {
             id: quest.id,
@@ -182,103 +224,155 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             platformProgress,
             banner: getBannerUrl(config),
             url: 'https://discord.com/quests',
-            progress: { total: overallProgress },
+            progress: { total },
             sourceQuest: quest,
         };
     });
 
+    const container = new ContainerBuilder().setAccentColor(PURPLE);
+
+    container.addTextDisplayComponents(
+        text('## 🔨 Quest Solver\n━━━━━━━━━━━━━━━━━━━━━━━━')
+    );
+
     if (!allQuests.length) {
-        const container = new ContainerBuilder().setAccentColor(0x4F545C);
         container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent('# 🔍 No Active Quests\nThere are no pending active quests on this account.')
+            text('❌ **No Active Quests**\nNo active uncompleted quests found on this account right now.')
         );
-        return { components: [container], flags: MessageFlags.IsComponentsV2 };
+        container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('quest_panel_refresh').setLabel('Refresh').setEmoji('🔄').setStyle(ButtonStyle.Primary)
+            )
+        );
+        container.addTextDisplayComponents(text('### 🧾 Quest Logs\n```ansi\nNo active quests\n```'));
+        return { components: [container], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
     }
 
-    const selected = allQuests.find((q) => q.id === selectedQuestId) ?? allQuests[0];
-    const container = new ContainerBuilder().setAccentColor(0x5865F2);
+    const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
 
-    const TASK_LABELS = {
-        PLAY_ON_DESKTOP: { icon: '🖥️', label: 'Desktop' },
-        PLAY_ON_XBOX: { icon: '🟩', label: 'Xbox' },
-        PLAY_ON_PLAYSTATION: { icon: '🟦', label: 'PlayStation' },
-        WATCH_VIDEO: { icon: '🎬', label: 'Video' },
-        WATCH_VIDEO_ON_MOBILE: { icon: '📱', label: 'Mobile' },
-    };
+    const desktop = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? 0;
+    const mobile = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? 0;
+    const xbox = selected.platformProgress['PLAY_ON_XBOX'] ?? 0;
+    const playstation = selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0;
 
-    let progressDetails = `📊 **${selected.progress.total}%**`;
-    const breakdown = Object.entries(selected.platformProgress).map(([taskType, pct]) => {
-        const meta = TASK_LABELS[taskType] ?? { icon: '⚙️', label: taskType };
-        return `• ${meta.icon} **${meta.label}:**${pct}%`;
-    });
+    container.addTextDisplayComponents(
+        text(
+            `**${icons.game} Game:**${selected.game}\n` +
+            `**${icons.publisher} Publisher:**${selected.publisher}\n` +
+            `**${icons.quest} Quest:**${selected.questName}\n` +
+            `**${icons.enrolled} Enrolled:**${selected.enrolledAt}\n` +
+            `**${icons.expires} Expires:**${selected.expiresAt}`
+        )
+    );
 
-    if (breakdown.length) {
-        progressDetails += '\n' + breakdown.join('\n');
-    }
+    let platformLines = `${icons.desktop} Desktop:${desktop}%  •  ${icons.mobile} Mobile:${mobile}%`;
+    if (xbox > 0) platformLines += `\n${icons.xbox} Xbox:${xbox}%`;
+    if (playstation > 0) platformLines += `\n${icons.playstation} PlayStation:${playstation}%`;
+
+    container.addTextDisplayComponents(
+        text(
+            `### ${icons.progress} Progress:${selected.progress.total}%\n` +
+            `${progressBar(selected.progress.total)}\n` +
+            platformLines
+        )
+    );
+
+    container.addTextDisplayComponents(
+        text(
+            `### ${icons.rewards} Rewards\n` +
+            `🎁 **${selected.rewards}**`
+        )
+    );
 
     const taskLines = Object.entries(selected.tasks).length
         ? Object.entries(selected.tasks).map(([type, task]) => `• ${formatTaskDuration(type, task)}`).join('\n')
-        : '• No task details available';
+        : '• Task details unavailable';
 
-    const contentText =
-        `• **Game:** ${selected.game}\n` +
-        `• **Publisher:** ${selected.publisher}\n` +
-        `• **Quest Name:** ${selected.questName}\n` +
-        `• **Enrolled At:** ${selected.enrolledAt}\n` +
-        `• **Expires At:** ${selected.expiresAt}\n` +
-        `• **Progress:**\n${progressDetails}\n\n` +
-        `## 🎁 Rewards\n• ${selected.rewards}\n\n` +
-        `## 📋 Tasks\n${taskLines}`;
-
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent('# 🔮 Quest Solver'));
-    container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
-
-    const mainSection = new SectionBuilder().addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(contentText)
+    container.addTextDisplayComponents(
+        text(`### ${icons.tasks} Tasks\n${taskLines}`)
     );
 
-    if (selected.banner) {
-        mainSection.setThumbnailAccessory(new ThumbnailBuilder().setURL(selected.banner));
+    if (selected.banner && /^https:\/\/\S+/i.test(selected.banner)) {
+        container.addSeparatorComponents(separator());
+        container.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+                new MediaGalleryItemBuilder()
+                    .setURL(selected.banner)
+                    .setDescription(`${selected.questName} quest banner`)
+            )
+        );
     }
 
-    container.addSectionComponents(mainSection);
+    container.addSeparatorComponents(separator());
 
-    const menuOptions = allQuests.slice(0, 25).map((q) => {
-        const opt = new StringSelectMenuOptionBuilder()
-            .setLabel(shorten(`${q.game}:${q.questName}`, 100))
-            .setValue(q.id)
-            .setDescription(shorten(q.rewards || 'Reward', 100))
-            .setEmoji('🎯');
-        if (q.id === selected.id) opt.setDefault(true);
-        return opt;
-    });
+    const options = allQuests.slice(0, 25).map(item =>
+        new StringSelectMenuOptionBuilder()
+            .setLabel(shorten(`${item.game} :${item.questName}`, 100))
+            .setValue(String(item.id))
+            .setDescription(shorten(`Progress: ${item.progress.total}\% \vert{}${item.rewards}`, 100))
+            .setEmoji('🎯')
+            .setDefault(String(item.id) === String(selected.id))
+    );
 
-    const menu = new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder('Pick an active quest...').addOptions(menuOptions);
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(menu));
+    if (options.length) {
+        container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('quest_select')
+                    .setPlaceholder('Select an active quest...')
+                    .addOptions(options)
+            )
+        );
+    }
 
+    // Action Buttons
     container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`quest_start_${selected.id}`).setLabel('Start').setStyle(ButtonStyle.Success).setEmoji('▶️'),
-            new ButtonBuilder().setCustomId(`quest_stop_${selected.id}`).setLabel('Stop').setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
-            new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
+            new ButtonBuilder()
+                .setCustomId(`quest_start_${selected.id}`)
+                .setLabel('Start')
+                .setEmoji('▶️')
+                .setStyle(ButtonStyle.Success),
+
+            new ButtonBuilder()
+                .setCustomId(`quest_stop_${selected.id}`)
+                .setLabel('Stop')
+                .setEmoji('⏹️')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId('quest_refresh')
+                .setLabel('Refresh')
+                .setEmoji('🔄')
+                .setStyle(ButtonStyle.Primary)
         )
     );
 
-    container.addActionRowComponents(
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(selected.url).setEmoji('🔗')
-        )
-    );
+    if (selected.url && /^https:\/\/\S+/i.test(selected.url)) {
+        container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('View Quest')
+                    .setEmoji('🔗')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(selected.url)
+            )
+        );
+    }
 
-    const safeLogs = String(customLogs ?? `🧭 Quest selected: ${selected.questName}\n📝 Status: Ready to run`).slice(0, 1500);
-    const logsContainer = new ContainerBuilder().setAccentColor(0x2B2D31);
-    logsContainer.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('## 📄 Quest Logs'),
-        new TextDisplayBuilder().setContent(`\`\`\`text\n${safeLogs}\n\`\`\``)
+    const logLines = String(customLogs ?? `Quest selected: ${selected.questName}\nStatus: Ready to run`).slice(0, 850);
+
+    container.addSeparatorComponents(separator());
+    container.addTextDisplayComponents(
+        text(
+            `### 🧾 Quest Logs\n` +
+            `\`\`\`text\n${logLines}\n\`\`\``
+        )
     );
 
     return {
-        components: [container, logsContainer],
+        components: [container],
         flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { parse: [] },
     };
 }
