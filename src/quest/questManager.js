@@ -1,10 +1,11 @@
+
 import { Quest } from './quest.js';
 
 const QuestTaskConfigType = {
-    WATCH_VIDEO:           'WATCH_VIDEO',
-    PLAY_ON_DESKTOP:       'PLAY_ON_DESKTOP',
-    STREAM_ON_DESKTOP:     'STREAM_ON_DESKTOP',
-    PLAY_ACTIVITY:         'PLAY_ACTIVITY',
+    WATCH_VIDEO: 'WATCH_VIDEO',
+    PLAY_ON_DESKTOP: 'PLAY_ON_DESKTOP',
+    STREAM_ON_DESKTOP: 'STREAM_ON_DESKTOP',
+    PLAY_ACTIVITY: 'PLAY_ACTIVITY',
     WATCH_VIDEO_ON_MOBILE: 'WATCH_VIDEO_ON_MOBILE',
 };
 
@@ -18,73 +19,187 @@ export class QuestManager {
     }
 
     static fromResponse(client, response) {
-        // Safe check: Handle both direct array responses and object responses containing quests/items
-        const questsArray = Array.isArray(response) 
-            ? response 
+        const questsArray = Array.isArray(response)
+            ? response
             : (response?.quests || response?.items || []);
-            
+
         return new QuestManager(
             client,
             questsArray.map((quest) => Quest.create(quest)),
         );
     }
 
-    [Symbol.iterator]() { return this.#quests.values(); }
-    get size() { return this.#quests.size; }
-    list() { return Array.from(this.#quests.values()); }
-    get(id) { return this.#quests.get(id); }
-    upsert(quest) { this.#quests.set(quest.id, quest); }
-    remove(id) { return this.#quests.delete(id); }
-    clear() { this.#quests.clear(); }
-    hasQuest(id) { return this.#quests.has(id); }
+    [Symbol.iterator]() {
+        return this.#quests.values();
+    }
+
+    get size() {
+        return this.#quests.size;
+    }
+
+    list() {
+        return Array.from(this.#quests.values());
+    }
+
+    get(id) {
+        return this.#quests.get(id);
+    }
+
+    upsert(quest) {
+        this.#quests.set(quest.id, quest);
+    }
+
+    remove(id) {
+        return this.#quests.delete(id);
+    }
+
+    clear() {
+        this.#quests.clear();
+    }
+
+    hasQuest(id) {
+        return this.#quests.has(id);
+    }
 
     getExpired(date = new Date()) {
-        return this.list().filter((q) => q.isExpired(date));
+        return this.list().filter((quest) => quest.isExpired(date));
     }
+
     getCompleted() {
-        return this.list().filter((q) => q.isCompleted());
+        return this.list().filter((quest) => quest.isCompleted());
     }
+
     getClaimable() {
-        return this.list().filter((q) => q.isCompleted() && !q.hasClaimedRewards());
-    }
-    filterQuestsValid() {
         return this.list().filter(
-            (q) => q.id !== '1412491570820812933' && !q.isCompleted() && !q.isExpired(),
+            (quest) =>
+                quest.isCompleted() &&
+                !quest.hasClaimedRewards() &&
+                !quest.isExpired(),
         );
     }
 
-    async claimRewards(log = console.log) {
+    filterQuestsValid() {
+        return this.list().filter(
+            (quest) =>
+                quest.id !== '1412491570820812933' &&
+                !quest.isCompleted() &&
+                !quest.isExpired(),
+        );
+    }
+
+    async claimRewards(log = console.log, targetQuestId = null) {
+        const writeLog = (message) => {
+            log(message);
+        };
+
+        // Refresh status before attempting any claim.
         try {
             const fresh = await this.client.get('/quests/@me');
-            const freshQuests = Array.isArray(fresh) ? fresh : (fresh?.quests || []);
-            for (const q of freshQuests) {
-                const existing = this.#quests.get(q.id);
-                if (existing && q.user_status) existing.updateUserStatus(q.user_status);
-            }
-        } catch { /* use stale state */ }
+            const freshQuests = Array.isArray(fresh)
+                ? fresh
+                : (fresh?.quests || fresh?.items || []);
 
-        const claimable = this.getClaimable();
-        let claimed = 0;
+            for (const item of freshQuests) {
+                const existing = this.#quests.get(item.id);
+
+                if (existing && item.user_status) {
+                    existing.updateUserStatus(item.user_status);
+                }
+            }
+        } catch (error) {
+            writeLog(
+                `[Claim] Could not refresh quest status: ${error.message}`,
+            );
+
+            // Do not claim using potentially stale state.
+            return 0;
+        }
+
+        const claimable = this.getClaimable().filter(
+            (quest) => !targetQuestId || quest.id === targetQuestId,
+        );
+
+        if (!claimable.length) {
+            writeLog('[Claim] No verified, unexpired claimable quest found.');
+            return 0;
+        }
+
+        let confirmedCount = 0;
+
         for (const quest of claimable) {
+            const name =
+                quest.config?.messages?.quest_name || quest.id;
+
             try {
-                await this.client.post(`/quests/${quest.id}/claim-reward`);
-                claimed++;
-                log(`Claimed reward for "${quest.config.messages.quest_name}"`);
-            } catch (err) {
-                log(`Could not claim reward for "${quest.config.messages.quest_name}": ${err.message}`);
+                const response = await this.client.post(
+                    `/quests/${quest.id}/claim-reward`,
+                );
+
+                /*
+                 * A non-throwing response alone does not prove that the
+                 * reward was granted. Refresh and inspect server status.
+                 */
+                const fresh = await this.client.get('/quests/@me');
+                const freshQuests = Array.isArray(fresh)
+                    ? fresh
+                    : (fresh?.quests || fresh?.items || []);
+
+                const updated = freshQuests.find(
+                    (item) => item.id === quest.id,
+                );
+
+                if (updated?.user_status) {
+                    quest.updateUserStatus(updated.user_status);
+                }
+
+                if (quest.hasClaimedRewards()) {
+                    confirmedCount++;
+                    writeLog(
+                        `[Claim] Server status confirms claimed: "${name}".`,
+                    );
+                } else {
+                    writeLog(
+                        `[Claim] Claim not verified for "${name}". ` +
+                        'The refreshed status does not confirm a claim.',
+                    );
+                }
+            } catch (error) {
+                if (isExpiredError(error)) {
+                    writeLog(
+                        `[Claim] "${name}" has expired; claim stopped.`,
+                    );
+                } else {
+                    writeLog(
+                        `[Claim] Failed for "${name}": ${error.message}`,
+                    );
+                }
             }
         }
-        return claimed;
+
+        return confirmedCount;
     }
 
     async acceptQuest(questId) {
-        const r = await this.client.post(`/quests/${questId}/enroll`, {
-            location: 11,
-            is_targeted: false,
-            metadata_raw: null,
-        });
         const quest = this.get(questId);
-        quest?.updateUserStatus(extractStatus(r));
+
+        if (!quest) {
+            throw new Error('QUEST_NOT_FOUND');
+        }
+
+        if (quest.isExpired()) {
+            throw new Error('QUEST_EXPIRED');
+        }
+
+        const response = await this.client.post(
+            `/quests/${questId}/enroll`,
+            {
+                location: 11,
+                is_targeted: false,
+                metadata_raw: null,
+            },
+        );
+
+        quest.updateUserStatus(extractStatus(response));
         return quest;
     }
 
@@ -95,156 +210,198 @@ export class QuestManager {
     async #refreshQuestStatus(quest) {
         try {
             const fresh = await this.client.get('/quests/@me');
-            const freshQuests = Array.isArray(fresh) ? fresh : (fresh?.quests || []);
-            const updated = freshQuests.find((q) => q.id === quest.id);
-            if (updated?.user_status) quest.updateUserStatus(updated.user_status);
-        } catch { /* ignore */ }
+            const freshQuests = Array.isArray(fresh)
+                ? fresh
+                : (fresh?.quests || fresh?.items || []);
+
+            const updated = freshQuests.find(
+                (item) => item.id === quest.id,
+            );
+
+            if (updated?.user_status) {
+                quest.updateUserStatus(updated.user_status);
+            }
+
+            return Boolean(updated);
+        } catch {
+            return false;
+        }
     }
 
     async doingQuest(quest, log = console.log) {
-        const questName = quest.config.messages.quest_name;
+        const name =
+            quest.config?.messages?.quest_name || quest.id;
+
+        if (quest.isExpired()) {
+            log(`[Quest] "${name}" has expired. Not starting.`);
+            return false;
+        }
+
+        if (quest.isCompleted()) {
+            log(`[Quest] "${name}" is already marked completed.`);
+            return true;
+        }
 
         if (!quest.isEnrolledQuest()) {
-            log(`Enrolling in quest "${questName}"...`);
+            log(`[Quest] Enrolling in "${name}"...`);
+
             try {
                 await this.acceptQuest(quest.id);
-            } catch (err) {
-                log(`Could not enroll in "${questName}": ${err.message}`);
+            } catch (error) {
+                if (isExpiredError(error)) {
+                    log(`[Quest] "${name}" has expired.`);
+                } else {
+                    log(`[Quest] Enrollment failed: ${error.message}`);
+                }
+
                 return false;
             }
         }
 
-        const taskConfig = quest.config.task_config ?? quest.config.task_config_v2;
+        if (quest.isExpired()) {
+            log(`[Quest] "${name}" expired before execution.`);
+            return false;
+        }
+
+        const taskConfig =
+            quest.config.task_config ??
+            quest.config.task_config_v2;
+
         if (!taskConfig) {
-            log(`[FAIL] "${questName}": task_config is missing from Discord's response.`);
+            log(`[FAIL] "${name}": task configuration is missing.`);
             return false;
         }
 
         const tasks = taskConfig.tasks ?? {};
-        const allKeys = Object.keys(tasks);
-        log(`[INFO] "${questName}": task keys = [${allKeys.join(', ')}]`);
+        const taskKeys = Object.keys(tasks);
 
-        const TASK_TYPES = Object.values(QuestTaskConfigType);
-        const taskName = TASK_TYPES.find((x) => tasks[x] != null);
+        log(`[INFO] "${name}": task keys = [${taskKeys.join(', ')}]`);
+
+        const taskName = Object.values(QuestTaskConfigType).find(
+            (type) => tasks[type] != null,
+        );
 
         if (!taskName) {
-            log(`[FAIL] "${questName}": unsupported task type(s) [${allKeys.join(', ')}].`);
+            log(`[FAIL] "${name}": no supported task type found.`);
             return false;
         }
-
-        log(`[INFO] "${questName}": using task type "${taskName}"`);
 
         const task = tasks[taskName];
-        const secondsNeeded = task.target;
+        const target = Number(task.target);
         const eventName = task.event_name ?? task.type ?? taskName;
-        const applicationName = quest.config.application.name;
 
-        if (taskName === 'WATCH_VIDEO' || taskName === 'WATCH_VIDEO_ON_MOBILE') {
-            const maxFuture = 10, speed = 7, interval = 1;
-            const enrolledAt = quest.userStatus?.enrolled_at
-                ? new Date(quest.userStatus.enrolled_at).getTime()
-                : Date.now();
-
-            let secondsDone = readProgress(quest, eventName, taskName);
-
-            while (true) {
-                const elapsed = Math.floor((Date.now() - enrolledAt) / 1000);
-                const maxAllowed = elapsed + maxFuture;
-                const diff = maxAllowed - secondsDone;
-                const timestamp = secondsDone + speed;
-
-                if (diff >= speed) {
-                    try {
-                        const res = await this.client.post(`/quests/${quest.id}/video-progress`, {
-                            timestamp: Math.min(secondsNeeded, timestamp + Math.random()),
-                        });
-                        secondsDone = Math.min(secondsNeeded, timestamp);
-                        if (res?.completed_at || res?.user_status?.completed_at) break;
-                    } catch (err) {
-                        log(`Video progress beat failed for "${questName}": ${err.message}. Retrying...`);
-                    }
-                }
-
-                if (secondsDone >= secondsNeeded) break;
-                await this.#timeout(interval * 1000);
-            }
-
-            try {
-                await this.client.post(`/quests/${quest.id}/video-progress`, { timestamp: secondsNeeded });
-            } catch { /* best effort */ }
-
-            log(`Quest "${questName}" completed!`);
-
-        } else if (taskName === 'PLAY_ON_DESKTOP') {
-            const interval = 30;
-            const maxDurationMs = (secondsNeeded + 600) * 1000;
-            const startTime = Date.now();
-            let beats = 0, consecutiveErrors = 0;
-
-            while (!quest.isCompleted()) {
-                if (Date.now() - startTime > maxDurationMs) {
-                    log(`Quest "${questName}" timed out.`);
-                    try {
-                        const res = await this.client.post(`/quests/${quest.id}/heartbeat`, { stream_key: null, terminal: true });
-                        quest.updateUserStatus(extractStatus(res));
-                    } catch { /* ignore */ }
-                    return true;
-                }
-
-                try {
-                    const res = await this.client.post(`/quests/${quest.id}/heartbeat`, { stream_key: null, terminal: false });
-                    quest.updateUserStatus(extractStatus(res));
-                    consecutiveErrors = 0;
-                } catch (err) {
-                    consecutiveErrors++;
-                    log(`Heartbeat failed for "${questName}" (attempt ${consecutiveErrors}): ${err.message}`);
-                    if (consecutiveErrors >= 5) { log(`Too many heartbeat failures for "${questName}". Giving up.`); return false; }
-                    await this.#timeout(5_000);
-                    continue;
-                }
-
-                beats++;
-                if (beats % 5 === 0) await this.#refreshQuestStatus(quest);
-
-                const done = readProgress(quest, eventName, taskName);
-                const remaining = Math.max(0, secondsNeeded - done);
-                log(`Spoofed your game to ${applicationName}. About ${Math.ceil(remaining / 60)} more minute(s) to go.`);
-
-                if (done >= secondsNeeded || quest.isCompleted()) break;
-                await this.#timeout(interval * 1000);
-            }
-
-            try {
-                const res = await this.client.post(`/quests/${quest.id}/heartbeat`, { stream_key: null, terminal: true });
-                quest.updateUserStatus(extractStatus(res));
-            } catch { /* best effort */ }
-
-            log(`Quest "${questName}" completed!`);
-            return true;
-
-        } else if (taskName === 'STREAM_ON_DESKTOP') {
-            log(`Stream quests cannot be completed automatically. Use the Discord desktop app for "${questName}".`);
-            return false;
-        } else if (taskName === 'PLAY_ACTIVITY') {
-            log(`Activity quests are not supported. Use the Discord desktop app for "${questName}".`);
+        if (!Number.isFinite(target) || target <= 0) {
+            log(`[FAIL] "${name}": invalid task target.`);
             return false;
         }
 
-        return true;
+        if (
+            taskName === 'WATCH_VIDEO' ||
+            taskName === 'WATCH_VIDEO_ON_MOBILE'
+        ) {
+            /*
+             * This branch only reports completion after the server
+             * response or refreshed quest status confirms it.
+             */
+            let lastResponse = null;
+
+            try {
+                lastResponse = await this.client.post(
+                    `/quests/${quest.id}/video-progress`,
+                    { timestamp: target },
+                );
+            } catch (error) {
+                if (isExpiredError(error)) {
+                    log(`[Quest] "${name}" has expired.`);
+                } else {
+                    log(`[Quest] Progress request failed: ${error.message}`);
+                }
+
+                return false;
+            }
+
+            if (
+                lastResponse?.user_status
+            ) {
+                quest.updateUserStatus(lastResponse.user_status);
+            }
+
+            await this.#refreshQuestStatus(quest);
+
+            if (
+                lastResponse?.completed_at ||
+                lastResponse?.user_status?.completed_at ||
+                quest.isCompleted()
+            ) {
+                log(`[Quest] "${name}" completion confirmed by server.`);
+                return true;
+            }
+
+            log(`[Quest] "${name}" completion is not confirmed.`);
+            return false;
+        }
+
+        if (taskName === 'PLAY_ON_DESKTOP') {
+            log(
+                `[Quest] "${name}" needs to be completed through ` +
+                'the supported Discord desktop experience.',
+            );
+
+            return false;
+        }
+
+        if (taskName === 'STREAM_ON_DESKTOP') {
+            log(
+                `[Quest] "${name}" requires the supported desktop streaming experience.`,
+            );
+
+            return false;
+        }
+
+        if (taskName === 'PLAY_ACTIVITY') {
+            log(
+                `[Quest] "${name}" requires the supported Discord activity.`,
+            );
+
+            return false;
+        }
+
+        log(`[Quest] Unsupported task type: ${taskName}`);
+        return false;
     }
 }
 
-function extractStatus(res) {
-    if (res && typeof res === 'object' && 'user_status' in res && res.user_status) {
-        return res.user_status;
+function isExpiredError(error) {
+    return (
+        Number(error?.code) === 260017 ||
+        /quest has expired/i.test(
+            String(error?.message ?? error),
+        )
+    );
+}
+
+function extractStatus(response) {
+    if (
+        response &&
+        typeof response === 'object' &&
+        response.user_status
+    ) {
+        return response.user_status;
     }
-    return res;
+
+    return response;
 }
 
 function readProgress(quest, eventName, taskName) {
     const progress = quest.userStatus?.progress;
+
     if (!progress) return 0;
-    const byEvent = eventName ? progress[eventName]?.value : undefined;
-    const byTask  = progress[taskName]?.value;
+
+    const byEvent = eventName
+        ? progress[eventName]?.value
+        : undefined;
+
+    const byTask = progress[taskName]?.value;
+
     return Number(byEvent ?? byTask ?? 0) || 0;
 }
