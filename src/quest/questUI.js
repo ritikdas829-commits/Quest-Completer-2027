@@ -1,6 +1,6 @@
 /**
  * questUI.js — Premium Neon Purple Quest Solver Dashboard
- * Merged & Optimized Edition: Active Quests Filter + Accurate Progress & Banners
+ * Final Optimized Edition: Fixed Banners, Clean Select Menu, Progress in Logs, Interactive View Button
  */
 
 import {
@@ -80,17 +80,49 @@ function getTaskProgress(taskType, taskConfig, status) {
     return Math.min(100, Math.floor((current / target) * 100));
 }
 
-function getBannerUrl(config) {
+function getBannerUrl(quest) {
+    const config = quest?.config ?? {};
     const appId = config?.application?.id || config?.application_id || config?.applicationId;
     const assets = config?.assets ?? {};
-    const raw = assets.hero || assets.hero_video || assets.game_tile || assets.quest_tile || assets.game_tile_video || assets.quest_bar || assets.card || Object.values(assets)[0];
 
-    if (!appId || !raw) return null;
+    const directUrl = 
+        quest?.bannerURL ?? 
+        quest?.bannerUrl ?? 
+        quest?.banner_url ?? 
+        quest?.imageURL ?? 
+        quest?.imageUrl ?? 
+        config?.banner ?? 
+        config?.hero;
+
+    if (directUrl && typeof directUrl === 'string' && /^https:\/\/\S+/i.test(directUrl)) {
+        return directUrl;
+    }
+
+    const raw = 
+        assets.hero || 
+        assets.hero_video || 
+        assets.quest_tile || 
+        assets.game_tile || 
+        assets.game_tile_video || 
+        assets.quest_bar || 
+        assets.card || 
+        assets.quest_home ||
+        Object.values(assets)[0];
+
+    if (!raw) return null;
     const asset = String(raw).trim();
     if (!asset) return null;
 
-    const filename = /\.(png|jpe?g|webp|gif)$/i.test(asset) ? asset : `${asset}.png`;
-    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+    if (/^https:\/\/\S+/i.test(asset)) {
+        return asset;
+    }
+
+    if (appId) {
+        const filename = /\.(png|jpe?g|webp|gif)$/i.test(asset) ? asset : `${asset}.png`;
+        return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+    }
+
+    return null;
 }
 
 function formatDate(value) {
@@ -104,7 +136,10 @@ function buildRewardText(config) {
     if (!rewards.length) return '200 Orbs';
     return rewards.map(r => {
         const name = r?.messages?.name || 'Reward';
-        return r?.orb_quantity ? `${r.orb_quantity} ${name}` : name;
+        if (r?.orb_quantity) {
+            return `${r.orb_quantity} Orbs`;
+        }
+        return name;
     }).join(', ');
 }
 
@@ -191,7 +226,6 @@ export async function buildQuestSolverPanel(
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
-    // ── Filter to ONLY show active/uncompleted quests ──
     const activeQuests = rawQuests.filter(quest => {
         const completed = quest.isCompleted?.() ?? false;
         const expired = quest.isExpired?.() ?? false;
@@ -222,8 +256,7 @@ export async function buildQuestSolverPanel(
             rewards: buildRewardText(config),
             tasks,
             platformProgress,
-            banner: getBannerUrl(config),
-            url: 'https://discord.com/quests',
+            banner: getBannerUrl(quest),
             progress: { total },
             sourceQuest: quest,
         };
@@ -269,10 +302,10 @@ export async function buildQuestSolverPanel(
     if (xbox > 0) platformLines += `\n${icons.xbox} Xbox:${xbox}%`;
     if (playstation > 0) platformLines += `\n${icons.playstation} PlayStation:${playstation}%`;
 
+    // Main section only shows platform breakdown, overall progress moved to logs
     container.addTextDisplayComponents(
         text(
-            `### ${icons.progress} Progress:${selected.progress.total}%\n` +
-            `${progressBar(selected.progress.total)}\n` +
+            `### Platform Status\n` +
             platformLines
         )
     );
@@ -348,25 +381,26 @@ export async function buildQuestSolverPanel(
         )
     );
 
-    if (selected.url && /^https:\/\/\S+/i.test(selected.url)) {
-        container.addActionRowComponents(
-            new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setLabel('View Quest')
-                    .setEmoji('🔗')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL(selected.url)
-            )
-        );
-    }
+    // Interactive View Button (Triggers modal/quest view handler instead of external web link)
+    container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`quest_view_${selected.id}`)
+                .setLabel('View Quest')
+                .setEmoji('🔗')
+                .setStyle(ButtonStyle.Secondary)
+        )
+    );
 
-    const logLines = String(customLogs ?? `Quest selected: ${selected.questName}\nStatus: Ready to run`).slice(0, 850);
+    const logDetails = String(customLogs ?? `Quest selected: ${selected.questName}\nStatus: Ready to run`).slice(0, 600);
+    const progressLogText = `📊 Progress: ${selected.progress.total}\%\n${progressBar(selected.progress.total)}`;
 
     container.addSeparatorComponents(separator());
     container.addTextDisplayComponents(
         text(
             `### 🧾 Quest Logs\n` +
-            `\`\`\`text\n${logLines}\n\`\`\``
+            `${progressLogText}\n` +
+            `\`\`\`text\n${logDetails}\n\`\`\``
         )
     );
 
