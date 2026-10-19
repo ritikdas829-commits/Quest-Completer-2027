@@ -1,3 +1,7 @@
+/**
+ * interactionCreate.js — Event Handler for Interactions
+ * Location: src/events/interactionCreate.js
+ */
 import { getEmoji } from '../handlers/emoji.js';
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
@@ -63,15 +67,16 @@ export default {
                 }
 
                 const tokenStore = client.tokenStore;
-                const accounts = await tokenStore.getAllSlots(interaction.guild.id, interaction.user.id);
-                const active = accounts.find(a => a.isActive) || accounts[0];
+                const active = await tokenStore.getActiveSlot(interaction.guild.id, interaction.user.id);
+                const token = active ? (active.token || await tokenStore.get(interaction.guild.id, interaction.user.id, active.slot)) : null;
 
-                if (!active) {
+                if (!active || !token) {
                     await interaction.reply({ content: '❌ No active token slot found! Use `;link` first.', flags: 64 });
                     return;
                 }
 
-                const qc = new QuestClient(active.token);
+                const cleanToken = typeof token === 'string' ? token.trim().replace(/['"]+/g, '') : token;
+                const qc = new QuestClient(cleanToken);
 
                 if (interaction.customId.startsWith('quest_start_')) {
                     const questId = interaction.customId.replace('quest_start_', '');
