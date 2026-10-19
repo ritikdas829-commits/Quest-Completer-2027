@@ -1,5 +1,5 @@
 /**
- * questManager.js — Complete Manager with Game Heartbeats & Video Progression
+ * questManager.js — Complete Manager with Game Heartbeats, Video Progression & Live Progress Callback
  * Location: src/quest/questManager.js
  */
 
@@ -153,10 +153,10 @@ export class QuestManager {
     }
 
     // ------------------------------------------
-    // QUEST EXECUTION
+    // QUEST EXECUTION (WITH LIVE PROGRESS)
     // ------------------------------------------
 
-    async doingQuest(quest, log = console.log) {
+    async doingQuest(quest, log = console.log, onProgress = null) {
         if (!quest) {
             safeLog(log, '[Quest] Quest not found.');
             return false;
@@ -220,8 +220,13 @@ export class QuestManager {
         const eventName = task?.event_name ?? task?.type ?? taskName;
         const applicationName = quest.config?.application?.name || 'Application';
 
+        // Initial progress report
+        if (typeof onProgress === 'function') {
+            await onProgress(0, secondsNeeded);
+        }
+
         // ------------------------------------------
-        // VIDEO / MOBILE VIDEO PROGRESSION
+        // WATCH VIDEO & WATCH VIDEO ON MOBILE
         // ------------------------------------------
         if (taskName === 'WATCH_VIDEO' || taskName === 'WATCH_VIDEO_ON_MOBILE') {
             const maxFuture = 10, speed = 7, interval = 1;
@@ -246,6 +251,10 @@ export class QuestManager {
                         quest.updateUserStatus(extractStatus(res));
                         secondsDone = Math.min(secondsNeeded, timestamp);
 
+                        if (typeof onProgress === 'function') {
+                            await onProgress(secondsDone, secondsNeeded);
+                        }
+
                         if (res?.completed_at || res?.user_status?.completed_at || quest.isCompleted()) {
                             break;
                         }
@@ -262,6 +271,10 @@ export class QuestManager {
                 const finalRes = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, { timestamp: secondsNeeded });
                 quest.updateUserStatus(extractStatus(finalRes));
             } catch { /* Best effort */ }
+
+            if (typeof onProgress === 'function') {
+                await onProgress(secondsNeeded, secondsNeeded);
+            }
 
             safeLog(log, `Quest "${questName}" completed!`);
             return true;
@@ -304,6 +317,10 @@ export class QuestManager {
                 if (beats % 5 === 0) await this.#refreshQuestStatus(quest);
 
                 const done = readProgress(quest, eventName, taskName);
+                if (typeof onProgress === 'function') {
+                    await onProgress(done, secondsNeeded);
+                }
+
                 const remaining = Math.max(0, secondsNeeded - done);
                 safeLog(log, `Spoofed game to ${applicationName}. About ${Math.ceil(remaining / 60)} more minute(s) to go.`);
 
@@ -315,6 +332,10 @@ export class QuestManager {
                 const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { stream_key: null, terminal: true });
                 quest.updateUserStatus(extractStatus(res));
             } catch { /* Best effort */ }
+
+            if (typeof onProgress === 'function') {
+                await onProgress(secondsNeeded, secondsNeeded);
+            }
 
             safeLog(log, `Quest "${questName}" completed!`);
             return true;
