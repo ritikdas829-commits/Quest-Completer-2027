@@ -12,8 +12,8 @@ import {
     SeparatorSpacingSize,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
-    MediaGalleryBuilder,
-    MediaGalleryItemBuilder,
+    SectionBuilder,
+    ThumbnailBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
@@ -116,37 +116,23 @@ function getBannerUrl(config, questId) {
         assets.hero_video ||
         assets.game_tile ||
         assets.quest_tile ||
-        assets.game_tile_video;
+        assets.game_tile_video ||
+        assets.quest_bar ||
+        assets.card ||
+        Object.values(assets)[0];
 
     if (!applicationId || !rawAsset) {
-        console.warn('[QuestUI] Banner data missing:', {
-            questId,
-            applicationId: applicationId ?? null,
-            assets,
-        });
-
         return null;
     }
 
     const asset = String(rawAsset).trim();
-
     if (!asset) return null;
 
-    // Avoid adding .png twice when the asset already has an extension.
     const filename = /\.(png|jpe?g|webp|gif)$/i.test(asset)
         ? asset
         : `${asset}.png`;
 
-    const url =
-        `https://cdn.discordapp.com/app-assets/` +
-        `${applicationId}/quest-assets/${filename}`;
-
-    console.log('[QuestUI] Banner URL:', {
-        questId,
-        url,
-    });
-
-    return url;
+    return `https://cdn.discordapp.com/app-assets/${applicationId}/quest-assets/${filename}`;
 }
 
 function formatDate(value) {
@@ -182,7 +168,6 @@ function getQuestStatus(quest) {
 
     if (!completed) return 'Not completed';
 
-    // Only show claimed when the Quest class confirms it.
     const claimed = quest.hasClaimedRewards?.();
 
     if (claimed === true) return 'Completed / Claimed';
@@ -466,28 +451,18 @@ export async function buildQuestSolverPanel(
             .setDivider(true)
     );
 
-    container.addTextDisplayComponents(
+    // Main section with content and thumbnail/banner accessory
+    const mainSection = new SectionBuilder().addTextDisplayComponents(
         new TextDisplayBuilder().setContent(contentText)
     );
 
-    // Banner
     if (selected.banner) {
-        container.addMediaGalleryComponents(
-            new MediaGalleryBuilder().addItems(
-                new MediaGalleryItemBuilder()
-                    .setURL(selected.banner)
-                    .setDescription(
-                        shorten(selected.questName, 100)
-                    )
-            )
-        );
-    } else {
-        container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-                '🖼️ *No banner asset was supplied for this quest.*'
-            )
+        mainSection.setThumbnailAccessory(
+            new ThumbnailBuilder().setURL(selected.banner)
         );
     }
+
+    container.addSectionComponents(mainSection);
 
     // Quest select menu
     const menuOptions = allQuests.slice(0, 25).map((quest) => {
