@@ -1,7 +1,15 @@
+
 /**
- * quest.js — Quest Model Class — UPDATED with getProgress()
+ * quest.js — Quest Model Class
  * Location: src/quest/quest.js
+ *
+ * Features:
+ * - Quest status management
+ * - Task progress calculation
+ * - Multiple progress data formats
+ * - Enrollment, expiration and reward status
  */
+
 export class Quest {
     #data;
 
@@ -13,65 +21,40 @@ export class Quest {
         return new Quest(data);
     }
 
-    get id() { return this.#data.id; }
-    get config() { return this.#data.config; }
-    get userStatus() { return this.#data.user_status; }
-    get targetedContent() { return this.#data.targeted_content; }
-    get preview() { return this.#data.preview; }
+    get id() {
+        return this.#data.id;
+    }
+
+    get config() {
+        return this.#data.config ?? {};
+    }
+
+    get userStatus() {
+        return this.#data.user_status ?? null;
+    }
+
+    get targetedContent() {
+        return this.#data.targeted_content;
+    }
+
+    get preview() {
+        return this.#data.preview;
+    }
 
     isExpired(reference = new Date()) {
-        return reference.getTime() > new Date(this.#data.config.expires_at).getTime();
+        const expiresAt = this.config?.expires_at;
+
+        if (!expiresAt) return false;
+
+        const expiry = new Date(expiresAt).getTime();
+
+        if (!Number.isFinite(expiry)) return false;
+
+        return reference.getTime() > expiry;
     }
 
     isCompleted() {
         return Boolean(this.userStatus?.completed_at);
-    }
-
-    getProgress() {
-        if (this.isCompleted()) return 100;
-
-        const userStatus = this.userStatus;
-        if (!userStatus) return 0;
-
-        const tasks =
-            this.config?.task_config?.tasks ??
-            this.config?.task_config_v2?.tasks ??
-            {};
-
-        const taskEntries = Object.entries(tasks);
-
-        if (taskEntries.length === 0) return 0;
-
-        let totalProgress = 0;
-        let validTasks = 0;
-
-        for (const [taskType, taskData] of taskEntries) {
-            const target = Number(taskData?.target ?? 1);
-
-            const progress = Number(
-                userStatus.details?.[taskType]?.progress ??
-                userStatus.progress?.[taskType] ??
-                0
-            );
-
-            if (!Number.isFinite(target) || target <= 0) continue;
-
-            const safeProgress = Number.isFinite(progress)
-                ? Math.max(0, progress)
-                : 0;
-
-            const percent = Math.min(
-                100,
-                (safeProgress / target) * 100
-            );
-
-            totalProgress += percent;
-            validTasks++;
-        }
-
-        if (validTasks === 0) return 0;
-
-        return Math.floor(totalProgress / validTasks);
     }
 
     isEnrolledQuest() {
@@ -82,7 +65,134 @@ export class Quest {
         return Boolean(this.userStatus?.claimed_at);
     }
 
+    /**
+     * Get progress percentage for one task.
+     */
+    getTaskProgress(taskType, taskConfig = {}) {
+        if (this.isCompleted()) return 100;
+
+        const status = this.userStatus;
+
+        if (!status) return 0;
+
+        const target = Number(taskConfig?.target ?? 1);
+
+        if (!Number.isFinite(target) || target <= 0) {
+            return 0;
+        }
+
+        const eventName =
+            taskConfig?.event_name ??
+            taskConfig?.type ??
+            taskType;
+
+        const progress = status.progress ?? {};
+        const details = status.details ?? {};
+
+        const candidates = [
+            details[taskType]?.progress,
+            details[taskType]?.value,
+            details[eventName]?.progress,
+            details[eventName]?.value,
+
+            progress[eventName]?.value,
+            progress[eventName]?.progress,
+            progress[eventName],
+
+            progress[taskType]?.value,
+            progress[taskType]?.progress,
+            progress[taskType],
+        ];
+
+        let current = 0;
+
+        for (const candidate of candidates) {
+            if (candidate === undefined || candidate === null) {
+                continue;
+            }
+
+            const rawValue =
+                typeof candidate === 'object'
+                    ? candidate.value ?? candidate.progress
+                    : candidate;
+
+            if (rawValue === undefined || rawValue === null) {
+                continue;
+            }
+
+            const number = Number(rawValue);
+
+            if (Number.isFinite(number)) {
+                current = Math.max(0, number);
+                break;
+            }
+        }
+
+        // Support a separate stream-progress field if present.
+        if (
+            taskType === 'STREAM_ON_DESKTOP' &&
+            status.stream_progress_seconds != null
+        ) {
+            const streamProgress = Number(
+                status.stream_progress_seconds
+            );
+
+            if (Number.isFinite(streamProgress)) {
+                current = Math.max(current, streamProgress);
+            }
+        }
+
+        return Math.min(
+            100,
+            Math.floor((current / target) * 100)
+        );
+    }
+
+    /**
+     * Estimate overall quest progress using the average
+     * of its task percentages.
+     *
+     * This is an estimate, not Discord's confirmed
+     * internal overall-progress calculation.
+     */
+    getProgress() {
+        if (this.isCompleted()) return 100;
+
+        const tasks =
+            this.config?.task_config?.tasks ??
+            this.config?.task_config_v2?.tasks ??
+            {};
+
+        const entries = Object.entries(tasks);
+
+        if (!entries.length) return 0;
+
+        let total = 0;
+        let count = 0;
+
+        for (const [taskType, taskConfig] of entries) {
+            const percentage = this.getTaskProgress(
+                taskType,
+                taskConfig
+            );
+
+            total += percentage;
+            count++;
+        }
+
+        return count
+            ? Math.floor(total / count)
+            : 0;
+    }
+
+    /**
+     * Update quest status from a fresh API response.
+     */
     updateUserStatus(userStatus) {
+        if (!userStatus || typeof userStatus !== 'object') {
+            return;
+        }
+
         this.#data.user_status = userStatus;
     }
 }
