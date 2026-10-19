@@ -1,3 +1,7 @@
+/**
+ * questClient.js — Final Combined Version with Full Headers & Safe Retries
+ * Location: src/quest/questClient.js
+ */
 
 import { Constants } from './constants.js';
 import { QuestManager } from './questManager.js';
@@ -81,10 +85,24 @@ export class QuestClient {
 
     #buildHeaders() {
         return {
-            Authorization: this.#token,
+            'Authorization': this.#token,
             'User-Agent': Constants.USER_AGENT,
             'Content-Type': 'application/json',
-            Accept: 'application/json',
+            'accept': 'application/json',
+            'accept-language': 'en-US,en;q=0.9',
+            'origin': 'https://discord.com',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://discord.com/channels/@me',
+            'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'x-debug-options': 'bugReporterEnabled',
+            'x-discord-locale': 'en-US',
+            'x-discord-timezone': 'UTC',
             'x-super-properties': Buffer.from(
                 JSON.stringify(Constants.Properties)
             ).toString('base64'),
@@ -158,8 +176,9 @@ export class QuestClient {
             }
 
             if (response.status === 429) {
+                const delay = getRetryDelay(response, attempt);
                 if (attempt < MAX_RETRIES) {
-                    await sleep(getRetryDelay(response, attempt));
+                    await sleep(delay);
                     continue;
                 }
 
@@ -179,7 +198,8 @@ export class QuestClient {
                     RETRYABLE.has(response.status) &&
                     attempt < MAX_RETRIES
                 ) {
-                    await sleep(getRetryDelay(response, attempt));
+                    const delay = getRetryDelay(response, attempt);
+                    await sleep(delay);
                     continue;
                 }
 
