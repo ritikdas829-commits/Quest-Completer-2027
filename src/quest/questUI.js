@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Corrected Quest CDN Banners
+ * questUI.js — Final Optimized Edition with Perfect Banner & Asset Resolution
  * Location: src/quest/questUI.js
  */
 
@@ -18,6 +18,7 @@ import {
 import { QuestClient } from './questClient.js';
 
 const ACCENT = 0x2B2D31;
+const EXCLUDED_QUEST_ID = '1412491570820812933';
 
 function getTasks(config) {
     return config?.task_config?.tasks ?? config?.task_config_v2?.tasks ?? {};
@@ -54,12 +55,14 @@ function getBannerUrl(quest) {
     const config = quest?.config ?? {};
     const assets = config?.assets ?? {};
     
+    // Check direct properties first
     const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || config?.banner_url || config?.banner;
     if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
         return direct;
     }
 
-    const assetKeys = ['hero', 'hero_video', 'quest_bar_hero', 'quest_tile', 'game_tile', 'quest_bar', 'quest_home', 'card', 'splash'];
+    // High priority asset keys for Discord quests
+    const assetKeys = ['hero', 'quest_bar_hero', 'hero_video', 'quest_tile', 'game_tile', 'quest_bar', 'quest_home', 'card', 'splash'];
     let raw = null;
     for (const key of assetKeys) {
         if (assets[key] && String(assets[key]).trim() !== '') {
@@ -79,8 +82,10 @@ function getBannerUrl(quest) {
 
     if (/^https:\/\/\S+/i.test(asset)) return asset;
 
-    if (quest?.id) {
-        const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(asset) ? asset : `${asset}.png`;
+    // Build valid Discord Quest CDN asset link using quest ID and asset hash/filename
+    if (quest?.id && asset) {
+        const cleanAsset = asset.replace(/^\/+/, '');
+        const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(cleanAsset) ? cleanAsset : `${cleanAsset}.png`;
         return `https://cdn.discordapp.com/quest-assets/${quest.id}/${filename}`;
     }
 
@@ -162,8 +167,15 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
+    // Filter out expired, completed, and blacklisted quests
     const activeQuests = rawQuests.filter(q => {
-        try { return !q.isExpired?.(); } catch { return true; }
+        try { 
+            const isCompleted = q.isCompleted?.() || false;
+            const isExpired = q.isExpired?.() || false;
+            return q.id !== EXCLUDED_QUEST_ID && !isExpired && !isCompleted;
+        } catch { 
+            return true; 
+        }
     });
 
     const allQuests = activeQuests.map(quest => {
@@ -189,15 +201,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             platformProgress,
             banner: getBannerUrl(quest),
             progress: { total },
-            isCompleted: (()=>{ try { return quest.isCompleted?.() ?? false; } catch { return false; } })(),
+            isCompleted: false,
         };
     });
 
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text('## Quest Solver\n\nNo Quests found. Check https://discord.com/quests'));
+        c.addTextDisplayComponents(text('## Quest Solver\n\nNo active Quests found. Check https://discord.com/quests'));
         c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Primary)));
-        c.addTextDisplayComponents(text('```\nNo quests\n```'));
         return { components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
     }
 
@@ -236,9 +247,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    if (selected.banner && selected.banner.startsWith('https://')) {
+    // Strict validation: Only display media gallery if banner URL is valid and fully qualified
+    if (selected.banner && typeof selected.banner === 'string' && selected.banner.startsWith('https://') && !selected.banner.includes('undefined')) {
         try {
-            container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(selected.banner).setDescription(selected.game + ' banner')));
+            container.addMediaGalleryComponents(
+                new MediaGalleryBuilder().addItems(
+                    new MediaGalleryItemBuilder().setURL(selected.banner).setDescription(selected.game + ' banner')
+                )
+            );
         } catch {}
     }
 
@@ -263,7 +279,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary)
     ));
 
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL('https://discord.com/quests')));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text('Quest Logs'));
@@ -272,11 +288,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const tStr = function(d) { return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); };
     let logText = customLogs;
     if (!logText) {
-        if (isCompleted) {
-            logText = 'Quest selected\nEnrolled\n[' + tStr(new Date(now - 900000)) + '] Fast mode active\n[' + tStr(now) + '] Quest completed! [' + selected.progress.total + '%] [' + progressBar(selected.progress.total) + ']';
-        } else {
-            logText = 'Quest selected\n[' + tStr(new Date(now - 360000)) + '] Fast mode active\n[' + tStr(now) + '] Progress -> ' + selected.questName + ' [' + selected.progress.total + '%] [' + progressBar(selected.progress.total) + ']';
-        }
+        logText = 'Quest selected\n[' + tStr(now) + '] Fast mode active\nProgress -> ' + selected.questName + ' [' + selected.progress.total + '%] [' + progressBar(selected.progress.total) + ']';
     }
 
     logsContainer.addTextDisplayComponents(text('```\n' + String(logText).slice(0, 900) + '\n```'));
