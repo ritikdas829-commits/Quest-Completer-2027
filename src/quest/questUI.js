@@ -1,5 +1,5 @@
 /**
- * questUI.js - 100% Orbie Clone UI + Verified Logic
+ * questUI.js — 100% Orbie Clone with Custom Emojis & Dynamic Banner Fallback
  * Location: src/quest/questUI.js
  */
 
@@ -64,18 +64,19 @@ function getQuestImages(quest) {
 
     // 1. Direct HTTPS (skip mp4)
     let bannerUrl = [
-        data.bannerURL, data.bannerUrl, data.banner_url, config.banner_url, config.banner
+        data.bannerURL, data.bannerUrl, data.banner_url, config.banner_url, config.banner, config.splash
     ].find(u => typeof u === 'string' && u.startsWith('https://') && !/\.mp4/i.test(u)) ?? null;
 
-    // 2. Fallback - Game quests CDN URL
+    // 2. Fallback - Game quests & software quests CDN URL
     if (!bannerUrl && appId) {
-        const order = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'hero_video'];
-        for (const k of order) {
-            const v = assets[k];
+        const keys = [...Object.keys(assets), 'hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'hero_video', 'splash', 'icon'];
+        for (const k of keys) {
+            const v = assets[k] || config[k];
             if (!v || String(v).trim() === '') continue;
             const s = String(v).trim();
             if (/\.mp4/i.test(s)) continue;
             if (s.startsWith('https://')) { bannerUrl = s; break; }
+            
             let filename = s.split('/').pop();
             if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
             bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
@@ -83,8 +84,9 @@ function getQuestImages(quest) {
         }
     }
 
+    // 3. Application Icon CDN Fallback
     let iconUrl = null;
-    const rawIcon = app.icon;
+    const rawIcon = app.icon || config.icon;
     if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
         const t = rawIcon.trim();
         if (t.startsWith('https://')) iconUrl = t;
@@ -94,14 +96,20 @@ function getQuestImages(quest) {
         }
     }
 
+    // Direct Icon Fallback to prevent empty placeholder box
+    if (!bannerUrl && iconUrl) {
+        bannerUrl = iconUrl;
+    }
+
     return { banner: bannerUrl, icon: iconUrl };
 }
 
-function formatDate(v) {
+function formatUnixDate(v) {
     if (!v) return 'N/A';
     const d = new Date(v);
     if (isNaN(d.getTime())) return 'N/A';
-    return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
+    const timestamp = Math.floor(d.getTime() / 1000);
+    return `<t:${timestamp}:d>`;
 }
 
 function buildRewardText(config) {
@@ -164,7 +172,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const platformProgress={};
         for (const t of Object.keys(tasks)) platformProgress[t]=getTaskProgress(t,tasks[t],status);
         
-        // FIX: Use MAX instead of Average for precise progress calculation
         const seen=new Set(); const uniq=[];
         for (const k of Object.keys(platformProgress)) {
             const base=k.replace(/_\d+$/, '');
@@ -174,14 +181,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return {
             id:quest.id, game:messages.game_title || config.application?.name || 'Unknown',
             publisher:messages.game_publisher || 'Unknown', questName:messages.quest_name || 'Discord Quest',
-            enrolledAt:formatDate(status.enrolled_at), expiresAt:formatDate(config.expires_at),
+            enrolledAt:formatUnixDate(status.enrolled_at), expiresAt:formatUnixDate(config.expires_at),
             rewards:buildRewardText(config), tasks, platformProgress, images, progress:{total}
         };
     });
 
     if (!allQuests.length) {
         const c=new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text('## 🏆 Quest Solver\n\nNo active Quests found. Check https://discord.com/quests'));
+        c.addTextDisplayComponents(text('## <CustomEmojiID> Quest Solver\n\nNo active Quests found. Check https://discord.com/quests'));
         c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({name:'🔄'}).setStyle(ButtonStyle.Primary)));
         return { components:[c], flags:MessageFlags.IsComponentsV2, allowedMentions:{parse:[]} };
     }
@@ -189,74 +196,72 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const selected = allQuests.find(q=>String(q.id)===String(selectedQuestId)) ?? allQuests[0];
     const container=new ContainerBuilder().setAccentColor(ACCENT);
 
-    container.addTextDisplayComponents(text('## 🏆 Quest Solver'));
+    // --- CUSTOM EMOJI TITLE ---
+    container.addTextDisplayComponents(text('# <:quest:1533359378659414116> Quest Solver'));
 
     const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? selected.progress.total;
     const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? selected.platformProgress['WATCH_VIDEO'] ?? 0;
     const hasMobile = Object.keys(selected.platformProgress).some(k=>k.includes('MOBILE'));
     const hasDesktop = !hasMobile || Object.keys(selected.platformProgress).some(k=>k.includes('DESKTOP') || k.includes('WATCH_VIDEO'));
 
+    const progressStatusIcon = selected.progress.total >= 100 ? '✅' : '🌀';
+
     let info = '';
-    info += `• **Game:** ${selected.game}\n`;
-    info += `• **Publisher:** ${selected.publisher}\n`;
-    info += `• **Quest Name:** ${selected.questName}\n`;
-    info += `• **Enrolled At:** ${selected.enrolledAt}\n`;
-    info += `• **Expires At:** ${selected.expiresAt}\n`;
-    info += `• **Progress:**\n`;
+    info += `- **Game:** ${selected.game}\n`;
+    info += `- **Publisher:** ${selected.publisher}\n`;
+    info += `- **Quest Name:** ${selected.questName}\n`;
+    info += `- **Enrolled At:** ${selected.enrolledAt}\n`;
+    info += `- **Expires At:** ${selected.expiresAt}\n`;
+    info += `- **Progress:**\n`;
     if (hasMobile && !hasDesktop) {
-        info += `🌀 ${selected.progress.total}%\n`;
-        info += `📱 **Mobile:** ${mobilePct}%\n`;
+        info += `${progressStatusIcon} ${selected.progress.total}%\n`;
+        info += `-# <a:phone:1533359351232856115> **Mobile:** ${mobilePct}%\n`;
     } else if (hasMobile && hasDesktop) {
-        info += `🌀 ${selected.progress.total}%\n`;
-        info += `💻 **Desktop:** ${desktopPct}%\n`;
-        info += `📱 **Mobile:** ${mobilePct}%\n`;
+        info += `${progressStatusIcon} ${selected.progress.total}%\n`;
+        info += `-# <:WATCH_VIDEO:1533359391229612112> **Web/Desktop:** ${desktopPct}%\n`;
+        info += `-# <a:phone:1533359351232856115> **Mobile:** ${mobilePct}%\n`;
     } else {
-        info += `🌀 ${selected.progress.total}%\n`;
-        info += `💻 **Desktop:** ${desktopPct}%\n`;
-        if (Object.keys(selected.platformProgress).some(k=>k.includes('PLAYSTATION'))) {
-            info += `🎮 **PlayStation:** ${selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0}%\n`;
-        }
+        info += `${progressStatusIcon} ${selected.progress.total}%\n`;
+        info += `-# <:WATCH_VIDEO:1533359391229612112> **Web/Desktop:** ${desktopPct}%\n`;
     }
     container.addTextDisplayComponents(text(info));
 
-    container.addTextDisplayComponents(text(`### 🎁 Rewards:\n• **${selected.rewards}** 💎`));
+    // --- REWARDS WITH CUSTOM ORB EMOJI ---
+    container.addTextDisplayComponents(text(`## Rewards:\n- **${selected.rewards} <:orbIcon:1533359368542617640>**`));
 
+    // --- TASKS ---
     const seenT=new Set(); const taskLines=[];
     for (const type of Object.keys(selected.tasks)) {
         const base=type.replace(/_\d+$/, '');
         if (seenT.has(base)) continue;
         seenT.add(base);
         const t=selected.tasks[type];
-        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`• Play On Desktop for ${Math.ceil((t.target||900)/60)}m`);
-        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`• Watch Video On Mobile for ${Math.ceil((t.target||0)/60)}m`);
-        else if (type.includes('WATCH_VIDEO')) taskLines.push(`• Watch Video On ${type.includes('MOBILE')?'Mobile':'Desktop'} for ${t.target||0}s`);
-        else if (type.includes('PLAY_ON_PLAYSTATION')) taskLines.push(`• Play On Playstation ${t.target||900} times`);
-        else taskLines.push(`• ${type.replace(/_/g,' ')}`);
+        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`- Play On Desktop for ${Math.ceil((t.target||900)/60)}m`);
+        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`- Watch Video On Mobile for ${Math.ceil((t.target||0)/60)}m`);
+        else if (type.includes('WATCH_VIDEO')) taskLines.push(`- Watch Video for ${Math.ceil((t.target||0)/60)}m`);
+        else taskLines.push(`- ${type.replace(/_/g,' ')}`);
     }
-    container.addTextDisplayComponents(text(`### 📋 Tasks:\n${taskLines.join('\n') || '• Play On Desktop for 15m'}`));
+    container.addTextDisplayComponents(text(`## Tasks:\n${taskLines.join('\n') || '- Watch Video for 2m'}`));
 
-    // --- Media Gallery (Banner + Icon Fallback) ---
+    // --- MEDIA GALLERY (Banner / Icon) ---
     const galleryItems=[];
     if (selected.images?.banner && selected.images.banner.startsWith('https://')) {
         galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.banner).setDescription(selected.game + ' banner'));
-    }
-    if (selected.images?.icon && selected.images.icon.startsWith('https://')) {
-        if (!selected.images.banner || selected.images.icon !== selected.images.banner) {
-            galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.icon).setDescription(selected.game + ' icon'));
-        }
     }
     if (galleryItems.length>0) {
         try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
+    // --- SELECT MENU ---
     const menuOptions=[];
     for (const q of allQuests.slice(0,25)) {
-        const opt=new StringSelectMenuOptionBuilder().setLabel(shorten(q.game+': '+q.questName,95)).setValue(String(q.id)).setDescription(shorten(`${q.progress.total}% - ${q.rewards}`,100)).setEmoji({name:'💎'});
+        const opt=new StringSelectMenuOptionBuilder().setLabel(shorten(q.game+': '+q.questName,95)).setValue(String(q.id)).setDescription(shorten(`${q.progress.total}% - ${q.rewards}`,100));
         if (String(q.id)===String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game+': '+selected.questName,100)).addOptions(menuOptions)));
 
+    // --- BUTTONS ---
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_'+selected.id).setLabel('Start').setEmoji({name:'▶️'}).setStyle(isRunning?ButtonStyle.Secondary:ButtonStyle.Success).setDisabled(isRunning?true:false),
@@ -265,15 +270,16 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     ));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji({name:'🔗'}).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
+    // --- QUEST LOGS WITH CUSTOM LOG EMOJI ---
     const logsContainer=new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text('## 📝 Quest Logs'));
+    logsContainer.addTextDisplayComponents(text('## <:log:1533359319842557983> Quest Logs'));
     const now=new Date();
     const tStr=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
     let logText=customLogs;
     if (!logText) {
         logText=`🧭 Quest selected\n[${tStr(now)}] ⚡ Fast mode active\n[${tStr(now)}] 📈 Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
     }
-    logsContainer.addTextDisplayComponents(text('```\n' + String(logText).slice(0,900) + '\n```'));
+    logsContainer.addTextDisplayComponents(text('```prolog\n' + String(logText).slice(0,900) + '\n```'));
 
     return { components:[container, logsContainer], flags:MessageFlags.IsComponentsV2, allowedMentions:{parse:[]} };
 }
