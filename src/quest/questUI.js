@@ -1,7 +1,6 @@
-
 /**
- * questUI.js - Final Clean Optimized Edition - 100% FIXED
- * Fixed: SyntaxError (\vert -> ||), Boolean casting, Banner
+ * questUI.js — Final Optimized Edition with Fixed Banner URL Resolution
+ * Location: src/quest/questUI.js
  */
 
 import {
@@ -53,13 +52,17 @@ function getTaskProgress(taskType, taskConfig, status) {
 
 function getBannerUrl(quest) {
     const config = quest?.config ?? {};
-    const appId = config?.application?.id || config?.application_id || config?.applicationId || quest?.applicationId;
-    const assets = config?.assets ?? {};
-    const direct = quest?.bannerURL ?? quest?.bannerUrl ?? quest?.banner_url ?? quest?.imageURL ?? config?.banner_url ?? config?.banner;
+    const innerConfig = config?.config ?? {};
+    const appId = config?.application?.id || config?.application_id || innerConfig?.application?.id || quest?.applicationId;
+    
+    const assets = { ...(innerConfig?.assets ?? {}), ...(config?.assets ?? {}) };
+    
+    const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || quest?.imageURL || config?.banner_url || config?.banner || innerConfig?.banner;
     if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
         return direct;
     }
-    const assetKeys = ['hero', 'hero_video', 'quest_tile', 'game_tile', 'game_tile_video', 'quest_bar', 'quest_home', 'card'];
+
+    const assetKeys = ['hero', 'hero_video', 'quest_bar_hero', 'quest_tile', 'game_tile', 'quest_bar', 'quest_home', 'card', 'splash'];
     let raw = null;
     for (const key of assetKeys) {
         if (assets[key] && String(assets[key]).trim() !== '') {
@@ -67,18 +70,23 @@ function getBannerUrl(quest) {
             break;
         }
     }
+
     if (!raw) {
-        const vals = Object.values(assets).filter(v => v && String(v).trim() !== '');
+        const vals = Object.values(assets).filter(v => v && typeof v === 'string' && v.trim() !== '');
         if (vals.length) raw = vals[0];
     }
+
     if (!raw) return null;
     const asset = String(raw).trim();
     if (!asset) return null;
+
     if (/^https:\/\/\S+/i.test(asset)) return asset;
+
     if (appId) {
         const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(asset) ? asset : `${asset}.png`;
         return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
     }
+
     return null;
 }
 
@@ -220,7 +228,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     container.addTextDisplayComponents(text(progressSection));
     container.addTextDisplayComponents(text('Rewards: ' + selected.rewards));
 
-    // FIXED: || instead of \vert{}\vert{}
     const taskLines = Object.keys(selected.tasks).map(type => {
         const t = selected.tasks[type];
         if (type === 'PLAY_ON_DESKTOP') return '- Play On Desktop for ' + Math.ceil((t.target || 900) / 60) + 'm';
