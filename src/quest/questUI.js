@@ -1,5 +1,5 @@
 /**
- * questUI.js — Updated with Separate Quest Banner and Icon Handling
+ * questUI.js — Fixed Image & Icon Rendering Edition
  * Location: src/quest/questUI.js
  */
 
@@ -69,21 +69,22 @@ function getQuestImages(quest) {
         !url.includes('quest-assets')
     ) ?? null;
 
-    const icon = app.id && app.icon &&
-        !app.icon.startsWith('http')
-        ? `https://cdn.discordapp.com/app-icons/${app.id}/${app.icon}.png?size=512`
-        : (app.icon || null);
+    let iconUrl = null;
+    const rawIcon = app.icon || app.splash || assets.game_tile || assets.hero;
 
-    console.log('[QUEST IMAGES]', {
-        questId: quest?.id,
-        hero: assets.hero,
-        questBarHero: assets.quest_bar_hero,
-        icon
-    });
+    if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
+        const trimmed = rawIcon.trim();
+        if (/^https:\/\/\S+/i.test(trimmed)) {
+            iconUrl = trimmed;
+        } else if (app.id && !trimmed.startsWith('http')) {
+            const cleanHash = trimmed.split('/').pop().trim();
+            iconUrl = `https://cdn.discordapp.com/app-icons/${app.id}/${cleanHash}.png?size=512`;
+        }
+    }
 
     return {
         banner: directBanner,
-        icon
+        icon: iconUrl
     };
 }
 
@@ -194,7 +195,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             rewards: buildRewardText(config),
             tasks,
             platformProgress,
-            banner: images.banner || images.icon,
+            images,
             progress: { total },
             isCompleted: false,
         };
@@ -242,12 +243,23 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    if (selected.banner && typeof selected.banner === 'string' && selected.banner.startsWith('https://') && !selected.banner.includes('undefined')) {
+    // Render gallery items securely
+    const galleryItems = [];
+    if (selected.images?.banner && typeof selected.images.banner === 'string' && selected.images.banner.startsWith('https://')) {
+        galleryItems.push(
+            new MediaGalleryItemBuilder().setURL(selected.images.banner).setDescription(selected.game + ' banner')
+        );
+    }
+    if (selected.images?.icon && typeof selected.images.icon === 'string' && selected.images.icon.startsWith('https://')) {
+        galleryItems.push(
+            new MediaGalleryItemBuilder().setURL(selected.images.icon).setDescription(selected.game + ' icon')
+        );
+    }
+
+    if (galleryItems.length > 0) {
         try {
             container.addMediaGalleryComponents(
-                new MediaGalleryBuilder().addItems(
-                    new MediaGalleryItemBuilder().setURL(selected.banner).setDescription(selected.game + ' banner')
-                )
+                new MediaGalleryBuilder().addItems(galleryItems)
             );
         } catch {}
     }
