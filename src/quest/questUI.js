@@ -1,5 +1,5 @@
 /**
- * questUI.js — With Quest Banner Debug Logging
+ * questUI.js — Updated with Separate Quest Banner and Icon Handling
  * Location: src/quest/questUI.js
  */
 
@@ -51,41 +51,40 @@ function getTaskProgress(taskType, taskConfig, status) {
     return Math.min(100, Math.floor((current / target) * 100));
 }
 
-function getBannerUrl(quest) {
+function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
+    const assets = config.assets ?? {};
     const app = config.application ?? {};
 
-    console.log('[QUEST BANNER DEBUG]', JSON.stringify({
-        id: quest?.id,
-        banner: config.banner,
-        banner_url: config.banner_url,
-        configAssets: config.assets,
-        application: {
-            id: app.id,
-            icon: app.icon,
-            splash: app.splash
-        }
-    }, null, 2));
-
-    const candidates = [
-        quest?.bannerURL,
-        quest?.bannerUrl,
-        quest?.banner_url,
+    const directBanner = [
+        data.bannerURL,
+        data.bannerUrl,
+        data.banner_url,
         config.banner_url,
         config.banner
-    ];
+    ].find(url =>
+        typeof url === 'string' &&
+        /^https:\/\/\S+$/i.test(url) &&
+        !url.includes('quest-assets')
+    ) ?? null;
 
-    return candidates.find(
-        url => typeof url === 'string' &&
-               /^https:\/\/\S+$/i.test(url) &&
-               !url.includes('quest-assets')
-    ) ?? (
-        app.id && app.icon &&
+    const icon = app.id && app.icon &&
         !app.icon.startsWith('http')
-            ? `https://cdn.discordapp.com/app-icons/${app.id}/${app.icon}.png?size=512`
-            : null
-    );
+        ? `https://cdn.discordapp.com/app-icons/${app.id}/${app.icon}.png?size=512`
+        : (app.icon || null);
+
+    console.log('[QUEST IMAGES]', {
+        questId: quest?.id,
+        hero: assets.hero,
+        questBarHero: assets.quest_bar_hero,
+        icon
+    });
+
+    return {
+        banner: directBanner,
+        icon
+    };
 }
 
 function formatDate(v) {
@@ -178,6 +177,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const messages = config.messages ?? {};
         const tasks = getTasks(config);
         const status = quest.userStatus ?? {};
+        const images = getQuestImages(quest);
         const platformProgress = {};
         for (const t of Object.keys(tasks)) {
             platformProgress[t] = getTaskProgress(t, tasks[t], status);
@@ -194,7 +194,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             rewards: buildRewardText(config),
             tasks,
             platformProgress,
-            banner: getBannerUrl(quest),
+            banner: images.banner || images.icon,
             progress: { total },
             isCompleted: false,
         };
