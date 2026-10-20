@@ -1,5 +1,5 @@
 /**
- * questUI.js — Verified Discord CDN Banner & Icon Handler
+ * questUI.js — Verified & Fixed Edition
  * Location: src/quest/questUI.js
  */
 
@@ -58,7 +58,7 @@ function getQuestImages(quest) {
     const app = config.application ?? {};
     const appId = app.id || config.application_id;
 
-    // 1. Direct valid HTTPS banner
+    // 1. Direct valid HTTPS banner (Video quests / Direct URLs)
     let bannerUrl = [
         data.bannerURL,
         data.bannerUrl,
@@ -67,7 +67,7 @@ function getQuestImages(quest) {
         config.banner
     ].find(url => typeof url === 'string' && url.startsWith('https://') && !url.endsWith('.mp4') && !url.includes('quest-assets')) ?? null;
 
-    // 2. Fallback to Discord Application Assets CDN
+    // 2. Game quests banner CDN (With /quest-assets/ path)
     if (!bannerUrl && appId) {
         const keys = ['hero', 'quest_tile', 'game_tile', 'hero_video', 'quest_bar'];
         for (const k of keys) {
@@ -80,9 +80,8 @@ function getQuestImages(quest) {
                     break; 
                 }
                 
-                // Construct standard Discord app-assets CDN URL
                 const cleanAsset = s.split('/').pop().replace(/\.(png|jpe?g|webp)$/i, '');
-                bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/${cleanAsset}.png?size=1024`;
+                bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cleanAsset}.png`;
                 break;
             }
         }
@@ -104,8 +103,8 @@ function getQuestImages(quest) {
     console.log('[QUEST IMAGES DEBUG]', {
         questId: quest?.id,
         appId,
-        resolvedBanner: bannerUrl,
-        resolvedIcon: iconUrl
+        bannerUrl,
+        iconUrl
     });
 
     return { banner: bannerUrl, icon: iconUrl };
@@ -206,8 +205,19 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         for (const t of Object.keys(tasks)) {
             platformProgress[t] = getTaskProgress(t, tasks[t], status);
         }
-        const perc = Object.values(platformProgress);
-        const total = perc.length ? Math.floor(perc.reduce((a, b) => a + b, 0) / perc.length) : 0;
+
+        // Unique tasks progress calculation using MAX
+        const seen = new Set(); 
+        const uniqueVals = [];
+        for (const k of Object.keys(platformProgress)) {
+            const base = k.replace(/_\d+$/, '');
+            if (!seen.has(base)) { 
+                seen.add(base); 
+                uniqueVals.push(platformProgress[k]); 
+            }
+        }
+        const total = uniqueVals.length ? Math.max(...uniqueVals) : 0;
+
         return {
             id: quest.id,
             game: messages.game_title || config.application?.name || 'Unknown Game',
@@ -266,7 +276,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    // Render gallery items securely
     const galleryItems = [];
     if (selected.images?.banner && typeof selected.images.banner === 'string' && selected.images.banner.startsWith('https://')) {
         galleryItems.push(
@@ -304,7 +313,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode') !== -1;
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary)
     ));
 
