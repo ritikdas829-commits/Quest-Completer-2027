@@ -1,5 +1,5 @@
 /**
- * questUI.js — Fixed Image & Icon Rendering Edition (Updated rawIcon)
+ * questUI.js — Verified Discord CDN Banner & Icon Handler
  * Location: src/quest/questUI.js
  */
 
@@ -56,36 +56,59 @@ function getQuestImages(quest) {
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
     const app = config.application ?? {};
+    const appId = app.id || config.application_id;
 
-    const directBanner = [
+    // 1. Direct valid HTTPS banner
+    let bannerUrl = [
         data.bannerURL,
         data.bannerUrl,
         data.banner_url,
         config.banner_url,
         config.banner
-    ].find(url =>
-        typeof url === 'string' &&
-        /^https:\/\/\S+$/i.test(url) &&
-        !url.includes('quest-assets')
-    ) ?? null;
+    ].find(url => typeof url === 'string' && url.startsWith('https://') && !url.endsWith('.mp4') && !url.includes('quest-assets')) ?? null;
 
-    let iconUrl = null;
-    const rawIcon = app.icon;
-
-    if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
-        const trimmed = rawIcon.trim();
-        if (/^https:\/\/\S+/i.test(trimmed)) {
-            iconUrl = trimmed;
-        } else if (app.id && !trimmed.startsWith('http')) {
-            const cleanHash = trimmed.split('/').pop().trim();
-            iconUrl = `https://cdn.discordapp.com/app-icons/${app.id}/${cleanHash}.png?size=512`;
+    // 2. Fallback to Discord Application Assets CDN
+    if (!bannerUrl && appId) {
+        const keys = ['hero', 'quest_tile', 'game_tile', 'hero_video', 'quest_bar'];
+        for (const k of keys) {
+            const val = assets[k];
+            if (val && String(val).trim() !== '') {
+                const s = String(val).trim();
+                if (s.endsWith('.mp4')) continue;
+                if (s.startsWith('https://')) { 
+                    bannerUrl = s; 
+                    break; 
+                }
+                
+                // Construct standard Discord app-assets CDN URL
+                const cleanAsset = s.split('/').pop().replace(/\.(png|jpe?g|webp)$/i, '');
+                bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/${cleanAsset}.png?size=1024`;
+                break;
+            }
         }
     }
 
-    return {
-        banner: directBanner,
-        icon: iconUrl
-    };
+    // 3. Application Icon CDN
+    let iconUrl = null;
+    const rawIcon = app.icon;
+    if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
+        const trimmed = rawIcon.trim();
+        if (trimmed.startsWith('https://')) {
+            iconUrl = trimmed;
+        } else if (appId) {
+            const cleanHash = trimmed.split('/').pop().trim();
+            iconUrl = `https://cdn.discordapp.com/app-icons/${appId}/${cleanHash}.png?size=512`;
+        }
+    }
+
+    console.log('[QUEST IMAGES DEBUG]', {
+        questId: quest?.id,
+        appId,
+        resolvedBanner: bannerUrl,
+        resolvedIcon: iconUrl
+    });
+
+    return { banner: bannerUrl, icon: iconUrl };
 }
 
 function formatDate(v) {
@@ -281,7 +304,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode') !== -1;
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(ButtonStyle.Danger : ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary)
     ));
 
