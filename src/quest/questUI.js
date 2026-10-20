@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Banner Debugging
+ * questUI.js — Final Optimized Edition with Clean CDN Asset Basename Extraction
  * Location: src/quest/questUI.js
  */
 
@@ -90,9 +90,10 @@ function getBannerUrl(quest) {
 
     if (/^https:\/\/\S+/i.test(asset)) return asset;
 
-    // 4. Construct CDN asset link
+    // 4. Construct CDN asset link — extract clean filename/basename to eliminate nested paths (like 'quests/...')
     if (quest?.id && asset) {
-        const cleanAsset = asset.replace(/^\/+/, '');
+        const cleanAsset = asset.split('/').pop().trim();
+        if (!cleanAsset) return null;
         const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(cleanAsset) ? cleanAsset : `${cleanAsset}.png`;
         return `https://cdn.discordapp.com/quest-assets/${quest.id}/${filename}`;
     }
@@ -220,13 +221,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
 
     const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
-
-    // Debug log for banner resolution
-    console.log('\n========== QUEST BANNER DEBUG ==========');
-    console.log('Quest Name:', selected.game);
-    console.log('Quest ID:', selected.id);
-    console.log('Banner URL:', selected.banner);
-    console.log('========================================\n');
 
     const container = new ContainerBuilder().setAccentColor(ACCENT);
     container.addTextDisplayComponents(text('## Quest Solver'));
