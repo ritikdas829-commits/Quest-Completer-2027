@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Safe Public Application Icons
+ * questUI.js — With Quest Banner Debug Logging
  * Location: src/quest/questUI.js
  */
 
@@ -52,30 +52,40 @@ function getTaskProgress(taskType, taskConfig, status) {
 }
 
 function getBannerUrl(quest) {
-    const config = quest?.config ?? {};
-    const app = config?.application ?? {};
-    
-    // 1. Check if there is an explicit safe direct HTTPS URL (excluding private quest-assets)
-    const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || config?.banner_url || config?.banner;
-    if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct) && !direct.includes('quest-assets')) {
-        return direct;
-    }
+    const data = quest?.toJSON?.() ?? {};
+    const config = quest?.config ?? data.config ?? {};
+    const app = config.application ?? {};
 
-    // 2. Prioritize Application Icon as a 100% public and reliable thumbnail (Prevents AccessDenied)
-    if (app.id && app.icon && typeof app.icon === 'string') {
-        const iconHash = app.icon.trim();
-        if (/^https:\/\/\S+/i.test(iconHash)) return iconHash;
-        return `https://cdn.discordapp.com/app-icons/${app.id}/${iconHash}.png?size=512`;
-    }
+    console.log('[QUEST BANNER DEBUG]', JSON.stringify({
+        id: quest?.id,
+        banner: config.banner,
+        banner_url: config.banner_url,
+        configAssets: config.assets,
+        application: {
+            id: app.id,
+            icon: app.icon,
+            splash: app.splash
+        }
+    }, null, 2));
 
-    // 3. Fallback to Application Splash if available
-    if (app.id && app.splash && typeof app.splash === 'string') {
-        const splashHash = app.splash.trim();
-        if (/^https:\/\/\S+/i.test(splashHash)) return splashHash;
-        return `https://cdn.discordapp.com/app-icons/${app.id}/${splashHash}.png?size=512`;
-    }
+    const candidates = [
+        quest?.bannerURL,
+        quest?.bannerUrl,
+        quest?.banner_url,
+        config.banner_url,
+        config.banner
+    ];
 
-    return null; // Gracefully return null to avoid generating broken private links
+    return candidates.find(
+        url => typeof url === 'string' &&
+               /^https:\/\/\S+$/i.test(url) &&
+               !url.includes('quest-assets')
+    ) ?? (
+        app.id && app.icon &&
+        !app.icon.startsWith('http')
+            ? `https://cdn.discordapp.com/app-icons/${app.id}/${app.icon}.png?size=512`
+            : null
+    );
 }
 
 function formatDate(v) {
@@ -232,7 +242,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    // Render media gallery safely only if a valid public image URL exists
     if (selected.banner && typeof selected.banner === 'string' && selected.banner.startsWith('https://') && !selected.banner.includes('undefined')) {
         try {
             container.addMediaGalleryComponents(
