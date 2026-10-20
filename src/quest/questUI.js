@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Fixed Banner URL Resolution
+ * questUI.js — Final Optimized Edition with Corrected Quest CDN Banners
  * Location: src/quest/questUI.js
  */
 
@@ -52,12 +52,9 @@ function getTaskProgress(taskType, taskConfig, status) {
 
 function getBannerUrl(quest) {
     const config = quest?.config ?? {};
-    const innerConfig = config?.config ?? {};
-    const appId = config?.application?.id || config?.application_id || innerConfig?.application?.id || quest?.applicationId;
+    const assets = config?.assets ?? {};
     
-    const assets = { ...(innerConfig?.assets ?? {}), ...(config?.assets ?? {}) };
-    
-    const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || quest?.imageURL || config?.banner_url || config?.banner || innerConfig?.banner;
+    const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || config?.banner_url || config?.banner;
     if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
         return direct;
     }
@@ -82,9 +79,9 @@ function getBannerUrl(quest) {
 
     if (/^https:\/\/\S+/i.test(asset)) return asset;
 
-    if (appId) {
+    if (quest?.id) {
         const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(asset) ? asset : `${asset}.png`;
-        return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+        return `https://cdn.discordapp.com/quest-assets/${quest.id}/${filename}`;
     }
 
     return null;
