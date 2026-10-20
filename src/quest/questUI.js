@@ -1,5 +1,5 @@
 /**
- * questUI.js — Verified & Fixed Edition
+ * questUI.js — Verified & Fixed Edition with Safe Banner & Status Logic
  * Location: src/quest/questUI.js
  */
 
@@ -55,17 +55,23 @@ function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
-    const app = config.application ?? {};
+    const app = quest?.application ?? config.application ?? {};
     const appId = app.id || config.application_id;
 
-    // 1. Direct valid HTTPS banner (Video quests / Direct URLs)
-    let bannerUrl = [
+    const directBannerCandidates = [
         data.bannerURL,
         data.bannerUrl,
         data.banner_url,
         config.banner_url,
         config.banner
-    ].find(url => typeof url === 'string' && url.startsWith('https://') && !url.endsWith('.mp4') && !url.includes('quest-assets')) ?? null;
+    ];
+
+    // 1. Direct valid HTTPS banner (Skipping only .mp4 videos)
+    let bannerUrl = directBannerCandidates.find(url =>
+        typeof url === 'string' &&
+        /^https:\/\//i.test(url.trim()) &&
+        !/\.mp4(?:$|\?)/i.test(url.trim())
+    ) ?? null;
 
     // 2. Game quests banner CDN (With /quest-assets/ path)
     if (!bannerUrl && appId) {
@@ -74,8 +80,8 @@ function getQuestImages(quest) {
             const val = assets[k];
             if (val && String(val).trim() !== '') {
                 const s = String(val).trim();
-                if (s.endsWith('.mp4')) continue;
-                if (s.startsWith('https://')) { 
+                if (/\.mp4(?:$|\?)/i.test(s)) continue;
+                if (/^https:\/\//i.test(s)) { 
                     bannerUrl = s; 
                     break; 
                 }
@@ -92,7 +98,7 @@ function getQuestImages(quest) {
     const rawIcon = app.icon;
     if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
         const trimmed = rawIcon.trim();
-        if (trimmed.startsWith('https://')) {
+        if (/^https:\/\//i.test(trimmed)) {
             iconUrl = trimmed;
         } else if (appId) {
             const cleanHash = trimmed.split('/').pop().trim();
@@ -103,6 +109,9 @@ function getQuestImages(quest) {
     console.log('[QUEST IMAGES DEBUG]', {
         questId: quest?.id,
         appId,
+        assetKeys: Object.keys(assets),
+        assets,
+        directBannerCandidates,
         bannerUrl,
         iconUrl
     });
@@ -308,9 +317,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         menuOptions.push(opt);
     }
 
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuOptionBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)));
 
-    const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode') !== -1;
+    const isRunning = typeof customLogs === 'string' && customLogs.toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
