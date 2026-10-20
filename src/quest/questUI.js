@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Perfect Banner & Asset Resolution
+ * questUI.js — Final Optimized Edition with Ultimate Banner & Asset Resolution
  * Location: src/quest/questUI.js
  */
 
@@ -54,14 +54,22 @@ function getTaskProgress(taskType, taskConfig, status) {
 function getBannerUrl(quest) {
     const config = quest?.config ?? {};
     const assets = config?.assets ?? {};
+    const app = config?.application ?? {};
     
-    // Check direct properties first
+    // 1. Direct URL check across all possible properties
     const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || config?.banner_url || config?.banner;
     if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
         return direct;
     }
 
-    // High priority asset keys for Discord quests
+    // 2. Check Application Icon / Splash as fallback thumbnail
+    if (app.icon && typeof app.icon === 'string') {
+        const iconHash = app.icon.trim();
+        if (/^https:\/\/\S+/i.test(iconHash)) return iconHash;
+        return `https://cdn.discordapp.com/app-icons/${app.id}/${iconHash}.png?size=512`;
+    }
+
+    // 3. Scan asset keys
     const assetKeys = ['hero', 'quest_bar_hero', 'hero_video', 'quest_tile', 'game_tile', 'quest_bar', 'quest_home', 'card', 'splash'];
     let raw = null;
     for (const key of assetKeys) {
@@ -82,7 +90,7 @@ function getBannerUrl(quest) {
 
     if (/^https:\/\/\S+/i.test(asset)) return asset;
 
-    // Build valid Discord Quest CDN asset link using quest ID and asset hash/filename
+    // 4. Construct CDN asset link
     if (quest?.id && asset) {
         const cleanAsset = asset.replace(/^\/+/, '');
         const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(cleanAsset) ? cleanAsset : `${cleanAsset}.png`;
@@ -167,7 +175,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
-    // Filter out expired, completed, and blacklisted quests
     const activeQuests = rawQuests.filter(q => {
         try { 
             const isCompleted = q.isCompleted?.() || false;
@@ -247,7 +254,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    // Strict validation: Only display media gallery if banner URL is valid and fully qualified
+    // Render media gallery only if a valid https image url exists
     if (selected.banner && typeof selected.banner === 'string' && selected.banner.startsWith('https://') && !selected.banner.includes('undefined')) {
         try {
             container.addMediaGalleryComponents(
@@ -272,7 +279,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)));
 
-    const isRunning = customLogs && String(customLogs).toLowerCase().indexOf('fast mode') !== -1;
+    const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode') !== -1;
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
