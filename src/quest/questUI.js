@@ -1,6 +1,6 @@
 /**
- * questUI.js — Final Banner + View Quest Fix
- * Fixes: Expected a boolean primitive error on select menu options
+ * questUI.js — Final Clean Optimized Edition
+ * Fixes: SyntaxError, Select Menu Boolean Casting, Banner Loading
  */
 
 import {
@@ -101,12 +101,24 @@ function buildRewardText(config) {
     return rewards.map(r => r?.orb_quantity ? `${r.orb_quantity} Orbs` : (r?.messages?.name || 'Reward')).join(', ');
 }
 
-function shorten(v, max=100){ return String(v??'').slice(0,max); }
-function progressBar(p){ const f=Math.round(p/10); return `${'▰'.repeat(f)}${'▱'.repeat(10-f)}`; }
-function text(c){ return new TextDisplayBuilder().setContent(c); }
-function sep(){ return new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small); }
+function shorten(v, max = 100) { 
+    return String(v ?? '').slice(0, max); 
+}
 
-export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId=null, customLogs=null) {
+function progressBar(p) { 
+    const f = Math.round(p / 10); 
+    return `${'▰'.repeat(f)}${'▱'.repeat(10 - f)}`; 
+}
+
+function text(c) { 
+    return new TextDisplayBuilder().setContent(c); 
+}
+
+function sep() { 
+    return new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small); 
+}
+
+export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId = null, customLogs = null) {
     const prefix = client.config?.prefix || process.env.PREFIX || ';';
     const tokenStore = client.tokenStore;
 
@@ -160,7 +172,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             platformProgress[type] = getTaskProgress(type, tConf, status);
         }
         const perc = Object.values(platformProgress);
-        const total = perc.length ? Math.floor(perc.reduce((a,b)=>a+b,0)/perc.length) : 0;
+        const total = perc.length ? Math.floor(perc.reduce((a, b) => a + b, 0) / perc.length) : 0;
         return {
             id: quest.id,
             game: messages.game_title || config.application?.name || 'Unknown Game',
@@ -194,7 +206,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const progressIcon = isCompleted ? '✅' : '🔄';
     const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? 0;
     const playstationPct = selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0;
-    const hasPlaystation = Object.keys(selected.platformProgress).some(k=>k.includes('PLAYSTATION'));
+    const hasPlaystation = Object.keys(selected.platformProgress).some(k => k.includes('PLAYSTATION'));
 
     let progressSection = `• **Game:** ${selected.game}\n• **Publisher:** ${selected.publisher}\n• **Quest Name:** ${selected.questName}\n• **Enrolled At:** ${selected.enrolledAt}\n• **Expires At:** ${selected.expiresAt}\n• **Progress:**\n${progressIcon} ${selected.progress.total}\%\n💻 **Desktop:** ${desktopPct}%\n`;
     if (hasPlaystation) progressSection += `🎮 **PlayStation:** ${playstationPct}%\n`;
@@ -203,11 +215,11 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     container.addTextDisplayComponents(text(`**Rewards:**\n• **${selected.rewards}** 🔮`));
 
     const taskLines = Object.entries(selected.tasks).map(([type, t]) => {
-        if (type === 'PLAY_ON_DESKTOP') return `• Play On Desktop for ${Math.ceil((t.target||900)/60)}m`;
-        if (type === 'PLAY_ON_PLAYSTATION') return `• Play On Playstation ${t.target||900} times`;
-        if (type === 'PLAY_ON_XBOX') return `• Play On Xbox ${t.target||900} times`;
-        if (type.includes('WATCH_VIDEO')) return `• Watch Video for ${t.target\vert{}\vert{}0}s to win${selected.rewards}!`;
-        return `• ${type.replace(/_/g,' ')}`;
+        if (type === 'PLAY_ON_DESKTOP') return `• Play On Desktop for ${Math.ceil((t.target || 900) / 60)}m`;
+        if (type === 'PLAY_ON_PLAYSTATION') return `• Play On Playstation ${t.target || 900} times`;
+        if (type === 'PLAY_ON_XBOX') return `• Play On Xbox ${t.target || 900} times`;
+        if (type.includes('WATCH_VIDEO')) return `• Watch Video for ${t.target \vert{}\vert{} 0}s to win${selected.rewards}!`;
+        return `• ${type.replace(/_/g, ' ')}`;
     }).join('\n');
 
     container.addTextDisplayComponents(text(`**Tasks:**\n${taskLines || '• Task details unavailable'}`));
@@ -222,8 +234,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         container.addSeparatorComponents(sep());
     }
 
-    // Select menu with strict boolean cast on setDefault
-    const menuOptions = allQuests.slice(0,25).map(q => new StringSelectMenuOptionBuilder()
+    const menuOptions = allQuests.slice(0, 25).map(q => new StringSelectMenuOptionBuilder()
         .setLabel(shorten(`${q.game}:${q.questName}`, 95))
         .setValue(String(q.id))
         .setDescription(shorten(`${q.progress.total}\% •${q.rewards}`, 100))
@@ -250,7 +261,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     logsContainer.addSeparatorComponents(sep());
 
     const now = new Date();
-    const tStr = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    const tStr = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
     let logText = customLogs;
     if (!logText) {
         if (isCompleted) {
@@ -260,7 +271,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         }
     }
 
-    logsContainer.addTextDisplayComponents(text(`\`\`\`ansi\n${String(logText).slice(0,900)}\n\`\`\``));
+    logsContainer.addTextDisplayComponents(text(`\`\`\`ansi\n${String(logText).slice(0, 900)}\n\`\`\``));
 
     return {
         components: [container, logsContainer],
