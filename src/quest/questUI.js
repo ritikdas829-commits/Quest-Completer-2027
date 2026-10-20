@@ -1,8 +1,6 @@
-
 /**
- * questUI.js - 100% Orbie Clone UI + New Emojis + Banner Fix
+ * questUI.js - 100% Orbie Clone UI + Verified Logic
  * Location: src/quest/questUI.js
- * Based on user's screenshots: Royal Match 0% -> 25% + banner
  */
 
 import {
@@ -69,8 +67,7 @@ function getQuestImages(quest) {
         data.bannerURL, data.bannerUrl, data.banner_url, config.banner_url, config.banner
     ].find(u => typeof u === 'string' && u.startsWith('https://') && !/\.mp4/i.test(u)) ?? null;
 
-    // 2. Fallback - Game quests: Use asset key as-is with proper CDN path
-    // Royal Match has hero asset -> should be .../quest-assets/hero.png
+    // 2. Fallback - Game quests CDN URL
     if (!bannerUrl && appId) {
         const order = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'hero_video'];
         for (const k of order) {
@@ -79,7 +76,6 @@ function getQuestImages(quest) {
             const s = String(v).trim();
             if (/\.mp4/i.test(s)) continue;
             if (s.startsWith('https://')) { bannerUrl = s; break; }
-            // Keep original extension if present, else add .png
             let filename = s.split('/').pop();
             if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
             bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
@@ -107,11 +103,13 @@ function formatDate(v) {
     if (isNaN(d.getTime())) return 'N/A';
     return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 }
+
 function buildRewardText(config) {
     const rewards = config?.rewards_config?.rewards ?? [];
     if (!rewards.length) return '200 Orbs';
     return rewards.map(r => r?.orb_quantity ? `${r.orb_quantity} Orbs` : (r?.messages?.name || 'Reward')).join(', ');
 }
+
 function shorten(v, max=100) { return String(v ?? '').slice(0, max); }
 function progressBar(p) { const f=Math.round(p/10); return '#'.repeat(f) + '-'.repeat(10-f); }
 function text(c) { return new TextDisplayBuilder().setContent(c); }
@@ -165,13 +163,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const images=getQuestImages(quest);
         const platformProgress={};
         for (const t of Object.keys(tasks)) platformProgress[t]=getTaskProgress(t,tasks[t],status);
-        // DEDUP + AVERAGE (fixes 29% vs 59% and duplicate tasks)
+        
+        // FIX: Use MAX instead of Average for precise progress calculation
         const seen=new Set(); const uniq=[];
         for (const k of Object.keys(platformProgress)) {
             const base=k.replace(/_\d+$/, '');
             if (!seen.has(base)) { seen.add(base); uniq.push(platformProgress[k]); }
         }
-        const total = uniq.length ? Math.floor(uniq.reduce((a,b)=>a+b,0)/uniq.length) : 0;
+        const total = uniq.length ? Math.max(...uniq) : 0;
         return {
             id:quest.id, game:messages.game_title || config.application?.name || 'Unknown',
             publisher:messages.game_publisher || 'Unknown', questName:messages.quest_name || 'Discord Quest',
@@ -190,15 +189,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const selected = allQuests.find(q=>String(q.id)===String(selectedQuestId)) ?? allQuests[0];
     const container=new ContainerBuilder().setAccentColor(ACCENT);
 
-    // --- ORBIE STYLE HEADER ---
     container.addTextDisplayComponents(text('## 🏆 Quest Solver'));
 
-    const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? 0;
+    const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? selected.progress.total;
     const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? selected.platformProgress['WATCH_VIDEO'] ?? 0;
     const hasMobile = Object.keys(selected.platformProgress).some(k=>k.includes('MOBILE'));
     const hasDesktop = !hasMobile || Object.keys(selected.platformProgress).some(k=>k.includes('DESKTOP') || k.includes('WATCH_VIDEO'));
 
-    // --- ORBIE STYLE INFO with new emojis ---
     let info = '';
     info += `• **Game:** ${selected.game}\n`;
     info += `• **Publisher:** ${selected.publisher}\n`;
@@ -222,10 +219,8 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(info));
 
-    // --- Rewards with orb emoji ---
     container.addTextDisplayComponents(text(`### 🎁 Rewards:\n• **${selected.rewards}** 💎`));
 
-    // --- Tasks deduped ---
     const seenT=new Set(); const taskLines=[];
     for (const type of Object.keys(selected.tasks)) {
         const base=type.replace(/_\d+$/, '');
@@ -240,16 +235,20 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### 📋 Tasks:\n${taskLines.join('\n') || '• Play On Desktop for 15m'}`));
 
-    // --- Banner Image (Royal Match gameplay like screenshot) ---
+    // --- Media Gallery (Banner + Icon Fallback) ---
     const galleryItems=[];
     if (selected.images?.banner && selected.images.banner.startsWith('https://')) {
         galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.banner).setDescription(selected.game + ' banner'));
+    }
+    if (selected.images?.icon && selected.images.icon.startsWith('https://')) {
+        if (!selected.images.banner || selected.images.icon !== selected.images.banner) {
+            galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.icon).setDescription(selected.game + ' icon'));
+        }
     }
     if (galleryItems.length>0) {
         try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
-    // --- Select Menu with orb icon ---
     const menuOptions=[];
     for (const q of allQuests.slice(0,25)) {
         const opt=new StringSelectMenuOptionBuilder().setLabel(shorten(q.game+': '+q.questName,95)).setValue(String(q.id)).setDescription(shorten(`${q.progress.total}% - ${q.rewards}`,100)).setEmoji({name:'💎'});
@@ -258,7 +257,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game+': '+selected.questName,100)).addOptions(menuOptions)));
 
-    // --- Buttons with new emojis (like Orbie) ---
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_'+selected.id).setLabel('Start').setEmoji({name:'▶️'}).setStyle(isRunning?ButtonStyle.Secondary:ButtonStyle.Success).setDisabled(isRunning?true:false),
@@ -267,7 +265,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     ));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji({name:'🔗'}).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
-    // --- Quest Logs with new emojis ---
     const logsContainer=new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text('## 📝 Quest Logs'));
     const now=new Date();
