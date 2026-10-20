@@ -2,6 +2,7 @@
  * interactionCreate.js — Event Handler for Interactions
  * Location: src/events/interactionCreate.js
  */
+
 import { getEmoji } from '../handlers/emoji.js';
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
@@ -9,18 +10,24 @@ import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
 
+// Map to track running auto-refresh loops across users
+const activeRunners = new Map();
+
 export default {
     name: 'interactionCreate',
     once: false,
     async execute(interaction, client) {
         try {
-            // 1. Guide Buttons handler
+            const guildId = interaction.guildId;
+            const userId = interaction.user?.id;
+
+            // 1. Guide Buttons Handler
             if (interaction.isButton() && ['btn_pc', 'btn_android', 'btn_ios'].includes(interaction.customId)) {
                 await handleGuideButtons(interaction);
                 return;
             }
 
-            // 2. Premium Slot Buttons handler
+            // 2. Premium Slot Buttons Handler
             if (interaction.isButton() && (
                 interaction.customId.startsWith('link_slot_') ||
                 interaction.customId.startsWith('unlink_slot_') ||
@@ -30,13 +37,13 @@ export default {
                 return;
             }
 
-            // 3. Link prompt button
+            // 3. Link Prompt Button
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
                 await interaction.reply({ content: '🔗 Please use the link command or manage slots via premium panel.', flags: 64 }).catch(() => {});
                 return;
             }
 
-            // 4. Modals handler
+            // 4. Modals Handler
             if (interaction.isModalSubmit()) {
                 if (interaction.customId.startsWith('link_modal_slot_')) {
                     await handlePremiumModal(interaction, client);
@@ -48,91 +55,178 @@ export default {
                 }
             }
 
-            // 5. Quest Select Menu handler (FIXED: matching exact 'quest_select' from questUI.js)
+            // 5. Quest Select Menu Handler
             if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
-                const panel = await buildQuestSolverPanel(client, interaction.guild.id, interaction.user.id, selectedQuestId);
+                const panel = await buildQuestSolverPanel(client, guildId, userId, selectedQuestId);
                 await interaction.editReply(panel);
                 return;
             }
 
-            // 6. Quest Buttons handler (start, stop, refresh)
-            if (interaction.isButton() && (interaction.customId.startsWith('quest_start_') || interaction.customId.startsWith('quest_stop_') || interaction.customId === 'quest_refresh')) {
-                if (interaction.customId === 'quest_refresh') {
-                    await interaction.deferUpdate();
-                    const panel = await buildQuestSolverPanel(client, interaction.guild.id, interaction.user.id);
-                    await interaction.editReply(panel);
-                    return;
+            // 6. Refresh Button Handler
+            if (interaction.isButton() && interaction.customId === 'quest_refresh') {
+                await interaction.deferUpdate();
+
+                const timeString = new Date().toLocaleTimeString();
+                const loadingLogs = `🔄 Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
+
+                const panel = await buildQuestSolverPanel(client, guildId, userId, null, loadingLogs);
+                await interaction.editReply(panel);
+
+                setTimeout(async () => {
+                    const freshPanel = await buildQuestSolverPanel(client, guildId, userId);
+                    await interaction.editReply(freshPanel).catch(() => {});
+                }, 1500);
+
+                return;
+            }
+
+            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Direct Detailed DM
+            if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
+                await interaction.deferUpdate();
+                const questId = interaction.customId.replace('quest_start_', '');
+                const runnerKey = `${guildId}_${userId}`;
+
+                // Clear any existing runner for this user
+                if (activeRunners.has(runnerKey)) {
+                    clearInterval(activeRunners.get(runnerKey));
+                    activeRunners.delete(runnerKey);
                 }
 
                 const tokenStore = client.tokenStore;
-                const active = await tokenStore.getActiveSlot(interaction.guild.id, interaction.user.id);
-                const token = active ? (active.token || await tokenStore.get(interaction.guild.id, interaction.user.id, active.slot)) : null;
+                const active = await tokenStore.getActiveSlot(guildId, userId);
+                const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
 
                 if (!active || !token) {
-                    await interaction.reply({ content: '❌ No active token slot found! Use `;link` first.', flags: 64 });
+                    await interaction.followUp({ content: '❌ No active token slot found! Use `;link` first.', flags: 64 });
                     return;
                 }
 
                 const cleanToken = typeof token === 'string' ? token.trim().replace(/['"]+/g, '') : token;
                 const qc = new QuestClient(cleanToken);
 
-                if (interaction.customId.startsWith('quest_start_')) {
-                    const questId = interaction.customId.replace('quest_start_', '');
-                    // Immediately defer reply to prevent "didn't respond in time" timeout error
-                    await interaction.deferReply({ flags: 64 });
-                    
-                    try {
-                        // Fetch quests and initialize manager using the provided QuestManager class
-                        const manager = await qc.fetchQuests();
-                        const quest = manager.get(questId);
+                let manager;
+                try {
+                    manager = await qc.fetchQuests();
+                } catch (err) {
+                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `❌ Fetch Error: ${err.message}`);
+                    await interaction.editReply(errorPanel);
+                    return;
+                }
 
-                        if (!quest) {
-                            await interaction.editReply({ content: `❌ Quest with ID \`${questId}\` not found or expired.` });
-                            return;
-                        }
+                const quest = manager.get(questId);
+                if (!quest) {
+                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `❌ Quest ID ${questId} not found or expired.`);
+                    await interaction.editReply(missingPanel);
+                    return;
+                }
 
-                        // Check if quest is already completed, try to claim reward
-                        if (quest.isCompleted()) {
-                            await interaction.editReply({ content: `🎁 Attempting to claim reward for quest \`${questId}\`...` });
-                            const claimedCount = await manager.claimRewards(async (msg) => {
-                                console.log(`[Claim Log] ${msg}`);
-                            }, questId);
+                const questName = quest.config?.messages?.quest_name || quest.config?.application?.name || 'Discord Quest';
 
-                            if (claimedCount > 0) {
-                                await interaction.editReply({ content: `✅ Successfully claimed reward for quest!` });
-                            } else {
-                                await interaction.editReply({ content: `⚠️ Quest is completed, but reward claim could not be verified or was already claimed.` });
-                            }
-                            return;
-                        }
+                // If already completed, attempt to claim reward
+                if (quest.isCompleted()) {
+                    const claimLog = `🎁 Claiming reward for quest: ${questName}...`;
+                    const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
+                    await interaction.editReply(claimPanel);
 
-                        // Run the quest automation logic using QuestManager's doingQuest method
-                        await interaction.editReply({ content: `▶️ Starting automation for quest: \`${questId}\`...` });
-                        
-                        manager.doingQuest(quest, async (msg) => {
-                            console.log(`[Quest Log] ${msg}`);
-                        }).then(async (success) => {
-                            try {
-                                await interaction.followUp({ content: success ? `✅ Quest completed successfully!` : `⚠️ Quest execution finished with warnings.`, flags: 64 });
-                            } catch {}
-                        });
-                    } catch (err) {
-                        console.error('Quest Start Error:', err);
-                        await interaction.editReply({ content: `❌ Failed to start quest: ${err.message}` });
+                    const claimedCount = await manager.claimRewards(async (msg) => {
+                        console.log(`[Claim Log] ${msg}`);
+                    }, questId);
+
+                    const resultLog = claimedCount > 0
+                        ? `🎉 Quest completed & reward claimed successfully!`
+                        : `⚠️ Quest completed, reward already claimed or pending verification.`;
+
+                    const finalPanel = await buildQuestSolverPanel(client, guildId, userId, questId, resultLog);
+                    await interaction.editReply(finalPanel);
+                    return;
+                }
+
+                // Start automation in background
+                let isRunning = true;
+                manager.doingQuest(quest, async (msg) => {
+                    console.log(`[Quest Runner Log] ${msg}`);
+                }).then(async (success) => {
+                    isRunning = false;
+                    if (activeRunners.has(runnerKey)) {
+                        clearInterval(activeRunners.get(runnerKey));
+                        activeRunners.delete(runnerKey);
                     }
-                    return;
-                }
 
-                if (interaction.customId.startsWith('quest_stop_')) {
-                    const questId = interaction.customId.replace('quest_stop_', '');
-                    await interaction.reply({ content: `⏹️ Quest automation stop signal sent for ID: \`${questId}\`.`, flags: 64 });
-                    return;
-                }
+                    const doneLog = success
+                        ? `🎉 Quest completed successfully!`
+                        : `⚠️ Quest runner finished with warnings.`;
+
+                    const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, doneLog);
+                    await interaction.editReply(completePanel).catch(() => {});
+
+                    if (success) {
+                        try {
+                            const targetUser = await client.users.fetch(userId);
+                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n\n🔗 **Claim your reward here:** https://discord.com/quests`);
+                        } catch {
+                            await interaction.followUp({
+                                content: `<@${userId}> 🎉 **Quest Completed!** (Could not send DM, please check your privacy settings)\n📌 **Quest Name:** ${questName}\n🔗 **Claim your reward here:** https://discord.com/quests`,
+                                allowedMentions: { users: [userId] }
+                            }).catch(() => {});
+                        }
+                    }
+                }).catch((err) => {
+                    isRunning = false;
+                    console.error('Quest execution error:', err);
+                });
+
+                // Auto-refresh interval (runs every 5 seconds while active)
+                const interval = setInterval(async () => {
+                    if (!isRunning) {
+                        clearInterval(interval);
+                        activeRunners.delete(runnerKey);
+                        return;
+                    }
+
+                    try {
+                        const nowTime = new Date().toLocaleTimeString();
+                        const runnerLogs = `Quest selected: ${questName}\n[${nowTime}] Fast mode active\nProgress updating...`;
+                        const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerLogs);
+                        await interaction.editReply(autoPanel).catch(() => {});
+                    } catch (e) {
+                        console.error('Auto-refresh UI update error:', e.message);
+                    }
+                }, 5000);
+
+                activeRunners.set(runnerKey, interval);
+
+                // Auto timeout runner loop after 5 minutes
+                setTimeout(() => {
+                    if (activeRunners.get(runnerKey) === interval) {
+                        isRunning = false;
+                        clearInterval(interval);
+                        activeRunners.delete(runnerKey);
+                    }
+                }, 5 * 60 * 1000);
+
+                return;
             }
 
-            // 7. Slash commands
+            // 8. Stop Button Handler
+            if (interaction.isButton() && interaction.customId.startsWith('quest_stop_')) {
+                await interaction.deferUpdate();
+                const questId = interaction.customId.replace('quest_stop_', '');
+                const runnerKey = `${guildId}_${userId}`;
+
+                if (activeRunners.has(runnerKey)) {
+                    clearInterval(activeRunners.get(runnerKey));
+                    activeRunners.delete(runnerKey);
+                }
+
+                const stopLog = `⏹️ Stopped\n[${new Date().toLocaleTimeString()}] Quest runner stopped by user.`;
+                const panel = await buildQuestSolverPanel(client, guildId, userId, questId, stopLog);
+                await interaction.editReply(panel);
+                return;
+            }
+
+            // 9. Slash Commands Handler
             if (interaction.isChatInputCommand()) {
                 const command = client.commands.get(interaction.commandName);
                 if (!command) return;
