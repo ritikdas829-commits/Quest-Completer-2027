@@ -1,6 +1,6 @@
 /**
  * questUI.js — Premium Neon Purple Quest Solver Dashboard
- * Final Optimized Edition: Fixed Banners, Clean Select Menu, Progress in Logs, Interactive View Button
+ * Final Optimized Edition: Fixed Banners, Clean Select Menu, Progress in Logs, User-Friendly Errors
  */
 
 import {
@@ -36,13 +36,6 @@ const icons = {
     rewards: '💎',
     tasks: '🔗',
 };
-
-function safeText(value, fallback = 'Not available') {
-    if (value === undefined || value === null || value === '') {
-        return fallback;
-    }
-    return String(value);
-}
 
 function getTasks(config) {
     return config?.task_config?.tasks ?? config?.task_config_v2?.tasks ?? {};
@@ -98,16 +91,8 @@ function getBannerUrl(quest) {
         return directUrl;
     }
 
-    const raw = 
-        assets.hero || 
-        assets.hero_video || 
-        assets.quest_tile || 
-        assets.game_tile || 
-        assets.game_tile_video || 
-        assets.quest_bar || 
-        assets.card || 
-        assets.quest_home ||
-        Object.values(assets)[0];
+    const assetValues = Object.values(assets);
+    const raw = assets.hero || assets.hero_video || assets.quest_tile || assets.game_tile || assets.game_tile_video || assets.quest_bar || assets.card || assets.quest_home || assetValues[0];
 
     if (!raw) return null;
     const asset = String(raw).trim();
@@ -222,7 +207,16 @@ export async function buildQuestSolverPanel(
         rawQuests = manager.list() ?? [];
     } catch (error) {
         const container = new ContainerBuilder().setAccentColor(0xED4245);
-        container.addTextDisplayComponents(text(`# ❌ Quest Fetch Error\n${shorten(error.message, 250)}`));
+        const rawErr = String(error?.message ?? error);
+
+        let userFriendlyMsg = rawErr;
+        if (rawErr.includes('401') || rawErr.toLowerCase().includes('unauthorized')) {
+            userFriendlyMsg = `🔑 **Token Expired or Invalid!**\n\nYour linked Discord token has expired or is no longer valid.\nPlease use \`${prefix}link\` to re-link your token.`;
+        } else {
+            userFriendlyMsg = `⚠️ **Quest Fetch Failed**\n${shorten(rawErr, 250)}`;
+        }
+
+        container.addTextDisplayComponents(text(`# ❌ Quest Solver Error\n${userFriendlyMsg}`));
         return { components: [container], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -302,7 +296,6 @@ export async function buildQuestSolverPanel(
     if (xbox > 0) platformLines += `\n${icons.xbox} Xbox:${xbox}%`;
     if (playstation > 0) platformLines += `\n${icons.playstation} PlayStation:${playstation}%`;
 
-    // Main section only shows platform breakdown, overall progress moved to logs
     container.addTextDisplayComponents(
         text(
             `### Platform Status\n` +
@@ -381,14 +374,14 @@ export async function buildQuestSolverPanel(
         )
     );
 
-    // Interactive View Button (Triggers modal/quest view handler instead of external web link)
+    // Reliable Link Button for Quests Page
     container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId(`quest_view_${selected.id}`)
                 .setLabel('View Quest')
                 .setEmoji('🔗')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Link)
+                .setURL('https://discord.com/quests')
         )
     );
 
