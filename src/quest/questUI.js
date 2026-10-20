@@ -1,5 +1,5 @@
 /**
- * questUI.js — Fixed Image & Icon Rendering Edition
+ * questUI.js — Fixed Image & Icon Rendering Edition (Updated rawIcon)
  * Location: src/quest/questUI.js
  */
 
@@ -70,7 +70,7 @@ function getQuestImages(quest) {
     ) ?? null;
 
     let iconUrl = null;
-    const rawIcon = app.icon || app.splash || assets.game_tile || assets.hero;
+    const rawIcon = app.icon;
 
     if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
         const trimmed = rawIcon.trim();
