@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Auto-Refresh & Specific Quest Link DM Alerts
+ * interactionCreate.js — Complete Interaction Handler with Single-DM Protection & Specific Quest Link
  * Location: src/events/interactionCreate.js
  */
 
@@ -92,7 +92,7 @@ export default {
                 return;
             }
 
-            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Direct Quest Link DM
+            // 7. Start Button Handler — Anti-Spam DM Protection + Unique Quest Link
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -153,7 +153,8 @@ export default {
                     return;
                 }
 
-                const runnerContext = { isRunning: true, interval: null };
+                // Add notified flag to track DM status and prevent spam
+                const runnerContext = { isRunning: true, interval: null, notified: false };
                 activeRunners.set(runnerKey, runnerContext);
 
                 manager.doingQuest(quest, async (msg) => {
@@ -172,7 +173,9 @@ export default {
                     const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, doneLog);
                     await interaction.editReply(completePanel).catch(() => {});
 
-                    if (success) {
+                    // Send DM only if successfully completed AND not previously notified
+                    if (success && !runnerContext.notified) {
+                        runnerContext.notified = true;
                         const specificQuestLink = `https://discord.com/quests/${questId}`;
                         try {
                             const targetUser = await client.users.fetch(userId);
