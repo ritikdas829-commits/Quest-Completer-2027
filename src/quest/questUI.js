@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Ultimate Banner & Asset Resolution
+ * questUI.js — Final Optimized Edition with Banner Debugging
  * Location: src/quest/questUI.js
  */
 
@@ -220,6 +220,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
 
     const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
+
+    // Debug log for banner resolution
+    console.log('\n========== QUEST BANNER DEBUG ==========');
+    console.log('Quest Name:', selected.game);
+    console.log('Quest ID:', selected.id);
+    console.log('Banner URL:', selected.banner);
+    console.log('========================================\n');
 
     const container = new ContainerBuilder().setAccentColor(ACCENT);
     container.addTextDisplayComponents(text('## Quest Solver'));
