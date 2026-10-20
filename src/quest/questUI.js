@@ -1,8 +1,6 @@
-
 /**
  * questUI.js — Final Banner + View Quest Fix
- * Based on user's screenshot: Monopoly GO, Clayface, COD MW banners
- * Fix: Each quest shows its own banner + View Quest opens discord.com/quests
+ * Fixes: Expected a boolean primitive error on select menu options
  */
 
 import {
@@ -54,20 +52,16 @@ function getTaskProgress(taskType, taskConfig, status) {
     return Math.min(100, Math.floor((current / target) * 100));
 }
 
-// FIXED BANNER - each quest has its own
 function getBannerUrl(quest) {
     const config = quest?.config ?? {};
     const appId = config?.application?.id || config?.application_id || config?.applicationId || quest?.applicationId;
     const assets = config?.assets ?? {};
 
-    // Direct URL from quest object (most reliable)
     const direct = quest?.bannerURL ?? quest?.bannerUrl ?? quest?.banner_url ?? quest?.imageURL ?? config?.banner_url ?? config?.banner;
     if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
         return direct;
     }
 
-    // Assets - check in order like Discord does
-    // Monopoly GO, Clayface, COD banners are in hero
     const assetKeys = ['hero', 'hero_video', 'quest_tile', 'game_tile', 'game_tile_video', 'quest_bar', 'quest_home', 'card'];
     let raw = null;
     for (const key of assetKeys) {
@@ -76,7 +70,6 @@ function getBannerUrl(quest) {
             break;
         }
     }
-    // Fallback to first asset
     if (!raw) {
         const vals = Object.values(assets).filter(v => v && String(v).trim() !== '');
         if (vals.length) raw = vals[0];
@@ -178,7 +171,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             rewards: buildRewardText(config),
             tasks,
             platformProgress,
-            banner: getBannerUrl(quest), // EACH QUEST HAS OWN BANNER
+            banner: getBannerUrl(quest),
             progress: { total },
             isCompleted: quest.isCompleted?.() ?? false,
         };
@@ -203,7 +196,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const playstationPct = selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0;
     const hasPlaystation = Object.keys(selected.platformProgress).some(k=>k.includes('PLAYSTATION'));
 
-    let progressSection = `• **Game:** ${selected.game}\n• **Publisher:** ${selected.publisher}\n• **Quest Name:** ${selected.questName}\n• **Enrolled At:** ${selected.enrolledAt}\n• **Expires At:** ${selected.expiresAt}\n• **Progress:**\n${progressIcon} ${selected.progress.total}%\n💻 **Desktop:** ${desktopPct}%\n`;
+    let progressSection = `• **Game:** ${selected.game}\n• **Publisher:** ${selected.publisher}\n• **Quest Name:** ${selected.questName}\n• **Enrolled At:** ${selected.enrolledAt}\n• **Expires At:** ${selected.expiresAt}\n• **Progress:**\n${progressIcon} ${selected.progress.total}\%\n💻 **Desktop:** ${desktopPct}%\n`;
     if (hasPlaystation) progressSection += `🎮 **PlayStation:** ${playstationPct}%\n`;
 
     container.addTextDisplayComponents(text(progressSection));
@@ -213,48 +206,45 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         if (type === 'PLAY_ON_DESKTOP') return `• Play On Desktop for ${Math.ceil((t.target||900)/60)}m`;
         if (type === 'PLAY_ON_PLAYSTATION') return `• Play On Playstation ${t.target||900} times`;
         if (type === 'PLAY_ON_XBOX') return `• Play On Xbox ${t.target||900} times`;
-        if (type.includes('WATCH_VIDEO')) return `• Watch Video for ${t.target||0}s to win ${selected.rewards}!`;
+        if (type.includes('WATCH_VIDEO')) return `• Watch Video for ${t.target\vert{}\vert{}0}s to win${selected.rewards}!`;
         return `• ${type.replace(/_/g,' ')}`;
     }).join('\n');
 
     container.addTextDisplayComponents(text(`**Tasks:**\n${taskLines || '• Task details unavailable'}`));
     container.addSeparatorComponents(sep());
 
-    // Banner - THIS WILL SHOW MONOPOLY GO, CLAYFACE, COD MW etc each with own banner
     if (selected.banner && /^https:\/\/\S+/i.test(selected.banner)) {
         container.addMediaGalleryComponents(
             new MediaGalleryBuilder().addItems(
-                new MediaGalleryItemBuilder().setURL(selected.banner).setDescription(`${selected.game} - ${selected.questName} banner`)
+                new MediaGalleryItemBuilder().setURL(selected.banner).setDescription(`${selected.game} -${selected.questName} banner`)
             )
         );
         container.addSeparatorComponents(sep());
     }
 
-    // Select menu
+    // Select menu with strict boolean cast on setDefault
     const menuOptions = allQuests.slice(0,25).map(q => new StringSelectMenuOptionBuilder()
-        .setLabel(shorten(`${q.game}: ${q.questName}`, 95))
+        .setLabel(shorten(`${q.game}:${q.questName}`, 95))
         .setValue(String(q.id))
-        .setDescription(shorten(`${q.progress.total}% • ${q.rewards}`, 100))
+        .setDescription(shorten(`${q.progress.total}\% •${q.rewards}`, 100))
         .setEmoji(q.progress.total >= 100 ? '✅' : '🔮')
-        .setDefault(String(q.id) === String(selected.id))
+        .setDefault(Boolean(String(q.id) === String(selected.id)))
     );
 
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(`${selected.game}: ${selected.questName}`, 100)).addOptions(menuOptions)));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(`${selected.game}:${selected.questName}`, 100)).addOptions(menuOptions)));
     container.addSeparatorComponents(sep());
 
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`quest_start_${selected.id}`).setLabel('Start').setEmoji('▶️').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
+        new ButtonBuilder().setCustomId(`quest_start_${selected.id}`).setLabel('Start').setEmoji('▶️').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(Boolean(isRunning)),
         new ButtonBuilder().setCustomId(`quest_stop_${selected.id}`).setLabel('Stop').setEmoji('⏹️').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
     ));
 
-    // VIEW BUTTON - This opens the page you showed in screenshot (Quests list with Monopoly, Clayface etc)
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setLabel('View Quest').setEmoji('🔗').setStyle(ButtonStyle.Link).setURL('https://discord.com/quests')
     ));
 
-    // Logs
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text('## 📘 Quest Logs'));
     logsContainer.addSeparatorComponents(sep());
@@ -264,9 +254,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     let logText = customLogs;
     if (!logText) {
         if (isCompleted) {
-            logText = `🧭 Quest selected\n📝 Enrolled\n[${tStr(new Date(now - 900000))}] Fast mode active (fast)\n[${tStr(now)}] 🎉 Quest completed successfully! [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+            logText = `🧭 Quest selected\n📝 Enrolled\n[${tStr(new Date(now - 900000))}] Fast mode active (fast)\n[${tStr(now)}] 🎉 Quest completed successfully! [${selected.progress.total}\%] [${progressBar(selected.progress.total)}]`;
         } else {
-            logText = `🧭 Quest selected\n[${tStr(new Date(now - 360000))}] Fast mode active (fast)\n[${tStr(now)}] Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+            logText = `🧭 Quest selected\n[${tStr(new Date(now - 360000))}] Fast mode active (fast)\n[${tStr(now)}] Progress ->${selected.questName} [${selected.progress.total}\%] [${progressBar(selected.progress.total)}]`;
         }
     }
 
