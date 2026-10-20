@@ -1,5 +1,5 @@
 /**
- * questUI.js — Guaranteed Photo & Emoji Fallback Edition
+ * questUI.js — Complete Fixed & Crash-Free Edition
  * Location: src/quest/questUI.js
  */
 
@@ -21,23 +21,14 @@ const ACCENT = 0x2B2D31;
 const EXCLUDED_QUEST_ID = '1412491570820812933';
 
 // ==========================================
-// 🎯 SAFE EMOJIS WITH FALLBACK SUPPORT
+// 🎯 CENTRAL EMOJIS (Clean & Supported Fallbacks)
 // ==========================================
-// Note: Agar custom emojis raw dikhein, toh standard unicode icons render honge.
 const EMOJI = {
-    quest: "<:quest:1533359378659414116>",
-    watch: "<:WATCH_VIDEO:1533359391229612112>",
-    phone: "<a:phone:1533359351232856115>",
-    orb: "<:orbIcon:1533359368542617640>",
-    log: "<:log:1533359319842557983>",
-    
-    // Standard Fallbacks
-    questFallback: "🏆",
-    watchFallback: "💻",
-    phoneFallback: "📱",
-    orbFallback: "💎",
-    logFallback: "📝",
-    
+    quest: "🏆",
+    watch: "💻",
+    phone: "📱",
+    orb: "💎",
+    log: "📝",
     start: "▶️",
     stop: "⏹️",
     refresh: "🔄",
@@ -97,7 +88,6 @@ function getQuestImages(quest) {
 
     let bannerUrl = null;
 
-    // 1. Direct valid HTTPS image
     const directCandidates = [
         data.bannerURL, data.bannerUrl, data.banner_url,
         config.banner_url, config.banner, config.assets?.banner,
@@ -110,7 +100,6 @@ function getQuestImages(quest) {
         }
     }
 
-    // 2. Fallback CDN URL Construction
     if (!bannerUrl && appId) {
         const keys = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'hero_video', 'thumbnail', 'icon'];
         for (const k of keys) {
@@ -133,7 +122,6 @@ function getQuestImages(quest) {
         }
     }
 
-    // 3. Icon CDN Resolution
     let iconUrl = null;
     const rawIcon = app.icon || config.icon || app.icon_hash;
     if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
@@ -279,14 +267,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`## Tasks:\n${taskLines.join('\n') || '- Watch Video for 2m'}`));
 
-    // --- PHOTO GUARANTEED (Media Gallery Fix) ---
+    // --- PHOTO GUARANTEED ---
     const galleryItems = [];
     let activeImage = selected.images?.banner || selected.images?.icon;
 
     if (activeImage && typeof activeImage === 'string' && activeImage.startsWith('https://')) {
         galleryItems.push(new MediaGalleryItemBuilder().setURL(activeImage).setDescription(selected.game + ' banner'));
     } else {
-        // Safe Discord Static CDN fallback image to guarantee a visual container
         galleryItems.push(new MediaGalleryItemBuilder().setURL('https://cdn.discordapp.com/embed/avatars/0.png').setDescription('Discord Quest'));
     }
 
@@ -298,3 +285,42 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const opt = new StringSelectMenuOptionBuilder()
+            .setLabel(shorten(q.game + ': ' + q.questName, 95))
+            .setValue(String(q.id))
+            .setDescription(shorten(`${q.progress.total}% - ${q.rewards}`, 100))
+            .setEmoji({ name: EMOJI.selectOrb });
+        if (String(q.id) === String(selected.id)) opt.setDefault(true);
+        menuOptions.push(opt);
+    }
+
+    container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('quest_select')
+                .setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100))
+                .addOptions(menuOptions)
+        )
+    );
+
+    // Buttons
+    const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setEmoji({ name: EMOJI.start }).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setEmoji({ name: EMOJI.stop }).setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({ name: EMOJI.refresh }).setStyle(ButtonStyle.Secondary)
+    ));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji({ name: EMOJI.link }).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
+
+    // Quest Logs
+    const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
+    logsContainer.addTextDisplayComponents(text(`## ${EMOJI.log} Quest Logs`));
+    const now = new Date();
+    const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+    let logText = customLogs;
+    if (!logText) {
+        logText = `${EMOJI.compass} Quest selected\n[${tStr(now)}] ${EMOJI.fastMode} Fast mode active\n[${tStr(now)}] ${EMOJI.chart} Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+    }
+    logsContainer.addTextDisplayComponents(text('```prolog\n' + String(logText).slice(0, 900) + '\n```'));
+
+    return { components: [container, logsContainer], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+}
