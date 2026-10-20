@@ -1,12 +1,8 @@
 
 /**
- * questUI.js - FINAL VERIFIED - Banner + Progress + No Crash
+ * questUI.js - 100% Orbie Clone UI + New Emojis + Banner Fix
  * Location: src/quest/questUI.js
- * Fixes: 
- * 1. Banner poop fix - supports both direct & quest-assets CDN
- * 2. Progress 29% -> 59% fix - uses MAX not average + dedup
- * 3. SyntaxError fix - Stop button ternary
- * 4. Duplicate tasks fix
+ * Based on user's screenshots: Royal Match 0% -> 25% + banner
  */
 
 import {
@@ -50,11 +46,11 @@ function getTaskProgress(taskType, taskConfig, status) {
         const n = Number(v);
         if (Number.isFinite(n)) { current = Math.max(0, n); break; }
     }
-    if (taskType === 'STREAM_ON_DESKTOP' && status.stream_progress_seconds != null) {
+    if (taskType.includes('STREAM') && status.stream_progress_seconds != null) {
         const sp = Number(status.stream_progress_seconds);
         if (Number.isFinite(sp)) current = Math.max(current, sp);
     }
-    if (taskType.indexOf('WATCH_VIDEO') !== -1 && status.video_progress_seconds != null) {
+    if (taskType.includes('WATCH_VIDEO') && status.video_progress_seconds != null) {
         const vp = Number(status.video_progress_seconds);
         if (Number.isFinite(vp)) current = Math.max(current, vp);
     }
@@ -65,53 +61,40 @@ function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
-    const app = config.application ?? {};
-    const appId = app.id || config.application_id || config.applicationId;
+    const app = quest?.application ?? config.application ?? {};
+    const appId = app.id || config.application_id;
 
-    // 1. Direct valid HTTPS banner (Firefox, direct CDN)
+    // 1. Direct HTTPS (skip mp4)
     let bannerUrl = [
-        data.bannerURL,
-        data.bannerUrl,
-        data.banner_url,
-        config.banner_url,
-        config.banner
-    ].find(url => typeof url === 'string' && url.startsWith('https://') && !url.endsWith('.mp4')) ?? null;
+        data.bannerURL, data.bannerUrl, data.banner_url, config.banner_url, config.banner
+    ].find(u => typeof u === 'string' && u.startsWith('https://') && !/\.mp4/i.test(u)) ?? null;
 
-    // 2. Fallback to Discord Application Assets CDN (Monopoly, Clayface etc)
-    // Correct path: app-assets/{appId}/quest-assets/{asset}.png
+    // 2. Fallback - Game quests: Use asset key as-is with proper CDN path
+    // Royal Match has hero asset -> should be .../quest-assets/hero.png
     if (!bannerUrl && appId) {
-        const keys = ['hero', 'quest_tile', 'game_tile', 'hero_video', 'quest_bar', 'card'];
-        for (const k of keys) {
-            const val = assets[k];
-            if (val && String(val).trim() !== '') {
-                const s = String(val).trim();
-                if (s.endsWith('.mp4')) continue;
-                if (s.startsWith('https://')) { 
-                    if (s.endsWith('.mp4')) continue;
-                    bannerUrl = s; 
-                    break; 
-                }
-                // Clean filename and build proper CDN URL with quest-assets folder
-                const clean = s.split('/').pop().replace(/\.(png|jpe?g|webp|gif)$/i, '');
-                if (!clean) continue;
-                bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${clean}.png`;
-                break;
-            }
+        const order = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'hero_video'];
+        for (const k of order) {
+            const v = assets[k];
+            if (!v || String(v).trim() === '') continue;
+            const s = String(v).trim();
+            if (/\.mp4/i.test(s)) continue;
+            if (s.startsWith('https://')) { bannerUrl = s; break; }
+            // Keep original extension if present, else add .png
+            let filename = s.split('/').pop();
+            if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
+            bannerUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+            break;
         }
     }
 
-    // 3. Application Icon CDN
     let iconUrl = null;
     const rawIcon = app.icon;
     if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
-        const trimmed = rawIcon.trim();
-        if (trimmed.startsWith('https://')) {
-            iconUrl = trimmed;
-        } else if (appId) {
-            const cleanHash = trimmed.split('/').pop().trim();
-            if (cleanHash) {
-                iconUrl = `https://cdn.discordapp.com/app-icons/${appId}/${cleanHash}.png?size=512`;
-            }
+        const t = rawIcon.trim();
+        if (t.startsWith('https://')) iconUrl = t;
+        else if (appId) {
+            const hash = t.split('/').pop().trim();
+            iconUrl = `https://cdn.discordapp.com/app-icons/${appId}/${hash}.png?size=512`;
         }
     }
 
@@ -124,226 +107,176 @@ function formatDate(v) {
     if (isNaN(d.getTime())) return 'N/A';
     return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 }
-
 function buildRewardText(config) {
     const rewards = config?.rewards_config?.rewards ?? [];
-    if (!rewards.length) return '700 Orbs';
+    if (!rewards.length) return '200 Orbs';
     return rewards.map(r => r?.orb_quantity ? `${r.orb_quantity} Orbs` : (r?.messages?.name || 'Reward')).join(', ');
 }
-
-function shorten(v, max) { 
-    if (max === undefined) max = 100;
-    return String(v ?? '').slice(0, max); 
-}
-
-function progressBar(p) { 
-    const f = Math.round(p / 10); 
-    let a = '';
-    for(let i=0;i<f;i++) a+='#';
-    let b = '';
-    for(let i=0;i<10-f;i++) b+='-';
-    return a+b;
-}
-
-function text(c) { 
-    return new TextDisplayBuilder().setContent(c); 
-}
+function shorten(v, max=100) { return String(v ?? '').slice(0, max); }
+function progressBar(p) { const f=Math.round(p/10); return '#'.repeat(f) + '-'.repeat(10-f); }
+function text(c) { return new TextDisplayBuilder().setContent(c); }
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId, customLogs) {
-    if (selectedQuestId === undefined) selectedQuestId = null;
-    if (customLogs === undefined) customLogs = null;
+    selectedQuestId ??= null;
+    customLogs ??= null;
     const prefix = client.config?.prefix || process.env.PREFIX || ';';
     const tokenStore = client.tokenStore;
 
     if (!tokenStore) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text('# Token Store Error\nToken store not initialized.'));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+        const c=new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(text('# ❌ Token Store Error\nToken store not initialized.'));
+        return { components:[c], flags:MessageFlags.IsComponentsV2 };
     }
-
     let active, token;
     try {
         active = await tokenStore.getActiveSlot(guildId, userId);
         token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     } catch {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text('# Token Store Error\nCould not load token.'));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+        const c=new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(text('# ❌ Token Store Error\nCould not load token.'));
+        return { components:[c], flags:MessageFlags.IsComponentsV2 };
     }
-
     if (!active || !token) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text('# No Active Slot\nUse `' + prefix + 'link` to link a token.'));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+        const c=new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(text(`# 🔑 No Active Slot\nUse \`${prefix}link\` to link a token.`));
+        return { components:[c], flags:MessageFlags.IsComponentsV2 };
     }
 
     let rawQuests;
     try {
-        const qc = new QuestClient(token.trim().replace(/^['"]|['"]$/g, ''));
-        const manager = await qc.fetchQuests();
-        rawQuests = manager.list() ?? [];
-    } catch (error) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        const raw = String(error?.message ?? error);
-        let msg = raw;
-        if (raw.includes('401') || raw.toLowerCase().includes('unauthorized')) {
-            msg = 'Token Expired! Use `' + prefix + 'link` to relink.';
-        }
-        c.addTextDisplayComponents(text('# Quest Solver Error\n' + shorten(msg, 300)));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+        const qc=new QuestClient(token.trim().replace(/^['"]|['"]$/g, ''));
+        const manager=await qc.fetchQuests();
+        rawQuests=manager.list() ?? [];
+    } catch (e) {
+        const c=new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(text('# ⚠️ Quest Solver Error\n' + shorten(String(e.message ?? e), 300)));
+        return { components:[c], flags:MessageFlags.IsComponentsV2 };
     }
 
     const activeQuests = rawQuests.filter(q => {
-        try { 
-            const isCompleted = q.isCompleted?.() || false;
-            const isExpired = q.isExpired?.() || false;
-            return q.id !== EXCLUDED_QUEST_ID && !isExpired && !isCompleted;
-        } catch { 
-            return true; 
-        }
+        try { return q.id !== EXCLUDED_QUEST_ID && !q.isExpired?.() && !q.isCompleted?.(); } catch { return true; }
     });
 
     const allQuests = activeQuests.map(quest => {
-        const config = quest.config ?? {};
-        const messages = config.messages ?? {};
-        const tasks = getTasks(config);
-        const status = quest.userStatus ?? {};
-        const images = getQuestImages(quest);
-        const platformProgress = {};
-        for (const t of Object.keys(tasks)) {
-            platformProgress[t] = getTaskProgress(t, tasks[t], status);
-        }
-        // FIX: Use MAX of unique task types, not average (fixes 29% -> 59%)
-        const seen = new Set();
-        const uniqueVals = [];
+        const config=quest.config ?? {};
+        const messages=config.messages ?? {};
+        const tasks=getTasks(config);
+        const status=quest.userStatus ?? {};
+        const images=getQuestImages(quest);
+        const platformProgress={};
+        for (const t of Object.keys(tasks)) platformProgress[t]=getTaskProgress(t,tasks[t],status);
+        // DEDUP + AVERAGE (fixes 29% vs 59% and duplicate tasks)
+        const seen=new Set(); const uniq=[];
         for (const k of Object.keys(platformProgress)) {
-            const base = k.replace(/_\d+$/, '');
-            if (!seen.has(base)) {
-                seen.add(base);
-                uniqueVals.push(platformProgress[k]);
-            }
+            const base=k.replace(/_\d+$/, '');
+            if (!seen.has(base)) { seen.add(base); uniq.push(platformProgress[k]); }
         }
-        const total = uniqueVals.length ? Math.max(...uniqueVals) : 0;
+        const total = uniq.length ? Math.floor(uniq.reduce((a,b)=>a+b,0)/uniq.length) : 0;
         return {
-            id: quest.id,
-            game: messages.game_title || config.application?.name || 'Unknown Game',
-            publisher: messages.game_publisher || 'Unknown',
-            questName: messages.quest_name || 'Discord Quest',
-            enrolledAt: formatDate(status.enrolled_at),
-            expiresAt: formatDate(config.expires_at),
-            rewards: buildRewardText(config),
-            tasks,
-            platformProgress,
-            images,
-            progress: { total },
-            isCompleted: false,
+            id:quest.id, game:messages.game_title || config.application?.name || 'Unknown',
+            publisher:messages.game_publisher || 'Unknown', questName:messages.quest_name || 'Discord Quest',
+            enrolledAt:formatDate(status.enrolled_at), expiresAt:formatDate(config.expires_at),
+            rewards:buildRewardText(config), tasks, platformProgress, images, progress:{total}
         };
     });
 
     if (!allQuests.length) {
-        const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text('## Quest Solver\n\nNo active Quests found. Check https://discord.com/quests'));
-        c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Primary)));
-        return { components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
+        const c=new ContainerBuilder().setAccentColor(ACCENT);
+        c.addTextDisplayComponents(text('## 🏆 Quest Solver\n\nNo active Quests found. Check https://discord.com/quests'));
+        c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({name:'🔄'}).setStyle(ButtonStyle.Primary)));
+        return { components:[c], flags:MessageFlags.IsComponentsV2, allowedMentions:{parse:[]} };
     }
 
-    const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
+    const selected = allQuests.find(q=>String(q.id)===String(selectedQuestId)) ?? allQuests[0];
+    const container=new ContainerBuilder().setAccentColor(ACCENT);
 
-    const container = new ContainerBuilder().setAccentColor(ACCENT);
-    container.addTextDisplayComponents(text('## Quest Solver'));
+    // --- ORBIE STYLE HEADER ---
+    container.addTextDisplayComponents(text('## 🏆 Quest Solver'));
 
-    const isCompleted = selected.progress.total >= 100;
-    const progressIcon = isCompleted ? '[Done]' : '[Active]';
-    const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? selected.progress.total;
-    const playstationPct = selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0;
-    const hasPlaystation = Object.keys(selected.platformProgress).some(k => k.includes('PLAYSTATION'));
+    const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? 0;
+    const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? selected.platformProgress['WATCH_VIDEO'] ?? 0;
+    const hasMobile = Object.keys(selected.platformProgress).some(k=>k.includes('MOBILE'));
+    const hasDesktop = !hasMobile || Object.keys(selected.platformProgress).some(k=>k.includes('DESKTOP') || k.includes('WATCH_VIDEO'));
 
-    let progressSection = '';
-    progressSection += 'Game: ' + selected.game + '\n';
-    progressSection += 'Publisher: ' + selected.publisher + '\n';
-    progressSection += 'Quest Name: ' + selected.questName + '\n';
-    progressSection += 'Enrolled At: ' + selected.enrolledAt + '\n';
-    progressSection += 'Expires At: ' + selected.expiresAt + '\n';
-    progressSection += 'Progress: ' + progressIcon + ' ' + selected.progress.total + '%\n';
-    progressSection += 'Desktop: ' + desktopPct + '%\n';
-    if (hasPlaystation) progressSection += 'PlayStation: ' + playstationPct + '%\n';
+    // --- ORBIE STYLE INFO with new emojis ---
+    let info = '';
+    info += `• **Game:** ${selected.game}\n`;
+    info += `• **Publisher:** ${selected.publisher}\n`;
+    info += `• **Quest Name:** ${selected.questName}\n`;
+    info += `• **Enrolled At:** ${selected.enrolledAt}\n`;
+    info += `• **Expires At:** ${selected.expiresAt}\n`;
+    info += `• **Progress:**\n`;
+    if (hasMobile && !hasDesktop) {
+        info += `🌀 ${selected.progress.total}%\n`;
+        info += `📱 **Mobile:** ${mobilePct}%\n`;
+    } else if (hasMobile && hasDesktop) {
+        info += `🌀 ${selected.progress.total}%\n`;
+        info += `💻 **Desktop:** ${desktopPct}%\n`;
+        info += `📱 **Mobile:** ${mobilePct}%\n`;
+    } else {
+        info += `🌀 ${selected.progress.total}%\n`;
+        info += `💻 **Desktop:** ${desktopPct}%\n`;
+        if (Object.keys(selected.platformProgress).some(k=>k.includes('PLAYSTATION'))) {
+            info += `🎮 **PlayStation:** ${selected.platformProgress['PLAY_ON_PLAYSTATION'] ?? 0}%\n`;
+        }
+    }
+    container.addTextDisplayComponents(text(info));
 
-    container.addTextDisplayComponents(text(progressSection));
-    container.addTextDisplayComponents(text('Rewards: ' + selected.rewards));
+    // --- Rewards with orb emoji ---
+    container.addTextDisplayComponents(text(`### 🎁 Rewards:\n• **${selected.rewards}** 💎`));
 
-    // FIX: Deduplicate tasks (Firefox duplicate Watch Video fix)
-    const seenTasks = new Set();
-    const taskLinesArr = [];
+    // --- Tasks deduped ---
+    const seenT=new Set(); const taskLines=[];
     for (const type of Object.keys(selected.tasks)) {
-        const base = type.replace(/_\d+$/, '');
-        if (seenTasks.has(base)) continue;
-        seenTasks.add(base);
-        const t = selected.tasks[type];
-        if (type.indexOf('PLAY_ON_DESKTOP') !== -1) taskLinesArr.push('- Play On Desktop for ' + Math.ceil((t.target || 900) / 60) + 'm');
-        else if (type.indexOf('PLAY_ON_PLAYSTATION') !== -1) taskLinesArr.push('- Play On Playstation ' + (t.target || 900) + ' times');
-        else if (type.indexOf('PLAY_ON_XBOX') !== -1) taskLinesArr.push('- Play On Xbox ' + (t.target || 900) + ' times');
-        else if (type.indexOf('WATCH_VIDEO') !== -1) taskLinesArr.push('- Watch Video for ' + (t.target || 0) + 's to win ' + selected.rewards);
-        else taskLinesArr.push('- ' + type.replace(/_/g, ' '));
+        const base=type.replace(/_\d+$/, '');
+        if (seenT.has(base)) continue;
+        seenT.add(base);
+        const t=selected.tasks[type];
+        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`• Play On Desktop for ${Math.ceil((t.target||900)/60)}m`);
+        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`• Watch Video On Mobile for ${Math.ceil((t.target||0)/60)}m`);
+        else if (type.includes('WATCH_VIDEO')) taskLines.push(`• Watch Video On ${type.includes('MOBILE')?'Mobile':'Desktop'} for ${t.target||0}s`);
+        else if (type.includes('PLAY_ON_PLAYSTATION')) taskLines.push(`• Play On Playstation ${t.target||900} times`);
+        else taskLines.push(`• ${type.replace(/_/g,' ')}`);
     }
+    container.addTextDisplayComponents(text(`### 📋 Tasks:\n${taskLines.join('\n') || '• Play On Desktop for 15m'}`));
 
-    container.addTextDisplayComponents(text('Tasks:\n' + (taskLinesArr.join('\n') || '- Play On Desktop for 15m')));
-
-    // Render gallery - banner + icon, no mp4, no poop
-    const galleryItems = [];
-    if (selected.images?.banner && typeof selected.images.banner === 'string' && selected.images.banner.startsWith('https://')) {
+    // --- Banner Image (Royal Match gameplay like screenshot) ---
+    const galleryItems=[];
+    if (selected.images?.banner && selected.images.banner.startsWith('https://')) {
         galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.banner).setDescription(selected.game + ' banner'));
     }
-    if (selected.images?.icon && typeof selected.images.icon === 'string' && selected.images.icon.startsWith('https://')) {
-        // Only add icon if banner missing or different, to avoid duplicate
-        if (!selected.images.banner || selected.images.icon !== selected.images.banner) {
-            galleryItems.push(new MediaGalleryItemBuilder().setURL(selected.images.icon).setDescription(selected.game + ' icon'));
-        }
+    if (galleryItems.length>0) {
+        try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
-    if (galleryItems.length > 0) {
-        try {
-            container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems));
-        } catch {}
-    }
-
-    const menuOptions = [];
-    for (const q of allQuests.slice(0, 25)) {
-        const opt = new StringSelectMenuOptionBuilder()
-            .setLabel(shorten(q.game + ': ' + q.questName, 95))
-            .setValue(String(q.id))
-            .setDescription(shorten(q.progress.total + '% - ' + q.rewards, 100));
-        if (String(q.id) === String(selected.id)) {
-            opt.setDefault(true);
-        }
+    // --- Select Menu with orb icon ---
+    const menuOptions=[];
+    for (const q of allQuests.slice(0,25)) {
+        const opt=new StringSelectMenuOptionBuilder().setLabel(shorten(q.game+': '+q.questName,95)).setValue(String(q.id)).setDescription(shorten(`${q.progress.total}% - ${q.rewards}`,100)).setEmoji({name:'💎'});
+        if (String(q.id)===String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game+': '+selected.questName,100)).addOptions(menuOptions)));
 
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)));
-
-    const isRunning = customLogs && String(customLogs).toLowerCase().indexOf('fast mode') !== -1;
+    // --- Buttons with new emojis (like Orbie) ---
+    const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('quest_start_'+selected.id).setLabel('Start').setEmoji({name:'▶️'}).setStyle(isRunning?ButtonStyle.Secondary:ButtonStyle.Success).setDisabled(isRunning?true:false),
+        new ButtonBuilder().setCustomId('quest_stop_'+selected.id).setLabel('Stop').setEmoji({name:'⏹️'}).setStyle(isRunning?ButtonStyle.Danger:ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({name:'🔄'}).setStyle(ButtonStyle.Secondary)
     ));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji({name:'🔗'}).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
-
-    const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text('Quest Logs'));
-
-    const now = new Date();
-    const tStr = function(d) { return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); };
-    let logText = customLogs;
+    // --- Quest Logs with new emojis ---
+    const logsContainer=new ContainerBuilder().setAccentColor(ACCENT);
+    logsContainer.addTextDisplayComponents(text('## 📝 Quest Logs'));
+    const now=new Date();
+    const tStr=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+    let logText=customLogs;
     if (!logText) {
-        logText = 'Quest selected\n[' + tStr(now) + '] Fast mode active\nProgress -> ' + selected.questName + ' [' + selected.progress.total + '%] [' + progressBar(selected.progress.total) + ']';
+        logText=`🧭 Quest selected\n[${tStr(now)}] ⚡ Fast mode active\n[${tStr(now)}] 📈 Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
     }
+    logsContainer.addTextDisplayComponents(text('```\n' + String(logText).slice(0,900) + '\n```'));
 
-    logsContainer.addTextDisplayComponents(text('```\n' + String(logText).slice(0, 900) + '\n```'));
-
-    return {
-        components: [container, logsContainer],
-        flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { parse: [] }
-    };
+    return { components:[container, logsContainer], flags:MessageFlags.IsComponentsV2, allowedMentions:{parse:[]} };
 }
