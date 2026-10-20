@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Event Handler for Interactions
+ * interactionCreate.js — Complete Interaction Handler with Auto-Refresh & Clean DM Alerts
  * Location: src/events/interactionCreate.js
  */
 
@@ -10,7 +10,7 @@ import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
 
-// Map to track running auto-refresh loops across users
+// Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
 
 export default {
@@ -64,33 +64,44 @@ export default {
                 return;
             }
 
-            // 6. Refresh Button Handler
+            // 6. Refresh Button Handler (Preserves selected quest context)
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
+
+                let currentQuestId = null;
+                try {
+                    const row = interaction.message.components.find(r => r.components?.some(c => c.customId === 'quest_select'));
+                    const menu = row?.components?.find(c => c.customId === 'quest_select');
+                    if (menu?.options) {
+                        const defaultOpt = menu.options.find(o => o.default);
+                        if (defaultOpt) currentQuestId = defaultOpt.value;
+                    }
+                } catch {}
 
                 const timeString = new Date().toLocaleTimeString();
                 const loadingLogs = `🔄 Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
 
-                const panel = await buildQuestSolverPanel(client, guildId, userId, null, loadingLogs);
+                const panel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId, loadingLogs);
                 await interaction.editReply(panel);
 
                 setTimeout(async () => {
-                    const freshPanel = await buildQuestSolverPanel(client, guildId, userId);
+                    const freshPanel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId);
                     await interaction.editReply(freshPanel).catch(() => {});
                 }, 1500);
 
                 return;
             }
 
-            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Direct Detailed DM
+            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Clean DM
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
                 const runnerKey = `${guildId}_${userId}`;
 
-                // Clear any existing runner for this user
                 if (activeRunners.has(runnerKey)) {
-                    clearInterval(activeRunners.get(runnerKey));
+                    const existing = activeRunners.get(runnerKey);
+                    existing.isRunning = false;
+                    clearInterval(existing.interval);
                     activeRunners.delete(runnerKey);
                 }
 
@@ -124,7 +135,6 @@ export default {
 
                 const questName = quest.config?.messages?.quest_name || quest.config?.application?.name || 'Discord Quest';
 
-                // If already completed, attempt to claim reward
                 if (quest.isCompleted()) {
                     const claimLog = `🎁 Claiming reward for quest: ${questName}...`;
                     const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
@@ -132,7 +142,7 @@ export default {
 
                     const claimedCount = await manager.claimRewards(async (msg) => {
                         console.log(`[Claim Log] ${msg}`);
-                    }, questId);
+                    });
 
                     const resultLog = claimedCount > 0
                         ? `🎉 Quest completed & reward claimed successfully!`
@@ -143,14 +153,15 @@ export default {
                     return;
                 }
 
-                // Start automation in background
-                let isRunning = true;
+                const runnerContext = { isRunning: true, interval: null };
+                activeRunners.set(runnerKey, runnerContext);
+
                 manager.doingQuest(quest, async (msg) => {
                     console.log(`[Quest Runner Log] ${msg}`);
-                }).then(async (success) => {
-                    isRunning = false;
-                    if (activeRunners.has(runnerKey)) {
-                        clearInterval(activeRunners.get(runnerKey));
+                }, async (current, target) => {}).then(async (success) => {
+                    runnerContext.isRunning = false;
+                    if (activeRunners.get(runnerKey) === runnerContext) {
+                        clearInterval(runnerContext.interval);
                         activeRunners.delete(runnerKey);
                     }
 
@@ -164,23 +175,22 @@ export default {
                     if (success) {
                         try {
                             const targetUser = await client.users.fetch(userId);
-                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n\n🔗 **Claim your reward here:** https://discord.com/quests`);
+                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed`);
                         } catch {
                             await interaction.followUp({
-                                content: `<@${userId}> 🎉 **Quest Completed!** (Could not send DM, please check your privacy settings)\n📌 **Quest Name:** ${questName}\n🔗 **Claim your reward here:** https://discord.com/quests`,
+                                content: `<@${userId}> 🎉 **Quest Completed!**\n📌 **Quest Name:** ${questName}`,
                                 allowedMentions: { users: [userId] }
                             }).catch(() => {});
                         }
                     }
                 }).catch((err) => {
-                    isRunning = false;
+                    runnerContext.isRunning = false;
                     console.error('Quest execution error:', err);
                 });
 
-                // Auto-refresh interval (runs every 5 seconds while active)
-                const interval = setInterval(async () => {
-                    if (!isRunning) {
-                        clearInterval(interval);
+                runnerContext.interval = setInterval(async () => {
+                    if (!runnerContext.isRunning) {
+                        clearInterval(runnerContext.interval);
                         activeRunners.delete(runnerKey);
                         return;
                     }
@@ -195,16 +205,13 @@ export default {
                     }
                 }, 5000);
 
-                activeRunners.set(runnerKey, interval);
-
-                // Auto timeout runner loop after 5 minutes
                 setTimeout(() => {
-                    if (activeRunners.get(runnerKey) === interval) {
-                        isRunning = false;
-                        clearInterval(interval);
+                    if (activeRunners.get(runnerKey) === runnerContext) {
+                        runnerContext.isRunning = false;
+                        clearInterval(runnerContext.interval);
                         activeRunners.delete(runnerKey);
                     }
-                }, 5 * 60 * 1000);
+                }, 10 * 60 * 1000);
 
                 return;
             }
@@ -216,7 +223,9 @@ export default {
                 const runnerKey = `${guildId}_${userId}`;
 
                 if (activeRunners.has(runnerKey)) {
-                    clearInterval(activeRunners.get(runnerKey));
+                    const existing = activeRunners.get(runnerKey);
+                    existing.isRunning = false;
+                    clearInterval(existing.interval);
                     activeRunners.delete(runnerKey);
                 }
 
