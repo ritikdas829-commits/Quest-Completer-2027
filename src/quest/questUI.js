@@ -1,5 +1,5 @@
 /**
- * questUI.js — Final Optimized Edition with Clean CDN Asset Basename Extraction
+ * questUI.js — Final Optimized Edition with Safe Public Application Icons
  * Location: src/quest/questUI.js
  */
 
@@ -53,52 +53,29 @@ function getTaskProgress(taskType, taskConfig, status) {
 
 function getBannerUrl(quest) {
     const config = quest?.config ?? {};
-    const assets = config?.assets ?? {};
     const app = config?.application ?? {};
     
-    // 1. Direct URL check across all possible properties
+    // 1. Check if there is an explicit safe direct HTTPS URL (excluding private quest-assets)
     const direct = quest?.bannerURL || quest?.bannerUrl || quest?.banner_url || config?.banner_url || config?.banner;
-    if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct)) {
+    if (direct && typeof direct === 'string' && /^https:\/\/\S+/i.test(direct) && !direct.includes('quest-assets')) {
         return direct;
     }
 
-    // 2. Check Application Icon / Splash as fallback thumbnail
-    if (app.icon && typeof app.icon === 'string') {
+    // 2. Prioritize Application Icon as a 100% public and reliable thumbnail (Prevents AccessDenied)
+    if (app.id && app.icon && typeof app.icon === 'string') {
         const iconHash = app.icon.trim();
         if (/^https:\/\/\S+/i.test(iconHash)) return iconHash;
         return `https://cdn.discordapp.com/app-icons/${app.id}/${iconHash}.png?size=512`;
     }
 
-    // 3. Scan asset keys
-    const assetKeys = ['hero', 'quest_bar_hero', 'hero_video', 'quest_tile', 'game_tile', 'quest_bar', 'quest_home', 'card', 'splash'];
-    let raw = null;
-    for (const key of assetKeys) {
-        if (assets[key] && String(assets[key]).trim() !== '') {
-            raw = assets[key];
-            break;
-        }
+    // 3. Fallback to Application Splash if available
+    if (app.id && app.splash && typeof app.splash === 'string') {
+        const splashHash = app.splash.trim();
+        if (/^https:\/\/\S+/i.test(splashHash)) return splashHash;
+        return `https://cdn.discordapp.com/app-icons/${app.id}/${splashHash}.png?size=512`;
     }
 
-    if (!raw) {
-        const vals = Object.values(assets).filter(v => v && typeof v === 'string' && v.trim() !== '');
-        if (vals.length) raw = vals[0];
-    }
-
-    if (!raw) return null;
-    const asset = String(raw).trim();
-    if (!asset) return null;
-
-    if (/^https:\/\/\S+/i.test(asset)) return asset;
-
-    // 4. Construct CDN asset link — extract clean filename/basename to eliminate nested paths (like 'quests/...')
-    if (quest?.id && asset) {
-        const cleanAsset = asset.split('/').pop().trim();
-        if (!cleanAsset) return null;
-        const filename = /\.(png|jpe?g|webp|gif|mp4)$/i.test(cleanAsset) ? cleanAsset : `${cleanAsset}.png`;
-        return `https://cdn.discordapp.com/quest-assets/${quest.id}/${filename}`;
-    }
-
-    return null;
+    return null; // Gracefully return null to avoid generating broken private links
 }
 
 function formatDate(v) {
@@ -255,7 +232,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     container.addTextDisplayComponents(text('Tasks:\n' + (taskLines || '- Play On Desktop for 15m')));
 
-    // Render media gallery only if a valid https image url exists
+    // Render media gallery safely only if a valid public image URL exists
     if (selected.banner && typeof selected.banner === 'string' && selected.banner.startsWith('https://') && !selected.banner.includes('undefined')) {
         try {
             container.addMediaGalleryComponents(
