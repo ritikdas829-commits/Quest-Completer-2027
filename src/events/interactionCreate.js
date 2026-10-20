@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Auto-Refresh & Clean DM Alerts
+ * interactionCreate.js — Complete Interaction Handler with Auto-Refresh & Specific Quest Link DM Alerts
  * Location: src/events/interactionCreate.js
  */
 
@@ -92,7 +92,7 @@ export default {
                 return;
             }
 
-            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Clean DM
+            // 7. Start Button Handler — Automation Engine + Auto-Refresh + Direct Quest Link DM
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -173,12 +173,13 @@ export default {
                     await interaction.editReply(completePanel).catch(() => {});
 
                     if (success) {
+                        const specificQuestLink = `https://discord.com/quests/${questId}`;
                         try {
                             const targetUser = await client.users.fetch(userId);
-                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed`);
+                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
                         } catch {
                             await interaction.followUp({
-                                content: `<@${userId}> 🎉 **Quest Completed!**\n📌 **Quest Name:** ${questName}`,
+                                content: `<@${userId}> 🎉 **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
                                 allowedMentions: { users: [userId] }
                             }).catch(() => {});
                         }
