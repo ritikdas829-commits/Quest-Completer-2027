@@ -1,5 +1,5 @@
 /**
- * questUI.js — 100% Final Fix: Banner Fallback + Clean Unicode Logs + Working Emojis
+ * questUI.js — 100% Fixed Production Edition
  * Location: src/quest/questUI.js
  */
 
@@ -20,15 +20,15 @@ import { QuestClient } from './questClient.js';
 const ACCENT = 0x2B2D31;
 const EXCLUDED_QUEST_ID = '1412491570820812933';
 
-// Fixed Working Emojis Mapping
+// Mapped Custom Emojis (Fallback provided for invalid keys)
 const EMOJI = {
     list: "<:list:1562284923870650570>",
     links: "<a:links:1562284922058834052>",
-    emoji_15: "<:orbs:1551629656946507837>",
+    emoji_15: "<a:online:1561693806846410842>",
     qdiamond: "<:orbs:1551629656946507837>",
     loading: "<a:SA_CH_IconLoading:1561693801209274368>",
     orbs: "<:orbs:1551629656946507837>",
-    announce: "📢",
+    announce: "<a:announce:1486435765838942289>",
     s_admin: "<a:s_admin:1561693808670806067>",
     online: "<a:online:1561693806846410842>",
     gift: "<:GO_RedGiveaway:1561693805428740236>",
@@ -75,7 +75,6 @@ function getTaskProgress(taskType, taskConfig, status) {
     return Math.min(100, Math.floor((current / target) * 100));
 }
 
-// Banner fix: Video quests ke hero_video.mp4/404 CDN ko detect karke app icon se replace karta hai
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -109,7 +108,7 @@ function getQuestImages(quest) {
         else if (appId) iconUrl = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().trim()}.png?size=512`;
     }
 
-    // Video Quest Fallback Logic
+    // Video quest fallback logic
     if (!bannerUrl || bannerUrl.includes('hero_video') || !/\.(png|jpe?g|webp)$/i.test(bannerUrl)) {
         if (iconUrl) bannerUrl = iconUrl;
     }
@@ -200,6 +199,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
     const container = new ContainerBuilder().setAccentColor(ACCENT);
 
+    // Header
     container.addTextDisplayComponents(text(`# ${EMOJI.s_admin} ${selected.game}`));
 
     const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.progress.total;
@@ -207,7 +207,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     let info = `### ${EMOJI.orbs} Quest Overview\n`;
     info += `${EMOJI.gift} **Reward:** ${selected.rewards}\n`;
-    info += `${EMOJI.orbs} **Game:** ${selected.game}\n`;
+    info += `${EMOJI.emoji_15} **Game:** ${selected.game}\n`;
     info += `${EMOJI.list} **Publisher:** ${selected.publisher}\n`;
     info += `${EMOJI.online} **Enrolled At:** ${selected.enrolledAt}\n`;
     info += `${EMOJI.arrow} **Expires At:** ${selected.expiresAt}\n\n`;
@@ -215,7 +215,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const progIcon = selected.progress.total >= 100 ? '✅' : EMOJI.dot;
     info += `${progIcon} **Progress:** \`${selected.progress.total}%\`\n`;
     info += `-# ${EMOJI.online} **Web/Desktop**: ${desktopPct}%\n`;
-    info += `-# ${EMOJI.orbs} **Mobile**: ${mobilePct}%\n`;
+    info += `-# ${EMOJI.emoji_15} **Mobile**: ${mobilePct}%\n`;
 
     container.addTextDisplayComponents(text(info));
 
@@ -232,6 +232,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.list} Tasks:\n${taskLines.join('\n')}`));
 
+    // Gallery Photo
     const galleryItems = [];
     const img = selected.images?.banner || selected.images?.icon;
     if (img && img.startsWith('https://')) {
@@ -241,6 +242,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
 
+    // Dropdown Menu
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const opt = new StringSelectMenuOptionBuilder().setLabel(shorten(q.game + ': ' + q.questName, 95)).setValue(String(q.id)).setDescription(shorten(`${q.progress.total}% - ${q.rewards}`, 100)).setEmoji(parseEmoji(EMOJI.orbs));
@@ -249,6 +251,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)));
 
+    // Buttons
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setEmoji({ name: '▶️' }).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
@@ -257,13 +260,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     ));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji(parseEmoji(EMOJI.links)).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
-    // Clean Unicode Logs Fix (Code block me raw custom emoji avoid karke clean rendering)
+    // Logs Container (Strips any raw custom emoji tags inside code blocks)
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text(`### 📢 ${selected.game} Logs`));
+    logsContainer.addTextDisplayComponents(text(`### ${EMOJI.announce} ${selected.game} Logs`));
     const now = new Date();
     const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
 
-    let cleanLogText = `🧭 Quest selected\n[${tStr(now)}] ⚡ Fast mode active\n[${tStr(now)}] 📈 Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+    let rawLogText = customLogs || `Quest selected\n[${tStr(now)}] Fast mode active\n[${tStr(now)}] Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+    let cleanLogText = String(rawLogText).replace(/<a?:\w+:\d+>/g, '').trim();
 
     logsContainer.addTextDisplayComponents(text('```prolog\n' + String(cleanLogText).slice(0, 900) + '\n```'));
 
