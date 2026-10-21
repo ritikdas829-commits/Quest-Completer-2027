@@ -1,5 +1,5 @@
 /**
- * questUI.js — Complete Fixed & Crash-Free Edition
+ * questUI.js — Complete Updated Edition with Custom Emojis
  * Location: src/quest/questUI.js
  */
 
@@ -21,25 +21,37 @@ const ACCENT = 0x2B2D31;
 const EXCLUDED_QUEST_ID = '1412491570820812933';
 
 // ==========================================
-// 🎯 CENTRAL EMOJIS (Clean & Supported Fallbacks)
+// 🎯 CUSTOM EMOJIS MAPPED
 // ==========================================
 const EMOJI = {
-    quest: "🏆",
-    watch: "💻",
-    phone: "📱",
-    orb: "💎",
-    log: "📝",
+    quest: "<:quest:1533405689706446908>",
+    watch: "<:mobile:1533405666457161869>",
+    phone: "<:mobile:1533405666457161869>",
+    orb: "<:diamond:1533405759700733972>",
+    log: "<:rules:1533405745088041132>",
+    gift: "<:giftbox:1533405696555745361>",
+    game: "<:gdc_game:1533405710035976233>",
+    hearts: "<:sparklehearts:1533405703199395982>",
+    booster: "<:boosters:1533405737848537249>",
+    star: "<a:ds_Star:1533405815120072854>",
+    cross: "<:SW_cross:1533405798619680858>",
+    loading: "<a:Loading:1533405724166590465>",
+    uptime: "<:uptime:1533405731284320317>",
+    decorations: "<a:decorations_lua:1533405766872993822>",
+    admin: "<:7212roleadmin:1533390975861526728>",
+    
+    // Controls & Status
     start: "▶️",
     stop: "⏹️",
     refresh: "🔄",
     link: "🔗",
     selectOrb: "💎",
     done: "✅",
-    active: "🌀",
+    active: "<a:Loading:1533405724166590465>",
     compass: "🧭",
     fastMode: "⚡",
     chart: "📈",
-    error: "❌",
+    error: "<:SW_cross:1533405798619680858>",
     key: "🔑",
     warning: "⚠️"
 };
@@ -229,26 +241,25 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const container = new ContainerBuilder().setAccentColor(ACCENT);
 
     // Header Title
-    container.addTextDisplayComponents(text(`# ${EMOJI.quest} Quest Solver`));
+    container.addTextDisplayComponents(text(`# ${EMOJI.admin} ${selected.game}`));
 
     // Information Section
     const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.platformProgress['STREAM_ON_DESKTOP'] ?? selected.progress.total;
     const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.progress.total;
 
-    let info = '';
-    info += `- **Game:** ${selected.game}\n`;
-    info += `- **Publisher:** ${selected.publisher}\n`;
-    info += `- **Quest Name:** ${selected.questName}\n`;
-    info += `- **Enrolled At:** ${selected.enrolledAt}\n`;
-    info += `- **Expires At:** ${selected.expiresAt}\n`;
-    info += `- **Progress:**\n`;
+    let info = `### ${EMOJI.orb} Quest Overview\n`;
+    info += `${EMOJI.gift} **Reward:** ${selected.rewards}\n`;
+    info += `${EMOJI.game} **Game:** ${selected.game}\n`;
+    info += `${EMOJI.hearts} **Publisher:** ${selected.publisher}\n`;
+    info += `${EMOJI.phone} **Enrolled At:** ${selected.enrolledAt}\n`;
+    info += `${EMOJI.uptime} **Expires At:** ${selected.expiresAt}\n\n`;
+    info += `### ${EMOJI.star} Live Progress\n`;
     const progEmoji = selected.progress.total >= 100 ? EMOJI.done : EMOJI.active;
-    info += `${progEmoji} ${selected.progress.total}%\n`;
+    info += `${progEmoji} **Progress:** \`${selected.progress.total}%\`\n`;
     info += `-# ${EMOJI.watch} **Web/Desktop**: ${desktopPct}%\n`;
     info += `-# ${EMOJI.phone} **Mobile**: ${mobilePct}%\n`;
 
     container.addTextDisplayComponents(text(info));
-    container.addTextDisplayComponents(text(`## Rewards:\n- **${selected.rewards}**`));
 
     // Tasks Section
     const seenT = new Set(); const taskLines = [];
@@ -265,9 +276,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         else if (type.includes('STREAM')) taskLines.push(`- Stream On Desktop for ${Math.ceil((t.target || 900) / 60)}m`);
         else taskLines.push(`- ${type.replace(/_/g, ' ')}`);
     }
-    container.addTextDisplayComponents(text(`## Tasks:\n${taskLines.join('\n') || '- Watch Video for 2m'}`));
+    container.addTextDisplayComponents(text(`### ${EMOJI.booster} Tasks:\n${taskLines.join('\n') || '- Watch Video for 2m'}`));
 
-    // --- PHOTO GUARANTEED ---
+    // Guaranteed Image Component
     const galleryItems = [];
     let activeImage = selected.images?.banner || selected.images?.icon;
 
@@ -288,7 +299,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .setLabel(shorten(q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
             .setDescription(shorten(`${q.progress.total}% - ${q.rewards}`, 100))
-            .setEmoji({ name: EMOJI.selectOrb });
+            .setEmoji({ name: '💎' });
         if (String(q.id) === String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
@@ -313,7 +324,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     // Quest Logs
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text(`## ${EMOJI.log} Quest Logs`));
+    logsContainer.addTextDisplayComponents(text(`### ${EMOJI.log} ${selected.game} Logs`));
     const now = new Date();
     const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
     let logText = customLogs;
