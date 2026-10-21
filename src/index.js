@@ -86,23 +86,33 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// Load Commands Dynamically
+// ── Dynamic Command Loader ──────────────────────────────────────────────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
-    if (mod.default) {
-        const cmd = mod.default;
-        if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
-        if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
+
+    const registerCmd = (cmd) => {
+        if (!cmd) return;
+        const cmdName = cmd.name || cmd.prefix || cmd.data?.name;
+        if (cmdName) {
+            client.prefixCommands.set(cmdName.toLowerCase(), cmd);
+            if (cmd.data) client.commands.set(cmd.data.name, cmd);
+        }
+    };
+
+    if (mod.default) registerCmd(mod.default);
+
+    if (mod.name && mod.execute) {
+        registerCmd(mod);
     }
+
     for (const [key, cmd] of Object.entries(mod)) {
         if (['default', 'makeTokenStore', 'handleLinkModal', 'handleLinkPromptButton', 'runAutoquestForUser', 'buildPremiumLinkPanel', 'handleButton', 'handleModal'].includes(key)) continue;
-        if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
-        if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
+        registerCmd(cmd);
     }
 }
 
-// Load Events from folder dynamically
+// ── Dynamic Event Loader ────────────────────────────────────────────────────
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
@@ -120,7 +130,31 @@ try {
     console.error('❌ Error loading events:', err);
 }
 
-// ── Client Ready Event (Cache Invites on Startup) ──────────────────────────
+// ── Prefix Command Executor (Message Handler) ──────────────────────────────
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    // Support both active prefix (;) and default prefix (?)
+    const prefixes = [activePrefix, '?'];
+    const prefixUsed = prefixes.find(p => message.content.startsWith(p));
+    if (!prefixUsed) return;
+
+    const args = message.content.slice(prefixUsed.length).trim().split(/ +/);
+    const commandName = args.shift()?.toLowerCase();
+    if (!commandName) return;
+
+    const command = client.prefixCommands.get(commandName);
+    if (!command) return;
+
+    try {
+        await command.execute(message, args, client);
+    } catch (error) {
+        console.error(`❌ Error executing command ${commandName}:`, error);
+        message.reply(`❌ An error occurred while executing the command: \`${error.message}\``).catch(() => {});
+    }
+});
+
+// ── Client Ready Event ─────────────────────────────────────────────────────
 client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
     await cacheGuildInvites(client);
