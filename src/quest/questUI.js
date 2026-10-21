@@ -118,7 +118,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             `### 🔑 No Active Discord Account Linked\n` +
             `You do not have an active account token selected in this server.\n\n` +
             `**How to resolve:**\n` +
-            `• Link a valid user token to your active slot using \`?link <token>\` or slot configuration.\n` +
+            `• Link a valid user token to your active slot using \`?link \` or slot configuration.\n` +
             `• Check if your active slot is toggled on.`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
