@@ -1,5 +1,5 @@
 /**
- * questUI.js — Complete Updated Edition with Custom Emojis
+ * questUI.js — Fully Fixed & Crash-Proof Custom Emoji Edition
  * Location: src/quest/questUI.js
  */
 
@@ -55,6 +55,16 @@ const EMOJI = {
     key: "🔑",
     warning: "⚠️"
 };
+
+// Helper: Safely parses custom emojis for Buttons & Select Menus to prevent crashes
+function parseEmoji(emojiStr) {
+    if (!emojiStr) return { name: '💎' };
+    const match = emojiStr.match(/<a?:(\w+):(\d+)>/);
+    if (match) {
+        return { name: match[1], id: match[2], animated: emojiStr.startsWith('<a:') };
+    }
+    return { name: emojiStr };
+}
 
 function getTasks(config) {
     return config?.task_config?.tasks ?? config?.task_config_v2?.tasks ?? {};
@@ -233,7 +243,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
         c.addTextDisplayComponents(text(`# ${EMOJI.quest} Quest Solver\n\nNo active Quests found.`));
-        c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({ name: EMOJI.refresh }).setStyle(ButtonStyle.Primary)));
+        c.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji(parseEmoji(EMOJI.refresh)).setStyle(ButtonStyle.Primary)));
         return { components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } };
     }
 
@@ -299,7 +309,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .setLabel(shorten(q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
             .setDescription(shorten(`${q.progress.total}% - ${q.rewards}`, 100))
-            .setEmoji({ name: '💎' });
+            .setEmoji(parseEmoji(EMOJI.orb));
         if (String(q.id) === String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
@@ -316,11 +326,11 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     // Buttons
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setEmoji({ name: EMOJI.start }).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setEmoji({ name: EMOJI.stop }).setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji({ name: EMOJI.refresh }).setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start').setEmoji(parseEmoji(EMOJI.start)).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop').setEmoji(parseEmoji(EMOJI.stop)).setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh').setEmoji(parseEmoji(EMOJI.refresh)).setStyle(ButtonStyle.Secondary)
     ));
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji({ name: EMOJI.link }).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
+    container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('View Quest').setEmoji(parseEmoji(EMOJI.link)).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)));
 
     // Quest Logs
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
