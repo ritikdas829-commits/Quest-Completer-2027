@@ -112,7 +112,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Dynamic Event Loader ────────────────────────────────────────────────────
+// ── Dynamic Event Loader (Isi se events/messageCreate.js load hoga) ───────
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
@@ -129,30 +129,6 @@ try {
 } catch (err) {
     console.error('❌ Error loading events:', err);
 }
-
-// ── Prefix Command Executor (Message Handler) ──────────────────────────────
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-
-    // Support both active prefix (;) and default prefix (?)
-    const prefixes = [activePrefix, '?'];
-    const prefixUsed = prefixes.find(p => message.content.startsWith(p));
-    if (!prefixUsed) return;
-
-    const args = message.content.slice(prefixUsed.length).trim().split(/ +/);
-    const commandName = args.shift()?.toLowerCase();
-    if (!commandName) return;
-
-    const command = client.prefixCommands.get(commandName);
-    if (!command) return;
-
-    try {
-        await command.execute(message, args, client);
-    } catch (error) {
-        console.error(`❌ Error executing command ${commandName}:`, error);
-        message.reply(`❌ An error occurred while executing the command: \`${error.message}\``).catch(() => {});
-    }
-});
 
 // ── Client Ready Event ─────────────────────────────────────────────────────
 client.once('clientReady', async () => {
