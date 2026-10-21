@@ -112,7 +112,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Dynamic Event Loader (Isi se events/messageCreate.js load hoga) ───────
+// ── Dynamic Event Loader ────────────────────────────────────────────────────
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
