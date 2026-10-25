@@ -45,3 +45,10 @@ export async function execute(message, args) {
         return message.reply(`❌ Failed to update emoji in database.`);
     }
 }
+
+// 👈 Yeh default export add karne se index.js ka loader ise successfully register kar lega
+export default {
+    name,
+    description,
+    execute
+};
