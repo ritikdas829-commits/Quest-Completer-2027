@@ -32,7 +32,7 @@ function banner() {
         `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═════╝   ╚═╝${col.reset}`,
         '',
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
-        `  ${col.green}●${col.reset} ${col.white}Quest Completer V1 - 5 Slots${col.reset}  ${col.dim}\vert{}${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
+        `  ${col.green}●${col.reset} ${col.white}Quest Completer V1 - 5 Slots${col.reset}  ${col.dim}|${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
         '',
     ];
@@ -94,9 +94,12 @@ for (const file of commandFiles) {
     const registerCmd = (cmd) => {
         if (!cmd) return;
         const cmdName = cmd.name || cmd.prefix || cmd.data?.name;
-        if (cmdName) {
+        // Safely check if cmdName is a valid string before calling toLowerCase()
+        if (cmdName && typeof cmdName === 'string') {
             client.prefixCommands.set(cmdName.toLowerCase(), cmd);
-            if (cmd.data) client.commands.set(cmd.data.name, cmd);
+            if (cmd.data && typeof cmd.data.name === 'string') {
+                client.commands.set(cmd.data.name, cmd);
+            }
         }
     };
 
