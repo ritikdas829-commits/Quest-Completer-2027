@@ -55,27 +55,51 @@ function getQuestImages(quest) {
     const assets = config.assets ?? {};
     const app = quest?.application ?? config.application ?? {};
     const appId = app.id || config.application_id || config.application?.id;
+    
     let banner = null;
-    const direct = [data.bannerURL, data.bannerUrl, config.banner_url, assets.hero, assets.game_tile, assets.quest_tile].find(u => typeof u === 'string' && u.startsWith('https://') && !/\.mp4/i.test(u));
-    if (direct) banner = direct;
-    if (!banner && appId) {
-        for (const k of ['hero', 'game_tile', 'quest_tile', 'quest_bar']) {
-            const v = assets[k]; if (!v) continue;
-            let s = String(v).trim(); if (s.startsWith('https://') && !/\.mp4/i.test(s)) { banner = s; break; }
-            let fn = s.split('/').pop().replace(/\.mp4$/i, '.png'); if (!/\.(png|jpe?g|webp)$/i.test(fn)) fn += '.png';
-            if (/hero_video/i.test(fn)) continue;
-            banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${fn}`; break;
+    const possibleUrls = [
+        data.bannerURL,
+        data.bannerUrl,
+        config.banner_url,
+        config.image_url,
+        assets.hero,
+        assets.game_tile,
+        assets.quest_tile,
+        assets.banner
+    ];
+
+    for (const u of possibleUrls) {
+        if (typeof u === 'string' && u.trim().startsWith('https://') && !/\.mp4/i.test(u)) {
+            banner = u.trim();
+            break;
         }
     }
-    let icon = null;
-    const raw = app.icon || config.icon || app.icon_hash;
-    if (typeof raw === 'string' && raw.trim() !== '') {
-        const t = raw.trim();
-        if (t.startsWith('https://')) icon = t;
-        else if (appId) icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().trim()}.png?size=512`;
+
+    if (!banner && appId) {
+        for (const k of ['hero', 'game_tile', 'quest_tile', 'banner']) {
+            const v = assets[k];
+            if (!v) continue;
+            let s = String(v).trim();
+            if (s.startsWith('https://') && !/\.mp4/i.test(s)) {
+                banner = s;
+                break;
+            }
+            if (s) {
+                banner = `https://cdn.discordapp.com/app-assets/${appId}/${s}`;
+                break;
+            }
+        }
     }
+
+    let icon = null;
+    const rawIcon = app.icon || config.icon || app.icon_hash || assets.icon;
+    if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
+        const t = rawIcon.trim();
+        if (t.startsWith('https://')) icon = t;
+        else if (appId) icon = `https://cdn.discordapp.com/app-icons/${appId}/${t}.png?size=512`;
+    }
+
     if (!banner && icon) banner = icon;
-    if (banner && /hero_video/i.test(banner) && icon) banner = icon;
     return { banner, icon };
 }
 
@@ -205,11 +229,21 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     // BANNER GALLERY
     const galleryItems = [];
     const img = selected.images?.banner || selected.images?.icon;
-    if (img && img.startsWith('https://') && !img.includes('avatars/0.png')) {
-        galleryItems.push(new MediaGalleryItemBuilder().setURL(img).setDescription(selected.game));
+    if (img && typeof img === 'string' && img.startsWith('https://') && !img.includes('avatars/0.png')) {
+        try {
+            galleryItems.push(
+                new MediaGalleryItemBuilder()
+                    .setURL(img)
+                    .setDescription(shorten(selected.game, 100))
+            );
+        } catch {}
     }
     if (galleryItems.length > 0) {
-        try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
+        try { 
+            container.addMediaGalleryComponents(
+                new MediaGalleryBuilder().addItems(galleryItems)
+            ); 
+        } catch {}
     }
 
     // SELECT DROPDOWN
