@@ -16,10 +16,11 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 🎨 Shuruat se hi saare Normal aur Default Emojis yahan defined hain
+// 🎨 Shuruat se hi saare Normal aur Default Emojis yahan defined hain (Jismein 'done' bhi add kar diya hai)
 const DEFAULT_EMOJIS = {
     // Status & UI Indicators
     success: "✅",
+    done: "✅", // Quest complete / done hone par yeh emoji use hoga
     error: "❌",
     warn: "⚠️",
     loading: "⚙️",
