@@ -1,5 +1,5 @@
 /**
- * emoji.js — Professional MongoDB Emoji Manager with In-Memory Caching
+ * emoji.js — Professional MongoDB Emoji Manager with In-Memory Caching & Full Total Customization
  * Location: src/quest/emoji.js
  */
 
@@ -18,6 +18,7 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
 const DEFAULT_EMOJIS = {
+    // Core Custom & Animated Emojis
     list: "<:list:1562284923870650570>",
     links: "<a:links:1562284922058834052>",
     emoji_15: "<a:emoji_15:1561626842539229235>",
@@ -31,6 +32,19 @@ const DEFAULT_EMOJIS = {
     warn: "<:Warn:1561693802412900394>",
     arrow: "<a:arrow_53:1551629637535408259>",
     dot: "<a:spider_red_dot:1562113229251936396>",
+
+    // Standard Replacements (Ab yeh sabhi bhi ?setemoji se override ho sakte hain)
+    success: "✅",
+    error: "❌",
+    link: "🔗",
+    search: "🔍",
+    desktop: "🖥️",
+    mobile: "📱",
+    video: "🎬",
+    stream: "📺",
+    activity: "🎮",
+    gear: "⚙️",
+    robot: "🤖"
 };
 
 export class EmojiStore {
