@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Single-DM Protection & Specific Quest Link
+ * interactionCreate.js — Complete Interaction Handler with Token Link Modal & Quest Support
  * Location: src/events/interactionCreate.js
  */
 
@@ -9,6 +9,7 @@ import { handleButton as handlePremiumButton, handleModal as handlePremiumModal 
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
+import { EmbedBuilder } from 'discord.js';
 
 // Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
@@ -45,6 +46,57 @@ export default {
 
             // 4. Modals Handler
             if (interaction.isModalSubmit()) {
+                // Handle Token Link Modal (`/linkid`)
+                if (interaction.customId === 'linkid-modal') {
+                    await interaction.deferReply({ ephemeral: true });
+
+                    const token = interaction.fields.getTextInputValue('discord_token_input');
+                    let userData = null;
+
+                    try {
+                        const res = await fetch('https://discord.com/api/v9/users/@me', {
+                            headers: { Authorization: token }
+                        });
+
+                        if (!res.ok) {
+                            const errorEmbed = new EmbedBuilder()
+                                .setColor(0xED4245)
+                                .setTitle('❌ Invalid Token')
+                                .setDescription('The token you provided was rejected by Discord. Please check and try again.');
+                            return await interaction.editReply({ embeds: [errorEmbed] });
+                        }
+
+                        userData = await res.json();
+                    } catch (err) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setColor(0xED4245)
+                            .setTitle('❌ Connection Error')
+                            .setDescription('Failed to validate token with Discord API.');
+                        return await interaction.editReply({ embeds: [errorEmbed] });
+                    }
+
+                    // Save token securely in MongoDB using client.tokenStore (Slot 1)
+                    await client.tokenStore.saveSlot({
+                        guildId: guildId || 'global',
+                        ownerId: userId,
+                        slot: 1,
+                        token: token,
+                        username: userData.username,
+                        linkedUserId: userData.id,
+                        avatar: userData.avatar,
+                        isActive: true
+                    });
+
+                    const successEmbed = new EmbedBuilder()
+                        .setColor(0x57F287)
+                        .setTitle('✅ Successfully Linked!')
+                        .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
+
+                    await interaction.editReply({ embeds: [successEmbed] });
+                    return;
+                }
+
+                // Handle existing premium modals
                 if (interaction.customId.startsWith('link_modal_slot_')) {
                     await handlePremiumModal(interaction, client);
                     return;
@@ -110,7 +162,7 @@ export default {
                 const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
 
                 if (!active || !token) {
-                    await interaction.followUp({ content: '❌ No active token slot found! Use `;link` first.', flags: 64 });
+                    await interaction.followUp({ content: '❌ No active token slot found! Use `/linkid` first.', flags: 64 });
                     return;
                 }
 
@@ -153,7 +205,6 @@ export default {
                     return;
                 }
 
-                // Add notified flag to track DM status and prevent spam
                 const runnerContext = { isRunning: true, interval: null, notified: false };
                 activeRunners.set(runnerKey, runnerContext);
 
@@ -173,7 +224,6 @@ export default {
                     const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, doneLog);
                     await interaction.editReply(completePanel).catch(() => {});
 
-                    // Send DM only if successfully completed AND not previously notified
                     if (success && !runnerContext.notified) {
                         runnerContext.notified = true;
                         const specificQuestLink = `https://discord.com/quests/${questId}`;
