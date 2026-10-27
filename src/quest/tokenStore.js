@@ -1,5 +1,5 @@
 /**
- * tokenStore.js - 5-Slot MongoDB Persistent Token Store with AES-256-GCM Encryption
+ * tokenStore.js — 5-Slot MongoDB Persistent Token Store with Cross-Guild Fallback & Encryption
  * Location: src/quest/tokenStore.js
  */
 
@@ -81,22 +81,41 @@ export class TokenStore {
                     isActive: doc.isActive || false
                 });
             }
-            console.log(`🔑 Loaded ${docs.length} encrypted token(s) — ${new Set(docs.map(d=>d.guildId)).size} guilds — Multi server`);
+            console.log(`🔑 Loaded ${docs.length} encrypted token(s) — ${new Set(docs.map(d=>d.guildId)).size} guilds — Multi server persistent`);
         } catch (err) {
             console.error('❌ Error loading tokens from MongoDB:', err.message);
         }
     }
 
-    // ── CRITICAL METHODS REQUIRED BY questCommands.js ──
+    // ── ROBUST GET ACTIVE SLOT WITH CROSS-GUILD & RESTART FALLBACK ──
 
     async getActiveSlot(guildId, userId) {
         try {
-            // Find explicitly marked active slot
-            let activeDoc = await TokenModel.findOne({ guildId, userId, isActive: true });
+            if (!userId) return null;
+            const targetGuild = guildId || 'global';
+
+            // 1. Try exact guild + user with active: true
+            let activeDoc = await TokenModel.findOne({ guildId: targetGuild, userId, isActive: true });
             
-            // Fallback: If no slot is marked active, get the first available slot
+            // 2. Try global + user if not found
+            if (!activeDoc && targetGuild !== 'global') {
+                activeDoc = await TokenModel.findOne({ guildId: 'global', userId, isActive: true });
+            }
+
+            // 3. Fallback: Any guild for this user marked active: true (Cross-server persistence)
             if (!activeDoc) {
-                activeDoc = await TokenModel.findOne({ guildId, userId }).sort({ slot: 1 });
+                activeDoc = await TokenModel.findOne({ userId, isActive: true });
+            }
+
+            // 4. Fallback: First available slot for this user anywhere
+            if (!activeDoc) {
+                activeDoc = await TokenModel.findOne({ guildId: targetGuild, userId }).sort({ slot: 1 });
+            }
+            if (!activeDoc && targetGuild !== 'global') {
+                activeDoc = await TokenModel.findOne({ guildId: 'global', userId }).sort({ slot: 1 });
+            }
+            if (!activeDoc) {
+                activeDoc = await TokenModel.findOne({ userId }).sort({ slot: 1 });
             }
 
             if (!activeDoc) return null;
@@ -107,7 +126,8 @@ export class TokenStore {
                 token: token,
                 username: activeDoc.username,
                 linkedUserId: activeDoc.linkedUserId || userId,
-                isActive: activeDoc.isActive
+                isActive: activeDoc.isActive,
+                guildId: activeDoc.guildId
             };
         } catch (err) {
             console.error(`❌ Error fetching active slot for [${guildId}] ${userId}:`, err.message);
@@ -124,7 +144,15 @@ export class TokenStore {
 
     async getAllSlots(guildId, userId) {
         try {
-            const docs = await TokenModel.find({ guildId, userId }).sort({ slot: 1 });
+            const targetGuild = guildId || 'global';
+            let docs = await TokenModel.find({ guildId: targetGuild, userId }).sort({ slot: 1 });
+            if (docs.length === 0 && targetGuild !== 'global') {
+                docs = await TokenModel.find({ guildId: 'global', userId }).sort({ slot: 1 });
+            }
+            if (docs.length === 0) {
+                docs = await TokenModel.find({ userId }).sort({ slot: 1 });
+            }
+
             return docs.map(doc => ({
                 slot: doc.slot,
                 username: doc.username || 'Unknown',
@@ -141,31 +169,32 @@ export class TokenStore {
 
     async saveSlot({ guildId, ownerId, slot, token, linkedUserId = '', username = '', avatar = '', isActive = false }) {
         try {
-            if (!guildId || !ownerId || !slot) return false;
+            if (!ownerId || !slot) return false;
             if (slot < 1 || slot > 5) return false;
 
+            const targetGuild = guildId || 'global';
             const userId = ownerId;
             
             if (isActive) {
-                await TokenModel.updateMany({ guildId, userId }, { isActive: false });
+                await TokenModel.updateMany({ userId }, { isActive: false });
             }
 
-            const existingCount = await TokenModel.countDocuments({ guildId, userId });
-            if (existingCount === 0) {
+            const existingCount = await TokenModel.countDocuments({ guildId: targetGuild, userId });
+            if (existingCount === 0 && !isActive) {
                 isActive = true;
             }
 
             const encrypted = encrypt(token, this.key);
-            const cacheKey = this.makeCacheKey(guildId, userId, slot);
+            const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
             this.cache.set(cacheKey, { encryptedData: encrypted, username, linkedUserId, avatar, isActive });
 
             await TokenModel.findOneAndUpdate(
-                { guildId, userId, slot },
+                { guildId: targetGuild, userId, slot },
                 { encryptedData: encrypted, username, linkedUserId, avatar, isActive, linkedAt: new Date(), updatedAt: new Date() },
                 { upsert: true, new: true }
             );
 
-            console.log(`✅ Token saved [${guildId}] ${userId} slot ${slot} — Encrypted — Persistent`);
+            console.log(`✅ Token saved [${targetGuild}] ${userId} slot ${slot} — Encrypted — Persistent`);
             return true;
         } catch (err) {
             console.error(`❌ Error saving slot [${guildId}] ${userId} slot ${slot}:`, err.message);
@@ -175,18 +204,19 @@ export class TokenStore {
 
     async removeSlot(guildId, userId, slot) {
         try {
-            const cacheKey = this.makeCacheKey(guildId, userId, slot);
+            const targetGuild = guildId || 'global';
+            const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
             const existed = this.cache.has(cacheKey);
             this.cache.delete(cacheKey);
-            await TokenModel.findOneAndDelete({ guildId, userId, slot });
+            await TokenModel.findOneAndDelete({ guildId: targetGuild, userId, slot });
             
-            // If removed slot was active, fallback to next available slot
-            const remaining = await TokenModel.findOne({ guildId, userId }).sort({ slot: 1 });
+            // Fallback to next available slot if active was removed
+            const remaining = await TokenModel.findOne({ userId }).sort({ slot: 1 });
             if (remaining) {
-                await TokenModel.findOneAndUpdate({ guildId, userId, slot: remaining.slot }, { isActive: true });
+                await TokenModel.findOneAndUpdate({ guildId: remaining.guildId, userId, slot: remaining.slot }, { isActive: true });
             }
 
-            console.log(`🗑️ Token removed [${guildId}] ${userId} slot ${slot}`);
+            console.log(`🗑️ Token removed [${targetGuild}] ${userId} slot ${slot}`);
             return existed;
         } catch (err) {
             console.error(`❌ Error removing slot [${guildId}] ${userId} slot ${slot}:`, err.message);
@@ -196,15 +226,16 @@ export class TokenStore {
 
     async setActiveSlot(guildId, userId, slot) {
         try {
-            await TokenModel.updateMany({ guildId, userId }, { isActive: false });
-            await TokenModel.findOneAndUpdate({ guildId, userId, slot }, { isActive: true });
+            const targetGuild = guildId || 'global';
+            await TokenModel.updateMany({ userId }, { isActive: false });
+            await TokenModel.findOneAndUpdate({ guildId: targetGuild, userId, slot }, { isActive: true });
             
             for (const [key, val] of this.cache.entries()) {
-                if (key.startsWith(`${guildId}_${userId}_slot_`)) {
-                    val.isActive = key === this.makeCacheKey(guildId, userId, slot);
+                if (key.includes(`_${userId}_slot_`)) {
+                    val.isActive = key === this.makeCacheKey(targetGuild, userId, slot);
                 }
             }
-            console.log(`⭐ Active slot set to #${slot} for [${guildId}] ${userId}`);
+            console.log(`⭐ Active slot set to #${slot} for [${targetGuild}] ${userId}`);
             return true;
         } catch (err) {
             console.error(`❌ Error setting active slot:`, err.message);
@@ -224,8 +255,17 @@ export class TokenStore {
 
     get(guildId, userId, slot) {
         try {
-            const cacheKey = this.makeCacheKey(guildId, userId, slot);
-            const cached = this.cache.get(cacheKey);
+            const targetGuild = guildId || 'global';
+            const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
+            let cached = this.cache.get(cacheKey);
+            
+            if (!cached) {
+                // Try finding in cache by user & slot regardless of guild prefix
+                for (const [k, v] of this.cache.entries()) {
+                    if (k.endsWith(`_${userId}_slot_${slot}`)) { cached = v; break; }
+                }
+            }
+
             if (!cached) return null;
             const raw = typeof cached === 'string' ? cached : cached.encryptedData;
             return decrypt(raw, this.key);
@@ -239,7 +279,8 @@ export class TokenStore {
     }
 
     getUsername(guildId, userId, slot) {
-        const cacheKey = this.makeCacheKey(guildId, userId, slot);
+        const targetGuild = guildId || 'global';
+        const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
         const cached = this.cache.get(cacheKey);
         if (!cached) return '';
         return cached.username || '';
@@ -254,8 +295,14 @@ export class TokenStore {
     }
 
     has(guildId, userId, slot) {
-        const cacheKey = this.makeCacheKey(guildId, userId, slot);
-        return this.cache.has(cacheKey);
+        const targetGuild = guildId || 'global';
+        const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
+        if (this.cache.has(cacheKey)) return true;
+        
+        for (const k of this.cache.keys()) {
+            if (k.endsWith(`_${userId}_slot_${slot}`)) return true;
+        }
+        return false;
     }
 
     hasOld(userId) {
