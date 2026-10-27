@@ -1,5 +1,5 @@
 /**
- * help.js - Components V2 Help Command Updated for 5-Slot & Presence Architecture
+ * help.js - Components V2 Help Command with Detailed Command Descriptions
  * Location: src/commands/help.js
  */
 
@@ -13,7 +13,6 @@ import {
     ThumbnailBuilder,
     MessageFlags,
 } from 'discord.js';
-import { getEmoji } from '../handlers/emoji.js';
 
 function getClientPrefix(client, guildId) {
     try {
@@ -27,7 +26,7 @@ function getClientPrefix(client, guildId) {
 export default {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('See all available commands and 5-slot architecture guide'),
+        .setDescription('See all available commands and detailed system guide'),
     prefix: 'help',
 
     async execute(interaction, client) {
@@ -50,7 +49,7 @@ async function buildHelp(user, client, guildId) {
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# 🤖 Quest Bot (5-Slot System)\n-# Hey **${user.username}**, here is your complete command & slot guide`,
+                    `# 🤖 Quest Bot — 5-Slot & Presence Guide\n-# Hey **${user.username}**, here is the complete breakdown of all commands and their features`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatar)),
@@ -58,16 +57,16 @@ async function buildHelp(user, client, guildId) {
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Token & Slot Section ─────────────────────────────────────────────────
+    // ── Token & Presence Section ─────────────────────────────────────────────
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `🔗 **Token & Slot Management (1-5)**\n` +
-            `\`/linkid\`  \`${prefix}linkid\` — Secure modal popup to link token to slot\n` +
-            `\`/unlinkid\`  \`${prefix}unlinkid\` — Remove token from a specific slot\n` +
-            `\`/onlinestatus\`  \`${prefix}onlinestatus\` — View all your linked account slots\n` +
-            `\`/onlineid\`  \`${prefix}onlineid\` — Set active slot & bring account online\n` +
-            `\`/offlineid\`  \`${prefix}offlineid\` — Disconnect account online presence\n` +
-            `\`/tokencheck\`  \`${prefix}tokencheck\` — Verify if your active token is valid`,
+            `🔗 **Token & 24/7 Presence Management (Slots 1–5)**\n` +
+            `• \`/linkid\`  \`${prefix}linkid\` — Opens a secure modal popup to link your Discord user token to a specific slot.\n` +
+            `• \`/unlinkid\`  \`${prefix}unlinkid\` — Removes your saved token from the specified slot.\n` +
+            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — Displays all your linked account slots along with their current status and user details.\n` +
+            `• \`/onlineid\`  \`${prefix}onlineid\` — Sets your active slot and keeps your account **24/7 online continuously** via secure WebSocket gateway presence 🟢.\n` +
+            `• \`/offlineid\`  \`${prefix}offlineid\` — Disconnects your active account gateway connection, turning your 24/7 presence offline 🔴.\n` +
+            `• \`/tokencheck\`  \`${prefix}tokencheck\` — Verifies whether your active saved token is still valid and working.`,
         ),
     );
 
@@ -77,22 +76,22 @@ async function buildHelp(user, client, guildId) {
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             `🎮 **Quest Automation**\n` +
-            `\`/quest\`  \`${prefix}quest\` — Pick and complete one quest\n` +
-            `\`/questall\`  \`${prefix}questall\` — Complete all active quests at once\n` +
-            `\`/questlist\`  \`${prefix}questlist\` — View all your quests & reward status\n` +
-            `\`/autoquest\`  \`${prefix}autoquest\` — Auto-complete new quests as they drop`,
+            `• \`/quest\`  \`${prefix}quest\` — Pick and complete an individual quest.\n` +
+            `• \`/questall\`  \`${prefix}questall\` — Automatically complete all active uncompleted quests at once.\n` +
+            `• \`/questlist\`  \`${prefix}questlist\` — View all available quests, progress, and reward status.\n` +
+            `• \`/autoquest\`  \`${prefix}autoquest\` — Automatically complete new quests as they drop.`,
         ),
     );
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Utility Section ────────────────────────────────______________________
+    // ── Utility Section ──────────────────────────────────────────────────────
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `🛠️ **Utility & Guides**\n` +
-            `\`/guide\`  \`${prefix}guide\` — View quick setup guides (PC/Android/iOS)\n` +
-            `\`/ping\`  \`${prefix}ping\` — Check bot latency\n` +
-            `\`/help\`  \`${prefix}help\` — Show this help menu`,
+            `🛠️ **Utility & Setup Guides**\n` +
+            `• \`/guide\`  \`${prefix}guide\` — View quick setup instructions for PC, Android, and iOS.\n` +
+            `• \`/ping\`  \`${prefix}ping\` — Check bot latency.\n` +
+            `• \`/help\`  \`${prefix}help\` — Display this help menu.`,
         ),
     );
 
