@@ -1,11 +1,10 @@
 /**
- * emoji.js — Professional MongoDB Emoji Manager with In-Memory Caching & Full Total Customization
+ * emoji.js — Professional MongoDB Emoji Manager with Clean Defaults
  * Location: src/quest/emoji.js
  */
 
 import mongoose from 'mongoose';
 
-// UPGRADED SCHEMA — Guild-aware + Indexed for high performance
 const questEmojiSchema = new mongoose.Schema({
     guildId: { type: String, default: 'global', index: true },
     key: { type: String, required: true, index: true },
@@ -17,27 +16,36 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
+// 🎨 Shuruat se hi saare Normal aur Default Emojis yahan defined hain
 const DEFAULT_EMOJIS = {
-    // Core Custom & Animated Emojis
-    list: "<:list:1562284923870650570>",
-    links: "<a:links:1562284922058834052>",
-    emoji_15: "<a:emoji_15:1561626842539229235>",
-    qdiamond: "<:qdiamond:1561994071302479913>",
-    loading: "<a:SA_CH_IconLoading:1561693801209274368>",
-    orbs: "<:orbs:1551629656946507837>",
-    announce: "<a:announce:1486435765838942289>",
-    s_admin: "<a:s_admin:1561693808670806067>",
-    online: "<a:online:1561693806846410842>",
-    gift: "<:GO_RedGiveaway:1561693805428740236>",
-    warn: "<:Warn:1561693802412900394>",
-    arrow: "<a:arrow_53:1551629637535408259>",
-    dot: "<a:spider_red_dot:1562113229251936396>",
-
-    // Standard Replacements (Ab yeh sabhi bhi ?setemoji se override ho sakte hain)
+    // Status & UI Indicators
     success: "✅",
     error: "❌",
+    warn: "⚠️",
+    loading: "⚙️",
+    online: "🟢",
+    offline: "🔴",
+
+    // Quest & Navigation Elements
     link: "🔗",
     search: "🔍",
+    list: "📋",
+    links: "🔗",
+    qdiamond: "💎",
+    orbs: "✨",
+    announce: "📢",
+    s_admin: "🛠️",
+    gift: "🎁",
+    arrow: "➡️",
+    dot: "•",
+
+    // Cards & Sections Headings
+    task: "📋",
+    expire: "📅",
+    stats: "📊",
+    reward: "🎁",
+
+    // Task Type Icons
     desktop: "🖥️",
     mobile: "📱",
     video: "🎬",
@@ -69,8 +77,6 @@ export class EmojiStore {
             console.error('❌ Error loading emojis into cache:', err.message);
         }
     }
-
-    // ── CORE METHODS ──
 
     async getEmojis(guildId = 'global') {
         try {
@@ -110,7 +116,6 @@ export class EmojiStore {
     }
 }
 
-// Export a singleton instance similar to standard token stores
 export const emojiStore = new EmojiStore();
 
 export async function getEmojis(guildId = 'global') {
