@@ -1,5 +1,5 @@
 /**
- * questClient.js — Updated & Optimized with Full Browser Headers & Timeouts
+ * questClient.js — Fully Sanitized & Fixed Authorization Header Logic
  * Location: src/quest/questClient.js
  */
 
@@ -36,7 +36,6 @@ function getRetryDelay(response, attempt) {
 
 async function readResponse(response) {
     const text = await response.text();
-
     if (!text) return null;
 
     try {
@@ -80,33 +79,42 @@ export class QuestClient {
             );
         }
 
-        this.#token = userToken.trim();
+        // 🎯 FIX 1: Clean quotes, whitespaces, and newlines from token string
+        this.#token = userToken
+            .trim()
+            .replace(/^['"]+|['"]+$/g, '')
+            .replace(/\s+/g, '');
     }
 
     #buildHeaders() {
-        return {
+        // 🎯 FIX 2: Optimized Discord Client Native Headers
+        const headers = {
             'Authorization':      this.#token,
-            'User-Agent':         Constants.USER_AGENT,
             'Content-Type':       'application/json',
-            'accept':             'application/json',
-            'accept-language':    'vi',
-            'origin':             'https://discord.com',
-            'pragma':             'no-cache',
-            'priority':           'u=1, i',
-            'referer':            'https://discord.com/channels/@me',
-            'sec-ch-ua':          '"Not)A;Brand";v="8", "Chromium";v="138"',
-            'sec-ch-ua-mobile':   '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest':     'empty',
-            'sec-fetch-mode':     'cors',
-            'sec-fetch-site':     'same-origin',
-            'x-debug-options':    'bugReporterEnabled',
-            'x-discord-locale':   'en-US',
-            'x-discord-timezone': 'Asia/Saigon',
-            'x-super-properties': Buffer.from(
-                JSON.stringify(Constants.Properties)
-            ).toString('base64'),
+            'Accept':             '*/*',
+            'Accept-Language':    'en-US,en;q=0.9',
+            'Origin':             'https://discord.com',
+            'Referer':            'https://discord.com/channels/@me',
+            'User-Agent':         Constants.USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            'Sec-Ch-Ua':          '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+            'Sec-Ch-Ua-Mobile':   '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest':     'empty',
+            'Sec-Fetch-Mode':     'cors',
+            'Sec-Fetch-Site':     'same-origin',
+            'X-Discord-Locale':   'en-US',
+            'X-Debug-Options':    'bugReporterEnabled'
         };
+
+        if (Constants.Properties) {
+            try {
+                headers['X-Super-Properties'] = Buffer.from(
+                    JSON.stringify(Constants.Properties)
+                ).toString('base64');
+            } catch {}
+        }
+
+        return headers;
     }
 
     #buildUrl(path, query) {
