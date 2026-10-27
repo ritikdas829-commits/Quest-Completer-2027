@@ -1,18 +1,37 @@
 /**
- * tokensys.js - Updated to use MongoDB TokenStore & 5-Slot Progressive System
+ * tokensys.js - Complete 5-Slot MongoDB Token & Presence System
  * Location: src/commands/tokensys.js
  */
 
-import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
-import { getProgressiveSlots } from '../quest/slotSystem.js';
+import { 
+    SlashCommandBuilder, 
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    EmbedBuilder, 
+    MessageFlags 
+} from 'discord.js';
+import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 
-function getClientPrefix(client, guildId) {
-    try {
-        if (client?.getPrefix) return client.getPrefix(guildId);
-        if (client?.config?.prefix) return client.config.prefix;
-        if (client?.prefix) return client.prefix;
-    } catch {}
-    return process.env.BOT_PREFIX || ';';
+// ── Helper: Token Modal Generator ─────────────────────────────
+export function createTokenModal(slot = 1) {
+    const modal = new ModalBuilder()
+        .setCustomId(`linkid-modal-slot-${slot}`)
+        .setTitle(`Link Your Token (Slot #${slot})`);
+
+    const tokenInput = new TextInputBuilder()
+        .setCustomId('discord_token_input')
+        .setLabel('Enter your Discord User Token')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Paste your account token here...')
+        .setRequired(true);
+
+    const row = new ActionRowBuilder().addComponents(tokenInput);
+    modal.addComponents(row);
+    return modal;
 }
 
 // ─────────────────────────────────────────────
@@ -23,33 +42,35 @@ export const linkid = {
     prefix: 'linkid',
     data: new SlashCommandBuilder()
         .setName('linkid')
-        .setDescription('Link your Discord user token securely via modal popup'),
+        .setDescription('Link your Discord user token securely via modal popup')
+        .addIntegerOption(o => o.setName('slot').setDescription('Slot number (1-5)').setMinValue(1).setMaxValue(5).setRequired(false)),
     
     async execute(interaction, client) {
-        const modal = new ModalBuilder()
-            .setCustomId('linkid-modal')
-            .setTitle('Link Your Discord Token (Slot 1)');
-
-        const tokenInput = new TextInputBuilder()
-            .setCustomId('discord_token_input')
-            .setLabel('Enter your Discord User Token')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Paste your account token here...')
-            .setRequired(true);
-
-        const row = new ActionRowBuilder().addComponents(tokenInput);
-        modal.addComponents(row);
-
+        const slot = interaction.options.getInteger('slot') || 1;
+        const modal = createTokenModal(slot);
         await interaction.showModal(modal);
     },
 
     async prefixExecute(message, args, client) {
-        const prefix = getClientPrefix(client, message.guild.id);
+        const slot = parseInt(args[0]) || 1;
+        if (slot < 1 || slot > 5) {
+            return message.reply('❌ Invalid slot number. Please use a slot between 1 and 5. Example: `?linkid 1`');
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle('🔗 Token Linking')
-            .setDescription(`For security reasons and to open a modal popup, please use the Slash Command: **\`/linkid\`**\nOr use your full progressive panel with: **\`${prefix}link\`**`);
-        return await message.reply({ embeds: [embed] });
+            .setTitle('🔗 Secure Token Linking Panel')
+            .setDescription(`Click the button below to open the secure token submission popup for **Slot #${slot}**.`);
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ui_link_btn_slot_${slot}`)
+                .setLabel(`Link Token (Slot ${slot})`)
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🔗')
+        );
+
+        await message.reply({ embeds: [embed], components: [row] });
     }
 };
 
@@ -61,7 +82,7 @@ export const unlinkid = {
     prefix: 'unlinkid',
     data: new SlashCommandBuilder()
         .setName('unlinkid')
-        .setDescription('Remove your linked Discord token from Slot 1')
+        .setDescription('Remove your linked Discord token from a slot')
         .addIntegerOption(o => o.setName('slot').setDescription('Slot number (1-5)').setMinValue(1).setMaxValue(5).setRequired(false)),
     
     async execute(interaction, client) {
@@ -71,11 +92,12 @@ export const unlinkid = {
         const userId = interaction.user.id;
 
         await client.tokenStore.removeSlot(guildId, userId, slot);
+        stopUserOnlinePresence(userId);
 
         const embed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('✅ Successfully Unlinked')
-            .setDescription(`Your token from Slot #${slot} has been removed from the database.`);
+            .setDescription(`Your token from Slot **#${slot}** has been removed.`);
 
         await interaction.editReply({ embeds: [embed] });
     },
@@ -86,11 +108,12 @@ export const unlinkid = {
         const slot = parseInt(args[0]) || 1;
 
         await client.tokenStore.removeSlot(guildId, userId, slot);
+        stopUserOnlinePresence(userId);
 
         const embed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('✅ Successfully Unlinked')
-            .setDescription(`Your token from Slot #${slot} has been removed from the database.`);
+            .setDescription(`Your token from Slot **#${slot}** has been removed.`);
 
         await message.reply({ embeds: [embed] });
     }
@@ -112,66 +135,59 @@ export const onlinestatus = {
         const userId = interaction.user.id;
 
         const accounts = await client.tokenStore.getAllSlots(guildId, userId);
+        const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
         const embed = new EmbedBuilder();
 
         if (!accounts || accounts.length === 0) {
-            embed.setColor(0xED4245)
-                .setTitle('❌ Not Linked')
-                .setDescription('No accounts linked. Use `/linkid` or `/link` to link your token.');
+            embed.setColor(0xED4245).setTitle('❌ No Tokens Linked').setDescription('No accounts linked yet.');
         } else {
-            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard (MongoDB)');
+            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard');
             for (const acc of accounts) {
-                const activeText = acc.isActive ? '🟢 Active' : '⚪ Inactive';
-                const linkedDate = acc.linkedAt ? new Date(acc.linkedAt).toLocaleString() : 'N/A';
+                const isActive = activeSlot?.slot === acc.slot;
                 embed.addFields({
-                    name: `Slot #${acc.slot} — ${acc.username || 'Unknown'}`,
-                    value: `• **Status:** ${activeText}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\`\n• **Linked At:** ${linkedDate}`,
+                    name: `Slot #${acc.slot} — ${acc.username || 'Linked Account'}`,
+                    value: `• **Status:** ${isActive ? '🟢 Active' : '⚪ Stored'}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\``,
                     inline: false
                 });
             }
         }
-
         await interaction.editReply({ embeds: [embed] });
     },
 
     async prefixExecute(message, _args, client) {
         const guildId = message.guild.id;
         const userId = message.author.id;
-
         const accounts = await client.tokenStore.getAllSlots(guildId, userId);
+        const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
         const embed = new EmbedBuilder();
 
         if (!accounts || accounts.length === 0) {
-            embed.setColor(0xED4245)
-                .setTitle('❌ Not Linked')
-                .setDescription('No accounts linked. Use `/linkid` or `?link` to link your token.');
+            embed.setColor(0xED4245).setTitle('❌ No Tokens Linked').setDescription('No accounts linked yet.');
         } else {
-            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard (MongoDB)');
+            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard');
             for (const acc of accounts) {
-                const activeText = acc.isActive ? '🟢 Active' : '⚪ Inactive';
-                const linkedDate = acc.linkedAt ? new Date(acc.linkedAt).toLocaleString() : 'N/A';
+                const isActive = activeSlot?.slot === acc.slot;
                 embed.addFields({
-                    name: `Slot #${acc.slot} — ${acc.username || 'Unknown'}`,
-                    value: `• **Status:** ${activeText}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\`\n• **Linked At:** ${linkedDate}`,
+                    name: `Slot #${acc.slot} — ${acc.username || 'Linked Account'}`,
+                    value: `• **Status:** ${isActive ? '🟢 Active' : '⚪ Stored'}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\``,
                     inline: false
                 });
             }
         }
-
         await message.reply({ embeds: [embed] });
     }
 };
 
 // ─────────────────────────────────────────────
-// 4. ONLINEID (Slash + Prefix)
+// 4. ONLINEID (Slash + Prefix) — Sets active slot & turns status online
 // ─────────────────────────────────────────────
 export const onlineid = {
     name: 'onlineid',
     prefix: 'onlineid',
     data: new SlashCommandBuilder()
         .setName('onlineid')
-        .setDescription('Set your active slot account')
-        .addIntegerOption(o => o.setName('slot').setDescription('Slot number to set active').setMinValue(1).setMaxValue(5).setRequired(true)),
+        .setDescription('Set active slot and bring account online')
+        .addIntegerOption(o => o.setName('slot').setDescription('Slot number').setMinValue(1).setMaxValue(5).setRequired(true)),
     
     async execute(interaction, client) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -180,11 +196,16 @@ export const onlineid = {
         const userId = interaction.user.id;
 
         await client.tokenStore.setActiveSlot(guildId, userId, slot);
+        const active = await client.tokenStore.getActiveSlot(guildId, userId);
+
+        if (active && active.token) {
+            startUserOnlinePresence(userId, active.token, 'online');
+        }
 
         const embed = new EmbedBuilder()
             .setColor(0x57F287)
-            .setTitle('🟢 Active Slot Updated')
-            .setDescription(`Slot **#${slot}** has been set as your active account for running quests.`);
+            .setTitle('🟢 Account Online & Active')
+            .setDescription(`Slot **#${slot}** is now active and connected online via gateway.`);
 
         await interaction.editReply({ embeds: [embed] });
     },
@@ -195,15 +216,54 @@ export const onlineid = {
         const slot = parseInt(args[0]);
 
         if (!slot || slot < 1 || slot > 5) {
-            return message.reply('❌ Please specify a valid slot number between 1 and 5. Example: `?onlineid 1`');
+            return message.reply('❌ Please specify a slot between 1 and 5. Example: `?onlineid 1`');
         }
 
         await client.tokenStore.setActiveSlot(guildId, userId, slot);
+        const active = await client.tokenStore.getActiveSlot(guildId, userId);
+
+        if (active && active.token) {
+            startUserOnlinePresence(userId, active.token, 'online');
+        }
 
         const embed = new EmbedBuilder()
             .setColor(0x57F287)
-            .setTitle('🟢 Active Slot Updated')
-            .setDescription(`Slot **#${slot}** has been set as your active account for running quests.`);
+            .setTitle('🟢 Account Online & Active')
+            .setDescription(`Slot **#${slot}** is now active and connected online via gateway.`);
+
+        await message.reply({ embeds: [embed] });
+    }
+};
+
+// ─────────────────────────────────────────────
+// 5. OFFLINEID (Slash + Prefix) — Disconnects online presence
+// ─────────────────────────────────────────────
+export const offlineid = {
+    name: 'offlineid',
+    prefix: 'offlineid',
+    data: new SlashCommandBuilder()
+        .setName('offlineid')
+        .setDescription('Disconnect account online presence'),
+    
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        stopUserOnlinePresence(interaction.user.id);
+
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('🔴 Account Offline')
+            .setDescription('Your account online gateway connection has been disconnected.');
+
+        await interaction.editReply({ embeds: [embed] });
+    },
+
+    async prefixExecute(message, _args, client) {
+        stopUserOnlinePresence(message.author.id);
+
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('🔴 Account Offline')
+            .setDescription('Your account online gateway connection has been disconnected.');
 
         await message.reply({ embeds: [embed] });
     }
