@@ -1,42 +1,34 @@
-import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } from 'discord.js';
-import fs from 'fs';
-import path from 'path';
+/**
+ * tokensys.js - Updated to use MongoDB TokenStore & 5-Slot Progressive System
+ * Location: src/commands/tokensys.js
+ */
 
-const filePath = path.resolve('tokens.json');
+import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { getProgressiveSlots } from '../quest/slotSystem.js';
 
-function getTokens() {
+function getClientPrefix(client, guildId) {
     try {
-        if (fs.existsSync(filePath)) {
-            return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        }
-    } catch (e) {}
-    return [];
-}
-
-function saveTokens(list) {
-    fs.writeFileSync(filePath, JSON.stringify(list, null, 2));
+        if (client?.getPrefix) return client.getPrefix(guildId);
+        if (client?.config?.prefix) return client.config.prefix;
+        if (client?.prefix) return client.prefix;
+    } catch {}
+    return process.env.BOT_PREFIX || ';';
 }
 
 // ─────────────────────────────────────────────
-// 1. LINKID (Slash + Prefix: ;linkid)
+// 1. LINKID (Slash + Prefix)
 // ─────────────────────────────────────────────
 export const linkid = {
-    name: 'linkid', // Prefix command name
+    name: 'linkid',
+    prefix: 'linkid',
     data: new SlashCommandBuilder()
         .setName('linkid')
         .setDescription('Link your Discord user token securely via modal popup'),
     
-    async execute(interactionOrMessage, args) {
-        // Agar yeh Prefix command hai (message object aaya hai)
-        if (interactionOrMessage.channel) {
-            return interactionOrMessage.reply('⚠️ Token linking security ke liye sirf **Slash Command** (`/linkid`) ka use karein taaki modal popup khul sake!');
-        }
-
-        // Agar yeh Slash Command hai
-        const interaction = interactionOrMessage;
+    async execute(interaction, client) {
         const modal = new ModalBuilder()
             .setCustomId('linkid-modal')
-            .setTitle('Link Your Discord Token');
+            .setTitle('Link Your Discord Token (Slot 1)');
 
         const tokenInput = new TextInputBuilder()
             .setCustomId('discord_token_input')
@@ -49,148 +41,170 @@ export const linkid = {
         modal.addComponents(row);
 
         await interaction.showModal(modal);
+    },
+
+    async prefixExecute(message, args, client) {
+        const prefix = getClientPrefix(client, message.guild.id);
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🔗 Token Linking')
+            .setDescription(`For security reasons and to open a modal popup, please use the Slash Command: **\`/linkid\`**\nOr use your full progressive panel with: **\`${prefix}link\`**`);
+        return await message.reply({ embeds: [embed] });
     }
 };
 
 // ─────────────────────────────────────────────
-// 2. UNLINKID (Slash + Prefix: ;unlinkid)
+// 2. UNLINKID (Slash + Prefix)
 // ─────────────────────────────────────────────
 export const unlinkid = {
     name: 'unlinkid',
+    prefix: 'unlinkid',
     data: new SlashCommandBuilder()
         .setName('unlinkid')
-        .setDescription('Remove your linked Discord token'),
+        .setDescription('Remove your linked Discord token from Slot 1')
+        .addIntegerOption(o => o.setName('slot').setDescription('Slot number (1-5)').setMinValue(1).setMaxValue(5).setRequired(false)),
     
-    async execute(interactionOrMessage) {
-        const isSlash = !interactionOrMessage.channel;
-        const userId = isSlash ? interactionOrMessage.user.id : interactionOrMessage.author.id;
-        
-        let tokensList = getTokens();
-        const exists = tokensList.some(item => item.ownerId === userId);
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const slot = interaction.options.getInteger('slot') || 1;
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
 
-        const embed = new EmbedBuilder();
-        if (!exists) {
-            embed.setColor(0xED4245).setTitle('❌ Not Linked').setDescription('You do not have any linked tokens. Use `/linkid` first.');
-        } else {
-            tokensList = tokensList.filter(item => item.ownerId !== userId);
-            saveTokens(tokensList);
-            embed.setColor(0x57F287).setTitle('✅ Successfully Unlinked').setDescription('Your token has been removed from the system.');
-        }
+        await client.tokenStore.removeSlot(guildId, userId, slot);
 
-        if (isSlash) {
-            await interactionOrMessage.reply({ embeds: [embed], ephemeral: true });
-        } else {
-            await interactionOrMessage.reply({ embeds: [embed] });
-        }
+        const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('✅ Successfully Unlinked')
+            .setDescription(`Your token from Slot #${slot} has been removed from the database.`);
+
+        await interaction.editReply({ embeds: [embed] });
+    },
+
+    async prefixExecute(message, args, client) {
+        const guildId = message.guild.id;
+        const userId = message.author.id;
+        const slot = parseInt(args[0]) || 1;
+
+        await client.tokenStore.removeSlot(guildId, userId, slot);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('✅ Successfully Unlinked')
+            .setDescription(`Your token from Slot #${slot} has been removed from the database.`);
+
+        await message.reply({ embeds: [embed] });
     }
 };
 
 // ─────────────────────────────────────────────
-// 3. ONLINESTATUS (Slash + Prefix: ;onlinestatus)
+// 3. ONLINESTATUS (Slash + Prefix)
 // ─────────────────────────────────────────────
 export const onlinestatus = {
     name: 'onlinestatus',
+    prefix: 'onlinestatus',
     data: new SlashCommandBuilder()
         .setName('onlinestatus')
-        .setDescription('Check your linked token status and details'),
+        .setDescription('Check your linked token status across your slots'),
     
-    async execute(interactionOrMessage) {
-        const isSlash = !interactionOrMessage.channel;
-        const userId = isSlash ? interactionOrMessage.user.id : interactionOrMessage.author.id;
-        
-        const tokensList = getTokens();
-        const userTokenData = tokensList.find(item => item.ownerId === userId);
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
 
+        const accounts = await client.tokenStore.getAllSlots(guildId, userId);
         const embed = new EmbedBuilder();
-        if (!userTokenData) {
-            embed.setColor(0xED4245).setTitle('❌ Not Linked').setDescription('No account linked. Use `/linkid` to link your token.');
-        } else {
-            const statusEmoji = userTokenData.status === 'online' ? '🟢 Online' : '🔴 Offline';
-            const linkedDate = new Date(userTokenData.linkedAt).toLocaleString();
 
-            embed.setColor(0x5865F2)
-                .setTitle('📊 Token Status Dashboard')
-                .addFields(
-                    { name: 'Username', value: `\`${userTokenData.username}\``, inline: true },
-                    { name: 'Status', value: statusEmoji, inline: true },
-                    { name: 'Linked At', value: linkedDate, inline: false }
-                );
+        if (!accounts || accounts.length === 0) {
+            embed.setColor(0xED4245)
+                .setTitle('❌ Not Linked')
+                .setDescription('No accounts linked. Use `/linkid` or `/link` to link your token.');
+        } else {
+            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard (MongoDB)');
+            for (const acc of accounts) {
+                const activeText = acc.isActive ? '🟢 Active' : '⚪ Inactive';
+                const linkedDate = acc.linkedAt ? new Date(acc.linkedAt).toLocaleString() : 'N/A';
+                embed.addFields({
+                    name: `Slot #${acc.slot} — ${acc.username || 'Unknown'}`,
+                    value: `• **Status:** ${activeText}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\`\n• **Linked At:** ${linkedDate}`,
+                    inline: false
+                });
+            }
         }
 
-        if (isSlash) {
-            await interactionOrMessage.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
+    },
+
+    async prefixExecute(message, _args, client) {
+        const guildId = message.guild.id;
+        const userId = message.author.id;
+
+        const accounts = await client.tokenStore.getAllSlots(guildId, userId);
+        const embed = new EmbedBuilder();
+
+        if (!accounts || accounts.length === 0) {
+            embed.setColor(0xED4245)
+                .setTitle('❌ Not Linked')
+                .setDescription('No accounts linked. Use `/linkid` or `?link` to link your token.');
         } else {
-            await interactionOrMessage.reply({ embeds: [embed] });
+            embed.setColor(0x5865F2).setTitle('📊 Token Status Dashboard (MongoDB)');
+            for (const acc of accounts) {
+                const activeText = acc.isActive ? '🟢 Active' : '⚪ Inactive';
+                const linkedDate = acc.linkedAt ? new Date(acc.linkedAt).toLocaleString() : 'N/A';
+                embed.addFields({
+                    name: `Slot #${acc.slot} — ${acc.username || 'Unknown'}`,
+                    value: `• **Status:** ${activeText}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\`\n• **Linked At:** ${linkedDate}`,
+                    inline: false
+                });
+            }
         }
+
+        await message.reply({ embeds: [embed] });
     }
 };
 
 // ─────────────────────────────────────────────
-// 4. ONLINEID (Slash + Prefix: ;onlineid)
+// 4. ONLINEID (Slash + Prefix)
 // ─────────────────────────────────────────────
 export const onlineid = {
     name: 'onlineid',
+    prefix: 'onlineid',
     data: new SlashCommandBuilder()
         .setName('onlineid')
-        .setDescription('Set your linked account status to online'),
+        .setDescription('Set your active slot account')
+        .addIntegerOption(o => o.setName('slot').setDescription('Slot number to set active').setMinValue(1).setMaxValue(5).setRequired(true)),
     
-    async execute(interactionOrMessage) {
-        const isSlash = !interactionOrMessage.channel;
-        const userId = isSlash ? interactionOrMessage.user.id : interactionOrMessage.author.id;
-        
-        let tokensList = getTokens();
-        const index = tokensList.findIndex(item => item.ownerId === userId);
+    async execute(interaction, client) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const slot = interaction.options.getInteger('slot');
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
 
-        const embed = new EmbedBuilder();
-        if (index === -1) {
-            embed.setColor(0xED4245).setTitle('❌ Not Linked').setDescription('Use `/linkid` first.');
-        } else if (tokensList[index].status === 'online') {
-            embed.setColor(0xFEE75C).setTitle('⚠️ Already Online').setDescription('Your status is already set to online.');
-        } else {
-            tokensList[index].status = 'online';
-            saveTokens(tokensList);
-            embed.setColor(0x57F287).setTitle('🟢 Status Updated').setDescription('Your account status has been set to **Online**.');
+        await client.tokenStore.setActiveSlot(guildId, userId, slot);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('🟢 Active Slot Updated')
+            .setDescription(`Slot **#${slot}** has been set as your active account for running quests.`);
+
+        await interaction.editReply({ embeds: [embed] });
+    },
+
+    async prefixExecute(message, args, client) {
+        const guildId = message.guild.id;
+        const userId = message.author.id;
+        const slot = parseInt(args[0]);
+
+        if (!slot || slot < 1 || slot > 5) {
+            return message.reply('❌ Please specify a valid slot number between 1 and 5. Example: `?onlineid 1`');
         }
 
-        if (isSlash) {
-            await interactionOrMessage.reply({ embeds: [embed], ephemeral: true });
-        } else {
-            await interactionOrMessage.reply({ embeds: [embed] });
-        }
-    }
-};
+        await client.tokenStore.setActiveSlot(guildId, userId, slot);
 
-// ─────────────────────────────────────────────
-// 5. OFFLINEID (Slash + Prefix: ;offlineid)
-// ─────────────────────────────────────────────
-export const offlineid = {
-    name: 'offlineid',
-    data: new SlashCommandBuilder()
-        .setName('offlineid')
-        .setDescription('Set your linked account status to offline'),
-    
-    async execute(interactionOrMessage) {
-        const isSlash = !interactionOrMessage.channel;
-        const userId = isSlash ? interactionOrMessage.user.id : interactionOrMessage.author.id;
-        
-        let tokensList = getTokens();
-        const index = tokensList.findIndex(item => item.ownerId === userId);
+        const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('🟢 Active Slot Updated')
+            .setDescription(`Slot **#${slot}** has been set as your active account for running quests.`);
 
-        const embed = new EmbedBuilder();
-        if (index === -1) {
-            embed.setColor(0xED4245).setTitle('❌ Not Linked').setDescription('Use `/linkid` first.');
-        } else if (tokensList[index].status === 'offline') {
-            embed.setColor(0xFEE75C).setTitle('⚠️ Already Offline').setDescription('Your status is already set to offline.');
-        } else {
-            tokensList[index].status = 'offline';
-            saveTokens(tokensList);
-            embed.setColor(0xED4245).setTitle('🔴 Status Updated').setDescription('Your account status has been set to **Offline**.');
-        }
-
-        if (isSlash) {
-            await interactionOrMessage.reply({ embeds: [embed], ephemeral: true });
-        } else {
-            await interactionOrMessage.reply({ embeds: [embed] });
-        }
+        await message.reply({ embeds: [embed] });
     }
 };
