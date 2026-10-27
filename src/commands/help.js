@@ -1,3 +1,8 @@
+/**
+ * help.js - Components V2 Help Command Updated for 5-Slot & Presence Architecture
+ * Location: src/commands/help.js
+ */
+
 import {
     SlashCommandBuilder,
     ContainerBuilder,
@@ -9,24 +14,33 @@ import {
     MessageFlags,
 } from 'discord.js';
 import { getEmoji } from '../handlers/emoji.js';
-import { PREFIX } from '../utils/config.js';
+
+function getClientPrefix(client, guildId) {
+    try {
+        if (client?.getPrefix) return client.getPrefix(guildId);
+        if (client?.config?.prefix) return client.config.prefix;
+        if (client?.prefix) return client.prefix;
+    } catch {}
+    return process.env.BOT_PREFIX || ';';
+}
 
 export default {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('See all available commands'),
+        .setDescription('See all available commands and 5-slot architecture guide'),
     prefix: 'help',
 
-    async execute(interaction) {
-        await interaction.reply(buildHelp(interaction.user, interaction.client));
+    async execute(interaction, client) {
+        await interaction.reply(await buildHelp(interaction.user, client, interaction.guild?.id));
     },
 
     async prefixExecute(message, _a, client) {
-        await message.reply(buildHelp(message.author, client));
+        await message.reply(await buildHelp(message.author, client, message.guild?.id));
     },
 };
 
-function buildHelp(user, client) {
+async function buildHelp(user, client, guildId) {
+    const prefix = getClientPrefix(client, guildId);
     const avatar = user.displayAvatarURL({ size: 128, extension: 'png' });
     const botAvatar = client.user.displayAvatarURL({ size: 128, extension: 'png' });
     const c = new ContainerBuilder().setAccentColor(0x5865F2);
@@ -36,7 +50,7 @@ function buildHelp(user, client) {
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# 🤖 Quest Bot\n-# Hey **${user.username}**, here's everything I can do`,
+                    `# 🤖 Quest Bot (5-Slot System)\n-# Hey **${user.username}**, here is your complete command & slot guide`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatar)),
@@ -44,13 +58,16 @@ function buildHelp(user, client) {
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Token Section ────────────────────────────────────────────────────────
+    // ── Token & Slot Section ─────────────────────────────────────────────────
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `🔗 **Token**\n` +
-            `\`/link\`  \`${PREFIX}link\` — Link your Discord user token\n` +
-            `\`/unlink\`  \`${PREFIX}unlink\` — Remove your saved token\n` +
-            `\`/tokencheck\`  \`${PREFIX}tokencheck\` — Check if your token is still valid`,
+            `🔗 **Token & Slot Management (1-5)**\n` +
+            `\`/linkid\`  \`${prefix}linkid\` — Secure modal popup to link token to slot\n` +
+            `\`/unlinkid\`  \`${prefix}unlinkid\` — Remove token from a specific slot\n` +
+            `\`/onlinestatus\`  \`${prefix}onlinestatus\` — View all your linked account slots\n` +
+            `\`/onlineid\`  \`${prefix}onlineid\` — Set active slot & bring account online\n` +
+            `\`/offlineid\`  \`${prefix}offlineid\` — Disconnect account online presence\n` +
+            `\`/tokencheck\`  \`${prefix}tokencheck\` — Verify if your active token is valid`,
         ),
     );
 
@@ -59,22 +76,23 @@ function buildHelp(user, client) {
     // ── Quest Section ────────────────────────────────────────────────────────
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `🎮 **Quests**\n` +
-            `\`/quest\`  \`${PREFIX}quest\` — Pick and complete one quest\n` +
-            `\`/questall\`  \`${PREFIX}questall\` — Complete all quests at once\n` +
-            `\`/questlist\`  \`${PREFIX}questlist\` — View all your quests & status\n` +
-            `\`/autoquest\`  \`${PREFIX}autoquest\` — Auto-complete new quests as they drop`,
+            `🎮 **Quest Automation**\n` +
+            `\`/quest\`  \`${prefix}quest\` — Pick and complete one quest\n` +
+            `\`/questall\`  \`${prefix}questall\` — Complete all active quests at once\n` +
+            `\`/questlist\`  \`${prefix}questlist\` — View all your quests & reward status\n` +
+            `\`/autoquest\`  \`${prefix}autoquest\` — Auto-complete new quests as they drop`,
         ),
     );
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Utility Section ──────────────────────────────────────────────────────
+    // ── Utility Section ────────────────────────────────______________________
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `🛠️ **Utility**\n` +
-            `\`/ping\`  \`${PREFIX}ping\` — Check bot latency\n` +
-            `\`/help\`  \`${PREFIX}help\` — You're already here`,
+            `🛠️ **Utility & Guides**\n` +
+            `\`/guide\`  \`${prefix}guide\` — View quick setup guides (PC/Android/iOS)\n` +
+            `\`/ping\`  \`${prefix}ping\` — Check bot latency\n` +
+            `\`/help\`  \`${prefix}help\` — Show this help menu`,
         ),
     );
 
@@ -85,7 +103,7 @@ function buildHelp(user, client) {
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `-# 🌐 Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${PREFIX}\``,
+                    `-# 🌐 Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${prefix}\``,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)),
