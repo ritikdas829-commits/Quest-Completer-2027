@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Token Link Modal & Quest Support
+ * interactionCreate.js — Complete Interaction Handler with Fixed Quest Execution & Live Logs
  * Location: src/events/interactionCreate.js
  */
 
@@ -142,7 +142,7 @@ export default {
                 return;
             }
 
-            // 7. Start Button Handler — Anti-Spam DM Protection + Unique Quest Link
+            // 7. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -192,7 +192,7 @@ export default {
 
                     const claimedCount = await manager.claimRewards(async (msg) => {
                         console.log(`[Claim Log] ${msg}`);
-                    });
+                    }, quest.id);
 
                     const resultLog = claimedCount > 0
                         ? `${EMOJI.success || '🎉'} Quest completed & reward claimed successfully!`
@@ -203,12 +203,25 @@ export default {
                     return;
                 }
 
-                const runnerContext = { isRunning: true, interval: null, notified: false };
+                const runnerContext = { isRunning: true, interval: null, notified: false, latestLog: `Quest initialized.\n[${new Date().toLocaleTimeString()}] Fast mode active.` };
                 activeRunners.set(runnerKey, runnerContext);
 
-                manager.doingQuest(quest, async (msg) => {
-                    console.log(`[Quest Runner Log] ${msg}`);
-                }, async (current, target) => {}).then(async (success) => {
+                // Initial starting panel update
+                const initPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
+                await interaction.editReply(initPanel);
+
+                // Execute background quest runner with live progress callback
+                manager.doingQuest(
+                    quest, 
+                    async (msg) => {
+                        console.log(`[Quest Runner Log] ${msg}`);
+                        runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+                    }, 
+                    async (done, total) => {
+                        const pct = Math.min(100, Math.floor((done / total) * 100));
+                        runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] Progress -> ${pct}%`;
+                    }
+                ).then(async (success) => {
                     runnerContext.isRunning = false;
                     if (activeRunners.get(runnerKey) === runnerContext) {
                         clearInterval(runnerContext.interval);
@@ -217,9 +230,16 @@ export default {
 
                     const doneLog = success
                         ? `${EMOJI.success || '🎉'} Quest completed successfully!`
-                        : `${EMOJI.warn || '⚠️'} Quest runner finished with warnings.`;
+                        : `${EMOJI.warn || '⚠️'} Quest runner finished. Claiming rewards...`;
 
-                    const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, doneLog);
+                    runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${doneLog}`;
+                    
+                    // Claim rewards automatically upon completion
+                    try {
+                        await manager.claimRewards(console.log, quest.id);
+                    } catch {}
+
+                    const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
                     await interaction.editReply(completePanel).catch(() => {});
 
                     if (success && !runnerContext.notified) {
@@ -240,6 +260,7 @@ export default {
                     console.error('Quest execution error:', err);
                 });
 
+                // Periodic UI live-refresh interval
                 runnerContext.interval = setInterval(async () => {
                     if (!runnerContext.isRunning) {
                         clearInterval(runnerContext.interval);
@@ -248,14 +269,12 @@ export default {
                     }
 
                     try {
-                        const nowTime = new Date().toLocaleTimeString();
-                        const runnerLogs = `Quest selected: ${questName}\n[${nowTime}] Fast mode active\nProgress updating...`;
-                        const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerLogs);
+                        const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
                         await interaction.editReply(autoPanel).catch(() => {});
                     } catch (e) {
                         console.error('Auto-refresh UI update error:', e.message);
                     }
-                }, 5000);
+                }, 4000);
 
                 setTimeout(() => {
                     if (activeRunners.get(runnerKey) === runnerContext) {
