@@ -20,16 +20,18 @@ async function getActiveToken(guildId, userId, tokenStore) {
     return active.token || await tokenStore.get(guildId, userId, active.slot);
 }
 
-// ── Helper: Safe Thumbnail Asset Extractor ────────────────────────────────
+// ── Helper: Safe Thumbnail Asset Extractor with Clean CDN Fallback ────────
 function getThumbUrl(cfg) {
     const appId = cfg?.application?.id;
     const assets = cfg?.assets;
     if (!appId || !assets) return null;
 
-    const assetKey = assets.game_tile || assets.hero || assets.quest_bar || assets.card || Object.values(assets)[0];
-    if (!assetKey) return null;
+    // Filter out invalid or placeholder asset keys like default icons
+    const assetKey = assets.game_tile || assets.hero || assets.quest_bar || assets.card;
+    if (!assetKey || typeof assetKey !== 'string') return null;
 
-    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${assetKey}.png`;
+    if (assetKey.startsWith('http')) return assetKey;
+    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${assetKey}.png?size=512`;
 }
 
 // ── UI Cards with 100% Dynamic Custom Emojis ──────────────────────────────
@@ -108,17 +110,17 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
         return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? `  ${EMOJI.success || '✅'}` : ''}`;
     });
 
-    const rewardLines = cfg.rewards_config.rewards.map((r) => {
-        let line = `**${r.messages.name}**`;
-        if (r.orb_quantity) line += `  ✦ *(${r.orb_quantity} Orbs ${EMOJI.orbs || ''})*`;
-        else if (r.quantity) line += `  *(${r.quantity}d Nitro)*`;
-        return line;
+    // Fixed Clean Reward Parsing (No Duplicates)
+    const rewardLines = (cfg.rewards_config?.rewards ?? []).map((r) => {
+        const rName = r.messages?.name || 'Exclusive Reward';
+        if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.orbs || '✨'}`;
+        if (r.quantity) return `**${r.quantity}d Nitro**`;
+        return `**${rName}**`;
     });
 
     const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
     const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
-    // Dynamic Live Progress Bar & % Renderer (10 Blocks)
     const currentPercent = Math.min(100, Math.max(0, Math.floor(percent)));
     const filledBlocks = Math.floor(currentPercent / 10);
     const emptyBlocks = 10 - filledBlocks;
@@ -193,7 +195,6 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
                 const progressMsg = progressMsgs[i];
                 let lastPct = -1;
 
-                // Live Progress % Callback function
                 const onProgress = async (done, total) => {
                     const pct = Math.min(100, Math.floor((done / total) * 100));
                     if (pct >= lastPct + 3 || pct === 100) {
@@ -300,11 +301,11 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
                 return `${meta.icon} ${meta.label}${dur}`;
             });
 
-            const rewardLines = cfg.rewards_config.rewards.map((r) => {
-                let line = `**${r.messages.name}**`;
-                if (r.orb_quantity) line += `  ✦ *(${r.orb_quantity} Orbs ${EMOJI.orbs || ''})*`;
-                else if (r.quantity) line += `  *(${r.quantity}d Nitro)*`;
-                return line;
+            const rewardLines = (cfg.rewards_config?.rewards ?? []).map((r) => {
+                const rName = r.messages?.name || 'Exclusive Reward';
+                if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.orbs || '✨'}`;
+                if (r.quantity) return `**${r.quantity}d Nitro**`;
+                return `**${rName}**`;
             });
 
             const c = new ContainerBuilder().setAccentColor(st.color);
