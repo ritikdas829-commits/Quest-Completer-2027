@@ -1,5 +1,5 @@
 /**
- * questUI.js — High-Performance MongoDB Emoji Integration & Enhanced Error Reporting
+ * questUI.js — High-Performance MongoDB Emoji Integration & Robust Banner/Platform Tracking
  * Location: src/quest/questUI.js
  */
 
@@ -57,7 +57,14 @@ function getQuestImages(quest) {
     const appId = app.id || config.application_id || config.application?.id;
     
     let banner = null;
-    const possibleUrls = [assets.hero, assets.game_tile, assets.quest_tile, assets.banner, config.banner_url, config.image_url];
+    const possibleUrls = [
+        assets.hero,
+        assets.game_tile,
+        assets.quest_tile,
+        assets.banner,
+        config.banner_url,
+        config.image_url
+    ];
 
     for (const u of possibleUrls) {
         if (typeof u === 'string' && u.trim() !== '') {
@@ -65,11 +72,19 @@ function getQuestImages(quest) {
             if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
                 if (!/\.mp4/i.test(cleaned)) { banner = cleaned; break; }
             } else if (appId && cleaned.length > 0) {
+                // Correct Discord App Asset CDN fallback constructor
                 banner = `https://cdn.discordapp.com/app-assets/${appId}/${cleaned}.png?size=1024`;
                 break;
             }
         }
     }
+
+    // Fallback to application icon if banner is missing
+    if (!banner && appId) {
+        const rawIcon = app.icon || config.icon;
+        if (rawIcon) banner = `https://cdn.discordapp.com/app-icons/${appId}/${rawIcon}.png?size=512`;
+    }
+
     return { banner };
 }
 
@@ -123,13 +138,36 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const config = quest.config ?? {}, messages = config.messages ?? {}, tasks = getTasks(config), status = quest.userStatus ?? {}, images = getQuestImages(quest);
         const platformProgress = {};
         for (const t of Object.keys(tasks)) platformProgress[t] = getTaskProgress(t, tasks[t], status);
-        const seen = new Set(), uniq = [];
-        for (const k of Object.keys(platformProgress)) {
-            const base = k.replace(/_\d+$/, '');
-            if (!seen.has(base)) { seen.add(base); uniq.push(platformProgress[k]); }
-        }
-        const total = uniq.length ? Math.max(...uniq) : 0;
-        return { id: quest.id, game: messages.game_title || config.application?.name || 'Unknown Game', publisher: messages.game_publisher || 'Unknown Publisher', questName: messages.quest_name || 'Discord Quest', enrolledAt: formatTimestamp(status.enrolled_at), expiresAt: formatTimestamp(config.expires_at), tasks, platformProgress, images, progress: { total } };
+        
+        const desktopKeys = Object.keys(platformProgress).filter(k => !k.includes('MOBILE'));
+        const mobileKeys = Object.keys(platformProgress).filter(k => k.includes('MOBILE'));
+
+        const desktopTotal = desktopKeys.length ? Math.max(...desktopKeys.map(k => platformProgress[k])) : 0;
+        const mobileTotal = mobileKeys.length ? Math.max(...mobileKeys.map(k => platformProgress[k])) : 0;
+        const total = Math.max(desktopTotal, mobileTotal);
+
+        const rewardsList = config.rewards_config?.rewards ?? [];
+        const rewardTexts = rewardsList.map(r => {
+            const rName = r.messages?.name || 'Reward';
+            if (r.orb_quantity) return `${r.orb_quantity} Orbs`;
+            if (r.quantity) return `${r.quantity}d Nitro`;
+            return rName;
+        });
+        const rewardSummary = rewardTexts.length ? rewardTexts.join(', ') : 'Exclusive Reward';
+
+        return { 
+            id: quest.id, 
+            game: messages.game_title || config.application?.name || 'Unknown Game', 
+            publisher: messages.game_publisher || 'Unknown Publisher', 
+            questName: messages.quest_name || 'Discord Quest', 
+            enrolledAt: formatTimestamp(status.enrolled_at), 
+            expiresAt: formatTimestamp(config.expires_at), 
+            tasks, 
+            platformProgress: { desktop: desktopTotal, mobile: mobileTotal }, 
+            images, 
+            progress: { total },
+            rewardSummary 
+        };
     });
 
     if (!allQuests.length) {
@@ -142,11 +180,8 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const container = new ContainerBuilder().setAccentColor(ACCENT);
     container.addTextDisplayComponents(text(`# ${EMOJI.s_admin || '🛠️'} ${selected.game}`));
 
-    const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.progress.total;
-    const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? 0;
-
     let info = `### ${EMOJI.orbs || '✨'} Quest Overview\n`;
-    info += `${EMOJI.gift || '🎁'} **Reward:** 200 Orbs ${EMOJI.orbs || '✨'}\n`;
+    info += `${EMOJI.gift || '🎁'} **Reward:** ${selected.rewardSummary} ${EMOJI.orbs || '✨'}\n`;
     info += `${EMOJI.online || '🟢'} **Game:** ${selected.game}\n`;
     info += `${EMOJI.list || '📋'} **Publisher:** ${selected.publisher}\n`;
     info += `${EMOJI.expire || '📅'} **Enrolled At:** ${selected.enrolledAt}\n`;
@@ -154,8 +189,8 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     info += `### ${EMOJI.stats || '📊'} Live Progress\n`;
     const progIcon = selected.progress.total >= 100 ? (EMOJI.success || '✅') : (EMOJI.loading || '⏳');
     info += `${progIcon} **Progress:** \`${selected.progress.total}%\` \`${progressBar(selected.progress.total)}\`\n`;
-    info += `-# ${EMOJI.desktop || '🖥️'} **Web/Desktop**: ${desktopPct}%\n`;
-    info += `-# ${EMOJI.mobile || '📱'} **Mobile**: ${mobilePct}%\n`;
+    info += `-# ${EMOJI.desktop || '🖥️'} **Web/Desktop**: ${selected.platformProgress.desktop}%\n`;
+    info += `-# ${EMOJI.mobile || '📱'} **Mobile**: ${selected.platformProgress.mobile}%\n`;
     container.addTextDisplayComponents(text(info));
 
     const seenT = new Set(), taskLines = [];
@@ -171,25 +206,33 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY
+    // BANNER GALLERY WITH PROPER RESOLVER
     const galleryItems = [];
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
-        try { galleryItems.push(new MediaGalleryItemBuilder().setURL(bannerUrl).setDescription(shorten(selected.game, 100))); } catch {}
+        try { 
+            galleryItems.push(
+                new MediaGalleryItemBuilder()
+                    .setURL(bannerUrl)
+                    .setDescription(shorten(selected.game, 100))
+            ); 
+        } catch {}
     }
     if (galleryItems.length > 0) {
         try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
-    // SELECT DROPDOWN WITH PLATFORM EMOJIS
+    // SELECT DROPDOWN WITH CLEAR PLATFORM IDENTIFIER & REWARD DESC
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
         const pEmoji = hasMobile ? (EMOJI.mobile || '📱') : (EMOJI.desktop || '🖥️');
+        const pLabelPrefix = hasMobile ? '[Mobile] ' : '[Desktop] ';
+        
         const opt = new StringSelectMenuOptionBuilder()
-            .setLabel(shorten(q.game + ': ' + q.questName, 95))
+            .setLabel(shorten(pLabelPrefix + q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
-            .setDescription(`${q.progress.total}% Complete — Reward: 200 Orbs`)
+            .setDescription(`${q.progress.total}% Complete — Reward: ${q.rewardSummary}`)
             .setEmoji(parseEmoji(pEmoji));
         if (String(q.id) === String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
