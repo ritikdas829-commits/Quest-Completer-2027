@@ -1,5 +1,5 @@
 /**
- * tokensys.js - MongoDB Online Presence & Status Commands
+ * tokensys.js - MongoDB Online Presence & Status Commands with Profile Card
  * Location: src/commands/tokensys.js
  */
 
@@ -70,15 +70,15 @@ export const onlinestatus = {
 };
 
 // ─────────────────────────────────────────────
-// 2. ONLINEID (Slash + Prefix) — Sets active slot & turns status online
+// 2. ONLINEID (Slash + Prefix) — Sets active slot & shows profile card details
 // ─────────────────────────────────────────────
 export const onlineid = {
     name: 'onlineid',
     prefix: 'onlineid',
     data: new SlashCommandBuilder()
         .setName('onlineid')
-        .setDescription('Set active slot and bring account online')
-        .addIntegerOption(o => o.setName('slot').setDescription('Slot number').setMinValue(1).setMaxValue(5).setRequired(true)),
+        .setDescription('Set active slot and bring account online with profile details')
+        .addIntegerOption(o => o.setName('slot').setDescription('Slot number (1-5)').setMinValue(1).setMaxValue(5).setRequired(true)),
     
     async execute(interaction, client) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -89,15 +89,26 @@ export const onlineid = {
         await client.tokenStore.setActiveSlot(guildId, userId, slot);
         const active = await client.tokenStore.getActiveSlot(guildId, userId);
 
-        if (active && active.token) {
-            startUserOnlinePresence(userId, active.token, 'online');
+        if (!active || !active.token) {
+            const errEmbed = new EmbedBuilder()
+                .setColor(0xED4245)
+                .setTitle('❌ Slot Empty')
+                .setDescription(`Slot **#${slot}** me koi token linked nahi hai. Pehle \`?link\` use karke token add karein.`);
+            return await interaction.editReply({ embeds: [errEmbed] });
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x57F287)
-            .setTitle('🟢 Account Online & Active')
-            .setDescription(`Slot **#${slot}** is now active and connected online via gateway.`);
+        // Start 24/7 Gateway Presence
+        startUserOnlinePresence(userId, active.token, 'online');
 
+        // Fetch target user details for profile card
+        let targetUser = interaction.user;
+        if (active.linkedUserId) {
+            try {
+                targetUser = await client.users.fetch(active.linkedUserId);
+            } catch {}
+        }
+
+        const embed = buildOnlineProfileEmbed(slot, targetUser);
         await interaction.editReply({ embeds: [embed] });
     },
 
@@ -107,24 +118,56 @@ export const onlineid = {
         const slot = parseInt(args[0]);
 
         if (!slot || slot < 1 || slot > 5) {
-            return message.reply('❌ Please specify a slot between 1 and 5. Example: `?onlineid 1`');
+            return message.reply('❌ Sahi slot number chune (1-5). Example: `?onlineid 1`');
         }
 
         await client.tokenStore.setActiveSlot(guildId, userId, slot);
         const active = await client.tokenStore.getActiveSlot(guildId, userId);
 
-        if (active && active.token) {
-            startUserOnlinePresence(userId, active.token, 'online');
+        if (!active || !active.token) {
+            const errEmbed = new EmbedBuilder()
+                .setColor(0xED4245)
+                .setTitle('❌ Slot Empty')
+                .setDescription(`Slot **#${slot}** me koi token linked nahi hai. Pehle \`?link\` use karke token add karein.`);
+            return await message.reply({ embeds: [errEmbed] });
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x57F287)
-            .setTitle('🟢 Account Online & Active')
-            .setDescription(`Slot **#${slot}** is now active and connected online via gateway.`);
+        // Start 24/7 Gateway Presence
+        startUserOnlinePresence(userId, active.token, 'online');
 
+        // Fetch target user details for profile card
+        let targetUser = message.author;
+        if (active.linkedUserId) {
+            try {
+                targetUser = await client.users.fetch(active.linkedUserId);
+            } catch {}
+        }
+
+        const embed = buildOnlineProfileEmbed(slot, targetUser);
         await message.reply({ embeds: [embed] });
     }
 };
+
+// ── Helper: Profile Embed Generator ───────────────────────────
+function buildOnlineProfileEmbed(slot, targetUser) {
+    const avatarUrl = targetUser.displayAvatarURL({ dynamic: true, size: 256 });
+    const createdAt = `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`;
+
+    return new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('🟢 24/7 Online Presence Activated!')
+        .setDescription(`Successfully activated **Slot #${slot}** and connected to Discord Gateway.`)
+        .setThumbnail(avatarUrl)
+        .addFields(
+            { name: '👤 User Name', value: `\`${targetUser.tag || targetUser.username}\``, inline: true },
+            { name: '🆔 User ID', value: `\`${targetUser.id}\``, inline: true },
+            { name: '🎰 Active Slot', value: `\`Slot #${slot}\``, inline: true },
+            { name: '📅 Account Created', value: createdAt, inline: true },
+            { name: '🌐 Connection Status', value: '🟢 **24/7 Gateway Online**', inline: true }
+        )
+        .setFooter({ text: 'Quest Bot • 24/7 Presence Manager' })
+        .setTimestamp();
+}
 
 // ─────────────────────────────────────────────
 // 3. OFFLINEID (Slash + Prefix) — Disconnects online presence
