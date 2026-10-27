@@ -3,13 +3,13 @@
  * Location: src/events/interactionCreate.js
  */
 
-import { getEmoji } from '../handlers/emoji.js';
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
 import { EmbedBuilder } from 'discord.js';
+import { getEmojis } from '../quest/emoji.js';
 
 // Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
@@ -19,8 +19,9 @@ export default {
     once: false,
     async execute(interaction, client) {
         try {
-            const guildId = interaction.guildId;
+            const guildId = interaction.guildId || 'global';
             const userId = interaction.user?.id;
+            const EMOJI = await getEmojis(guildId);
 
             // 1. Guide Buttons Handler
             if (interaction.isButton() && ['btn_pc', 'btn_android', 'btn_ios'].includes(interaction.customId)) {
@@ -40,13 +41,12 @@ export default {
 
             // 3. Link Prompt Button
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
-                await interaction.reply({ content: '🔗 Please use the link command or manage slots via premium panel.', flags: 64 }).catch(() => {});
+                await interaction.reply({ content: `${EMOJI.link || '🔗'} Please use the link command or manage slots via premium panel.`, flags: 64 }).catch(() => {});
                 return;
             }
 
             // 4. Modals Handler
             if (interaction.isModalSubmit()) {
-                // Handle Token Link Modal (`/linkid`)
                 if (interaction.customId === 'linkid-modal') {
                     await interaction.deferReply({ ephemeral: true });
 
@@ -61,7 +61,7 @@ export default {
                         if (!res.ok) {
                             const errorEmbed = new EmbedBuilder()
                                 .setColor(0xED4245)
-                                .setTitle('❌ Invalid Token')
+                                .setTitle(`${EMOJI.error || '❌'} Invalid Token`)
                                 .setDescription('The token you provided was rejected by Discord. Please check and try again.');
                             return await interaction.editReply({ embeds: [errorEmbed] });
                         }
@@ -70,12 +70,11 @@ export default {
                     } catch (err) {
                         const errorEmbed = new EmbedBuilder()
                             .setColor(0xED4245)
-                            .setTitle('❌ Connection Error')
+                            .setTitle(`${EMOJI.error || '❌'} Connection Error`)
                             .setDescription('Failed to validate token with Discord API.');
                         return await interaction.editReply({ embeds: [errorEmbed] });
                     }
 
-                    // Save token securely in MongoDB using client.tokenStore (Slot 1)
                     await client.tokenStore.saveSlot({
                         guildId: guildId || 'global',
                         ownerId: userId,
@@ -89,20 +88,19 @@ export default {
 
                     const successEmbed = new EmbedBuilder()
                         .setColor(0x57F287)
-                        .setTitle('✅ Successfully Linked!')
+                        .setTitle(`${EMOJI.success || '✅'} Successfully Linked!`)
                         .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
 
                     await interaction.editReply({ embeds: [successEmbed] });
                     return;
                 }
 
-                // Handle existing premium modals
                 if (interaction.customId.startsWith('link_modal_slot_')) {
                     await handlePremiumModal(interaction, client);
                     return;
                 }
                 if (interaction.customId === 'link_token_modal') {
-                    await interaction.reply({ content: '✅ Token modal received.', flags: 64 }).catch(() => {});
+                    await interaction.reply({ content: `${EMOJI.success || '✅'} Token modal received.`, flags: 64 }).catch(() => {});
                     return;
                 }
             }
@@ -131,7 +129,7 @@ export default {
                 } catch {}
 
                 const timeString = new Date().toLocaleTimeString();
-                const loadingLogs = `🔄 Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
+                const loadingLogs = `${EMOJI.loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
 
                 const panel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId, loadingLogs);
                 await interaction.editReply(panel);
@@ -162,7 +160,7 @@ export default {
                 const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
 
                 if (!active || !token) {
-                    await interaction.followUp({ content: '❌ No active token slot found! Use `/linkid` first.', flags: 64 });
+                    await interaction.followUp({ content: `${EMOJI.error || '❌'} No active token slot found! Use \`/link\` first.`, flags: 64 });
                     return;
                 }
 
@@ -173,14 +171,14 @@ export default {
                 try {
                     manager = await qc.fetchQuests();
                 } catch (err) {
-                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `❌ Fetch Error: ${err.message}`);
+                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Fetch Error: ${err.message}`);
                     await interaction.editReply(errorPanel);
                     return;
                 }
 
                 const quest = manager.get(questId);
                 if (!quest) {
-                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `❌ Quest ID ${questId} not found or expired.`);
+                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Quest ID ${questId} not found or expired.`);
                     await interaction.editReply(missingPanel);
                     return;
                 }
@@ -188,7 +186,7 @@ export default {
                 const questName = quest.config?.messages?.quest_name || quest.config?.application?.name || 'Discord Quest';
 
                 if (quest.isCompleted()) {
-                    const claimLog = `🎁 Claiming reward for quest: ${questName}...`;
+                    const claimLog = `${EMOJI.gift || '🎁'} Claiming reward for quest: ${questName}...`;
                     const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
                     await interaction.editReply(claimPanel);
 
@@ -197,8 +195,8 @@ export default {
                     });
 
                     const resultLog = claimedCount > 0
-                        ? `🎉 Quest completed & reward claimed successfully!`
-                        : `⚠️ Quest completed, reward already claimed or pending verification.`;
+                        ? `${EMOJI.success || '🎉'} Quest completed & reward claimed successfully!`
+                        : `${EMOJI.warn || '⚠️'} Quest completed, reward already claimed or pending verification.`;
 
                     const finalPanel = await buildQuestSolverPanel(client, guildId, userId, questId, resultLog);
                     await interaction.editReply(finalPanel);
@@ -218,8 +216,8 @@ export default {
                     }
 
                     const doneLog = success
-                        ? `🎉 Quest completed successfully!`
-                        : `⚠️ Quest runner finished with warnings.`;
+                        ? `${EMOJI.success || '🎉'} Quest completed successfully!`
+                        : `${EMOJI.warn || '⚠️'} Quest runner finished with warnings.`;
 
                     const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, doneLog);
                     await interaction.editReply(completePanel).catch(() => {});
@@ -229,10 +227,10 @@ export default {
                         const specificQuestLink = `https://discord.com/quests/${questId}`;
                         try {
                             const targetUser = await client.users.fetch(userId);
-                            await targetUser.send(`🎉 **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
+                            await targetUser.send(`${EMOJI.success || '🎉'} **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
                         } catch {
                             await interaction.followUp({
-                                content: `<@${userId}> 🎉 **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
+                                content: `<@${userId}> ${EMOJI.success || '🎉'} **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
                                 allowedMentions: { users: [userId] }
                             }).catch(() => {});
                         }
@@ -297,7 +295,8 @@ export default {
             }
         } catch (err) {
             console.error('❌ Interaction Error:', err);
-            const msg = { content: `${getEmoji('error')} Something went wrong.`, flags: 64 };
+            const EMOJI = await getEmojis(interaction.guildId || 'global');
+            const msg = { content: `${EMOJI.error || '❌'} Something went wrong.`, flags: 64 };
             if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
                 await interaction.reply(msg).catch(() => {});
             } else if (interaction.isRepliable() && interaction.deferred) {
