@@ -57,66 +57,34 @@ function getQuestImages(quest) {
     const appId = app.id || config.application_id || config.application?.id;
     
     let banner = null;
-    
-    // Check all possible asset properties and variations
-    const possibleUrls = [
-        assets.hero,
-        assets.game_tile,
-        assets.quest_tile,
-        assets.banner,
-        config.banner_url,
-        config.image_url,
-        data.bannerURL,
-        data.bannerUrl
-    ];
+    const possibleUrls = [assets.hero, assets.game_tile, assets.quest_tile, assets.banner, config.banner_url, config.image_url];
 
     for (const u of possibleUrls) {
         if (typeof u === 'string' && u.trim() !== '') {
             let cleaned = u.trim();
             if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
-                if (!/\.mp4/i.test(cleaned)) {
-                    banner = cleaned;
-                    break;
-                }
+                if (!/\.mp4/i.test(cleaned)) { banner = cleaned; break; }
             } else if (appId && cleaned.length > 0) {
-                // Fallback constructor for asset hashes
                 banner = `https://cdn.discordapp.com/app-assets/${appId}/${cleaned}.png?size=1024`;
                 break;
             }
         }
     }
-
-    let icon = null;
-    const rawIcon = app.icon || config.icon || app.icon_hash || assets.icon;
-    if (typeof rawIcon === 'string' && rawIcon.trim() !== '') {
-        const t = rawIcon.trim();
-        if (t.startsWith('http')) {
-            icon = t;
-        } else if (appId) {
-            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t}.png?size=512`;
-        }
-    }
-
-    if (!banner && icon) banner = icon;
-    return { banner, icon };
+    return { banner };
 }
 
 function formatTimestamp(v) { if (!v) return 'N/A'; const d = new Date(v); if (isNaN(d.getTime())) return 'N/A'; return `<t:${Math.floor(d.getTime() / 1000)}:d>`; }
 function shorten(v, max = 100) { return String(v ?? '').slice(0, max); }
-function progressBar(p) { const f = Math.round(p / 10); return '#'.repeat(f) + '-'.repeat(10 - f); }
+function progressBar(p) { const f = Math.round(p / 10); return '█'.repeat(f) + '░'.repeat(10 - f); }
 function text(c) { return new TextDisplayBuilder().setContent(c); }
 
 export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId, customLogs) {
-    // 🎨 Load dynamic custom emojis from MongoDB
     const EMOJI = await getEmojis(guildId);
 
     const tokenStore = client.tokenStore;
     if (!tokenStore) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(
-            `### ❌ Token System Unreachable\n` +
-            `The internal Token Store system is currently unavailable or uninitialized. Please contact an administrator.`
-        ));
+        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Token System Unreachable\nThe internal Token Store system is unavailable.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -126,23 +94,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     } catch (err) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(
-            `### ⚠️ Database Read Failure\n` +
-            `Unable to retrieve user token configuration from the database.\n` +
-            `**Technical Reason:** \`${shorten(err.message, 150)}\``
-        ));
+        c.addTextDisplayComponents(text(`### ${EMOJI.warn || '⚠️'} Database Read Failure\nUnable to retrieve user token.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
     if (!active || !token) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(
-            `### 🔑 No Active Discord Account Linked\n` +
-            `You do not have an active account token selected in this server.\n\n` +
-            `**How to resolve:**\n` +
-            `• Link a valid user token to your active slot using \`?link \` or slot configuration.\n` +
-            `• Check if your active slot is toggled on.`
-        ));
+        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease link a valid token using \`?link\`.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -153,14 +111,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         rawQuests = manager.list() ?? [];
     } catch (e) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(
-            `### ⚠️ Discord API Authentication Error\n` +
-            `Failed to fetch quest details using the provided account token.\n\n` +
-            `**Possible Causes:**\n` +
-            `• The account token has expired, been reset, or is invalid.\n` +
-            `• Discord gateway rate limits or temporary service disruption.\n\n` +
-            `**Technical Details:** \`${shorten(String(e.message ?? e), 200)}\``
-        ));
+        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Discord API Authentication Error\nFailed to fetch quest details.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -183,32 +134,28 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text(
-            `# ${EMOJI.list} Quest Solver\n\n` +
-            `### ℹ️ No Active Quests Available\n` +
-            `There are currently no active or uncompleted quests linked to your Discord account.`
-        ));
+        c.addTextDisplayComponents(text(`# ${EMOJI.list || '📋'} Quest Solver\n\n### ${EMOJI.search || '🔍'} No Active Quests Available`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
     const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
     const container = new ContainerBuilder().setAccentColor(ACCENT);
-    container.addTextDisplayComponents(text(`# ${EMOJI.s_admin} ${selected.game}`));
+    container.addTextDisplayComponents(text(`# ${EMOJI.s_admin || '🛠️'} ${selected.game}`));
 
     const desktopPct = selected.platformProgress['PLAY_ON_DESKTOP'] ?? selected.platformProgress['WATCH_VIDEO'] ?? selected.platformProgress['WATCH_VIDEO_ON_DESKTOP'] ?? selected.progress.total;
     const mobilePct = selected.platformProgress['WATCH_VIDEO_ON_MOBILE'] ?? selected.platformProgress['PLAY_ON_MOBILE'] ?? 0;
 
-    let info = `### ${EMOJI.orbs} Quest Overview\n`;
-    info += `${EMOJI.gift} **Reward:** 200 Orbs ${EMOJI.orbs}\n`;
-    info += `${EMOJI.online} **Game:** ${selected.game}\n`;
-    info += `${EMOJI.list} **Publisher:** ${selected.publisher}\n`;
-    info += `${EMOJI.online} **Enrolled At:** ${selected.enrolledAt}\n`;
-    info += `${EMOJI.arrow} **Expires At:** ${selected.expiresAt}\n\n`;
-    info += `### ${EMOJI.loading} Live Progress\n`;
-    const progIcon = selected.progress.total >= 100 ? '✅' : EMOJI.dot;
-    info += `${progIcon} **Progress:** \`${selected.progress.total}%\`\n`;
-    info += `-# ${EMOJI.online} **Web/Desktop**: ${desktopPct}%\n`;
-    info += `-# ${EMOJI.online} **Mobile**: ${mobilePct}%\n`;
+    let info = `### ${EMOJI.orbs || '✨'} Quest Overview\n`;
+    info += `${EMOJI.gift || '🎁'} **Reward:** 200 Orbs ${EMOJI.orbs || '✨'}\n`;
+    info += `${EMOJI.online || '🟢'} **Game:** ${selected.game}\n`;
+    info += `${EMOJI.list || '📋'} **Publisher:** ${selected.publisher}\n`;
+    info += `${EMOJI.expire || '📅'} **Enrolled At:** ${selected.enrolledAt}\n`;
+    info += `${EMOJI.arrow || '➡️'} **Expires At:** ${selected.expiresAt}\n\n`;
+    info += `### ${EMOJI.stats || '📊'} Live Progress\n`;
+    const progIcon = selected.progress.total >= 100 ? (EMOJI.success || '✅') : (EMOJI.loading || '⏳');
+    info += `${progIcon} **Progress:** \`${selected.progress.total}%\` \`${progressBar(selected.progress.total)}\`\n`;
+    info += `-# ${EMOJI.desktop || '🖥️'} **Web/Desktop**: ${desktopPct}%\n`;
+    info += `-# ${EMOJI.mobile || '📱'} **Mobile**: ${mobilePct}%\n`;
     container.addTextDisplayComponents(text(info));
 
     const seenT = new Set(), taskLines = [];
@@ -217,41 +164,33 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         if (seenT.has(base)) continue;
         seenT.add(base);
         const t = selected.tasks[type];
-        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`${EMOJI.dot} Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`${EMOJI.dot} Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO')) taskLines.push(`${EMOJI.dot} Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else taskLines.push(`${EMOJI.dot} ${type.replace(/_/g, ' ')}`);
+        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`${EMOJI.desktop || '🖥️'} Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
+        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`${EMOJI.mobile || '📱'} Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
+        else if (type.includes('WATCH_VIDEO')) taskLines.push(`${EMOJI.video || '🎬'} Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
+        else taskLines.push(`${EMOJI.gear || '⚙️'} ${type.replace(/_/g, ' ')}`);
     }
-    container.addTextDisplayComponents(text(`### ${EMOJI.list} Tasks Required:\n${taskLines.join('\n')}`));
+    container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
     // BANNER GALLERY
     const galleryItems = [];
-    const img = selected.images?.banner || selected.images?.icon;
-    if (img && typeof img === 'string' && img.startsWith('http') && !img.includes('avatars/0.png')) {
-        try {
-            galleryItems.push(
-                new MediaGalleryItemBuilder()
-                    .setURL(img)
-                    .setDescription(shorten(selected.game, 100))
-            );
-        } catch {}
+    const bannerUrl = selected.images?.banner;
+    if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
+        try { galleryItems.push(new MediaGalleryItemBuilder().setURL(bannerUrl).setDescription(shorten(selected.game, 100))); } catch {}
     }
     if (galleryItems.length > 0) {
-        try { 
-            container.addMediaGalleryComponents(
-                new MediaGalleryBuilder().addItems(galleryItems)
-            ); 
-        } catch {}
+        try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
-    // SELECT DROPDOWN
+    // SELECT DROPDOWN WITH PLATFORM EMOJIS
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
+        const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
+        const pEmoji = hasMobile ? (EMOJI.mobile || '📱') : (EMOJI.desktop || '🖥️');
         const opt = new StringSelectMenuOptionBuilder()
             .setLabel(shorten(q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
             .setDescription(`${q.progress.total}% Complete — Reward: 200 Orbs`)
-            .setEmoji(parseEmoji(EMOJI.orbs));
+            .setEmoji(parseEmoji(pEmoji));
         if (String(q.id) === String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
@@ -265,22 +204,21 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     // CONTROL BUTTONS
     const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji({ name: '▶️' }).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning ? true : false),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji({ name: '⏹️' }).setStyle(isRunning ? ButtonStyle.Danger : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji({ name: '🔄' }).setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
     ));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel('View Quest on Discord').setEmoji(parseEmoji(EMOJI.links)).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
+        new ButtonBuilder().setLabel('View Quest on Discord').setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
     // LOGS PANEL
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list} ${selected.game} Solver Status Logs`));
+    logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
     const now = new Date();
     const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-    let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Fast mode active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
-    let cleanLog = String(rawLog).replace(/<a?:\w+:\d+>/g, '').replace(/:qdiamond:|:emoji_15:|:announce:/g, '').trim();
-    logsContainer.addTextDisplayComponents(text('```prolog\n' + cleanLog.slice(0, 900) + '\n```'));
+    let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Real-time monitoring active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
+    logsContainer.addTextDisplayComponents(text('```prolog\n' + String(rawLog).slice(0, 900) + '\n```'));
 
     return { components: [container, logsContainer], flags: MessageFlags.IsComponentsV2 };
 }
