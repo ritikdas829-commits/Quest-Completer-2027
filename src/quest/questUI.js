@@ -1,5 +1,5 @@
 /**
- * questUI.js — High-Performance MongoDB Emoji Integration & Robust Banner/Platform Tracking
+ * questUI.js — High-Performance MongoDB Emoji Integration & Robust Banner Resolver
  * Location: src/quest/questUI.js
  */
 
@@ -57,32 +57,41 @@ function getQuestImages(quest) {
     const appId = app.id || config.application_id || config.application?.id;
     
     let banner = null;
-    const possibleUrls = [
+    
+    // Check all possible asset properties including quest-assets subfolder paths
+    const possibleAssets = [
         assets.hero,
         assets.game_tile,
         assets.quest_tile,
+        assets.card,
         assets.banner,
         config.banner_url,
         config.image_url
     ];
 
-    for (const u of possibleUrls) {
-        if (typeof u === 'string' && u.trim() !== '') {
-            let cleaned = u.trim();
+    for (const assetKey of possibleAssets) {
+        if (typeof assetKey === 'string' && assetKey.trim() !== '') {
+            const cleaned = assetKey.trim();
             if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
-                if (!/\.mp4/i.test(cleaned)) { banner = cleaned; break; }
+                if (!/\.mp4/i.test(cleaned)) {
+                    banner = cleaned;
+                    break;
+                }
             } else if (appId && cleaned.length > 0) {
-                // Correct Discord App Asset CDN fallback constructor
-                banner = `https://cdn.discordapp.com/app-assets/${appId}/${cleaned}.png?size=1024`;
+                // Construct standard Discord CDN asset URL
+                banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cleaned}.png?size=1024`;
                 break;
             }
         }
     }
 
-    // Fallback to application icon if banner is missing
+    // Fallback to app icon if no banner asset found
     if (!banner && appId) {
-        const rawIcon = app.icon || config.icon;
-        if (rawIcon) banner = `https://cdn.discordapp.com/app-icons/${appId}/${rawIcon}.png?size=512`;
+        const rawIcon = app.icon || config.icon || assets.icon;
+        if (rawIcon && typeof rawIcon === 'string') {
+            if (rawIcon.startsWith('http')) banner = rawIcon;
+            else banner = `https://cdn.discordapp.com/app-icons/${appId}/${rawIcon}.png?size=512`;
+        }
     }
 
     return { banner };
@@ -206,7 +215,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY WITH PROPER RESOLVER
+    // BANNER GALLERY WITH ENHANCED RESOLVER
     const galleryItems = [];
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
