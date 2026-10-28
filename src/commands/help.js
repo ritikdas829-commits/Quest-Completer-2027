@@ -1,5 +1,5 @@
 /**
- * help.js — Interactive Components V2 Help Command with Dropdown & Custom Emojis
+ * help.js — Interactive Components V2 Help Command (Cleaned & Updated)
  * Location: src/commands/help.js
  */
 
@@ -46,7 +46,6 @@ export default {
     },
 };
 
-// Helper: Build Help Panel based on selection category
 export async function buildHelpPanel(user, client, guildId, category = 'main') {
     const emojis = await getEmojis(guildId);
     const prefix = getClientPrefix(client, guildId);
@@ -55,12 +54,12 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
     
     const c = new ContainerBuilder().setAccentColor(0x5865F2);
 
-    // ── Header ──────────────────────────────────────────────────────────────
+    // ── Header ────────────────────────────────________________──────────────
     c.addSectionComponents(
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${emojis.s_admin || '🤖'} Quest Bot — Command Guide\n-# Hey **${user.username}**, explore commands and system guide using the menu below.`,
+                    `# ${emojis.s_admin || '🤖'} Quest Bot — Command Guide\n-# Hey **${user.username}**, explore all available commands using the menu below.`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatar)),
@@ -73,20 +72,18 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
 
     if (category === 'presence') {
         contentText = `🟢 **24/7 Online Presence System**\n\n` +
-            `• \`/onlineon\`  \`${prefix}onlineon\` — Set your active slot and bring your account **24/7 online continuously** via secure WebSocket gateway presence 🟢.\n\n` +
-            `• \`/onlineoff\`  \`${prefix}onlineoff\` — Disconnect your active account gateway presence, turning your status offline 🔴.\n\n` +
-            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — View all your linked account slots along with their current status, user details, and control panel buttons.`;
+            `• \`/onlineon\`  \`${prefix}onlineon\` — Set active slot and keep account **24/7 online continuously** via WebSocket gateway 🟢.\n\n` +
+            `• \`/onlineoff\`  \`${prefix}onlineoff\` — Disconnect active account gateway presence, turning status offline 🔴.\n\n` +
+            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — View all linked slots along with status, user details, and control panel buttons.`;
     } else if (category === 'quest') {
         contentText = `🔗 **Quest & Token Management**\n\n` +
             `• \`/link\`  \`${prefix}link\` — Link your Discord user token securely via modal popup.\n\n` +
             `• \`/unlink\`  \`${prefix}unlink\` — Remove your saved token from a specific slot.\n\n` +
             `• \`/quest\`  \`${prefix}quest\` — Pick and complete a specific Discord quest with live progress tracking.\n\n` +
+            `• \`/questall\`  \`${prefix}questall\` — Complete all available quests at once automatically.\n\n` +
+            `• \`/questlist\`  \`${prefix}questlist\` — View all your active quests and completion status.\n\n` +
+            `• \`/autoquest\`  \`${prefix}autoquest\` — Auto-complete new quests as soon as they drop.\n\n` +
             `• \`/tokencheck\`  \`${prefix}tokencheck\` — Check if your active token is still valid and not expired.`;
-    } else if (category === 'slots') {
-        contentText = `⚙️ **Slot Link & Management Commands**\n\n` +
-            `• \`/linkid\`  \`${prefix}linkid\` — Link your token specifying a specific slot number (1–5).\n\n` +
-            `• \`/unlinkid\`  \`${prefix}unlinkid\` — Unlink a token from a specific slot number (1–5).\n\n` +
-            `• \`Slot Control Panel\` — Manage your accounts directly via interactive buttons (Online On / Online Off).`;
     } else if (category === 'utility') {
         contentText = `🛠️ **Utility & Guide**\n\n` +
             `• \`/guide\`  \`${prefix}guide\` — View quick setup instructions for PC, Android, and iOS devices.\n\n` +
@@ -95,18 +92,17 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
     } else {
         // Main Overview Page
         contentText = `📋 **Welcome to Quest Bot Help Center!**\n\n` +
-            `Please select a category from the **dropdown menu below** to view detailed descriptions and usage instructions for each command:\n\n` +
-            `🟢 **24/7 Presence System** — Keep your accounts online 24/7.\n` +
-            `🔗 **Quest Management** — Complete quests and claim rewards.\n` +
-            `⚙️ **Slot Settings** — Manage multi-account token slots (1-5).\n` +
-            `🛠️ **Utility & Guide** — Setup guides and system tools.`;
+            `Use the **dropdown menu below** to explore specific command categories:\n\n` +
+            `🟢 **24/7 Presence System** — Gateway online/offline controls (\`?onlinestatus\`).\n` +
+            `🔗 **Quest Management** — \`?quest\`, \`?questall\`, \`?questlist\`, \`?autoquest\`, \`?link\`, \`?unlink\`, \`?tokencheck\`.\n` +
+            `🛠️ **Utility & Guides** — Setup guides and system tools.`;
     }
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(contentText));
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Interactive Dropdown Menu ────────────────────────────────────────────
+    // ── Interactive Dropdown Menu (Cleaned: Slots category removed) ──────────
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('help_category_select')
         .setPlaceholder('📂 Select a category to view command details...')
@@ -124,13 +120,8 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_quest')
                 .setLabel('Quest & Token Management')
-                .setDescription('View quest solver and token tools')
+                .setDescription('View quest, questall, questlist, autoquest, link')
                 .setDefault(category === 'quest'),
-            new StringSelectMenuOptionBuilder()
-                .setValue('help_cat_slots')
-                .setLabel('Slot Link & Management')
-                .setDescription('View multi-account slot commands')
-                .setDefault(category === 'slots'),
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_utility')
                 .setLabel('Utility & Guides')
