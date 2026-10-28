@@ -1,5 +1,5 @@
 /**
- * questUI.js — Official Discord App-Assets Banner & Improved Token Error Handling
+ * questUI.js — Official Discord App-Assets Banner & Clean 4-Button Layout
  * Location: src/quest/questUI.js
  */
 
@@ -49,7 +49,7 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 ADVANCED DISCORD APP-ASSETS & BANNER RESOLVER
+// 🎯 FINAL - Official Banner Resolver - Grey Box Fix
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -60,21 +60,16 @@ function getQuestImages(quest) {
     let banner = null;
     let icon = null;
 
-    // 1. Check App Icon
     const rawIcon = app.icon || config.icon;
     if (rawIcon) {
         const t = String(rawIcon).trim();
-        if (t.startsWith('https://')) {
-            icon = t;
-        } else if (appId) {
-            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=1024`;
-        }
+        if (t.startsWith('https://')) icon = t;
+        else if (appId) icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=1024`;
     }
 
-    // 2. Comprehensive Hero / Banner Keys Check
-    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner', 'splash', 'image', 'background'];
+    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner'];
     for (const k of heroKeys) {
-        const raw = assets[k] || config[k] || data[k];
+        const raw = assets[k] || config[k];
         if (!raw || typeof raw !== 'string') continue;
         let s = raw.trim();
         if (!s) continue;
@@ -93,15 +88,12 @@ function getQuestImages(quest) {
         }
     }
 
-    // 3. Fallback to direct banner URLs if assets failed
     if (!banner) {
-        const direct = config.banner_url || data.bannerURL || config.splash_url;
-        if (typeof direct === 'string' && direct.startsWith('https://')) banner = direct;
+        const direct = config.banner_url || data.bannerURL;
+        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) banner = direct;
     }
 
-    // 4. Final Fallback to Icon if no banner found
-    if (!banner) banner = icon;
-
+    // Icon ko banner mat banao - grey box fix
     return { banner, icon };
 }
 
@@ -116,7 +108,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const tokenStore = client.tokenStore;
     if (!tokenStore) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Token System Unreachable\nThe internal Token Store system is unavailable.`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Token System Unreachable`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -126,13 +118,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     } catch (err) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.warn || '⚠️'} Database Read Failure\nUnable to retrieve user token.`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.warn || '⚠️'} Database Read Failure`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
     if (!active || !token) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease activate a slot or use \`?link\` to link a valid token.`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease use \`?link\`.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -143,15 +135,11 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         rawQuests = manager.list() ?? [];
     } catch (e) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        let errorDesc = "Failed to fetch quest details from Discord API.";
-        
+        let errorDesc = "Failed to fetch quest details.";
         if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
-            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link your token using the \`?link\` command or slot settings.";
-        } else if (e.message && e.message.includes('INVALID_TOKEN')) {
-            errorDesc = "No valid token found in database. Please link your account first.";
+            errorDesc = "Your 【entity-Discord¦canonical_name=Discord】 token is **expired or invalid**.\nPlease re-link using \`?link\`.";
         }
-
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Authentication / Token Error\n${errorDesc}`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Authentication Error\n${errorDesc}`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -197,7 +185,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text(`# ${EMOJI.list || '📋'} Quest Solver\n\n### ${EMOJI.search || '🔍'} No Active Quests Available`));
+        c.addTextDisplayComponents(text(`# ${EMOJI.list || '📋'} Quest Solver\n\n### ${EMOJI.search || '🔍'} No Active Quests`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -231,15 +219,12 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY — Official CDN banner display
+    // BANNER - sirf asli hero banner ho toh dikhao, grey box khatam
     const bannerUrl = selected.images?.banner;
-    if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('https://')) {
+    const isRealBanner = bannerUrl && bannerUrl.startsWith('https://') && bannerUrl.includes('app-assets');
+    if (isRealBanner) {
         try { 
-            const gallery = new MediaGalleryBuilder().addItems(
-                new MediaGalleryItemBuilder()
-                    .setURL(bannerUrl)
-                    .setDescription(shorten(selected.game, 100))
-            );
+            const gallery = new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(bannerUrl));
             container.addMediaGalleryComponents(gallery); 
         } catch {}
     }
@@ -250,7 +235,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
         const pEmoji = hasMobile ? (EMOJI.mobile || '📱') : (EMOJI.desktop || '🖥️');
         const pLabelPrefix = hasMobile ? '[Mobile] ' : '[Desktop] ';
-        
         const opt = new StringSelectMenuOptionBuilder()
             .setLabel(shorten(pLabelPrefix + q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
@@ -260,15 +244,11 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         menuOptions.push(opt);
     }
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId('quest_select')
-            .setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100))
-            .addOptions(menuOptions)
+        new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS — Exactly 4 buttons
+    // 4 BUTTONS ONLY
     const isRunning = customLogs && customLogs.toLowerCase().includes('fast mode') && selected.progress.total < 100;
-    
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji('▶️').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(!!isRunning),
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji('⏹️').setStyle(ButtonStyle.Danger)
@@ -278,19 +258,13 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji('🔗').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
-    // LOGS PANEL
+    // LOGS
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
     const now = new Date();
     const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-    
     let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Real-time monitoring active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
-    
-    const cleanedLogs = String(rawLog)
-        .split('\n')
-        .filter(line => !line.includes('[INFO]') && !line.includes('task keys =') && !line.includes('using task type'))
-        .join('\n');
-
+    const cleanedLogs = String(rawLog).split('\n').filter(line => !line.includes('[INFO]') && !line.includes('task keys =') && !line.includes('using task type')).join('\n');
     logsContainer.addTextDisplayComponents(text('```prolog\n' + cleanedLogs.slice(0, 900) + '\n```'));
 
     return { components: [container, logsContainer], flags: MessageFlags.IsComponentsV2 };
