@@ -86,7 +86,7 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Dynamic Command Loader (Optimized to Prevent Double Registration) ────────
+// ── Dynamic Command Loader (Optimized) ───────────────────────────────────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
