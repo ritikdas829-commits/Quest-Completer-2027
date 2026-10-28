@@ -49,7 +49,7 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 OFFICIAL DISCORD APP-ASSETS BANNER RESOLVER
+// 🎯 ADVANCED DISCORD APP-ASSETS & BANNER RESOLVER
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -60,6 +60,7 @@ function getQuestImages(quest) {
     let banner = null;
     let icon = null;
 
+    // 1. Check App Icon
     const rawIcon = app.icon || config.icon;
     if (rawIcon) {
         const t = String(rawIcon).trim();
@@ -70,9 +71,10 @@ function getQuestImages(quest) {
         }
     }
 
-    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner'];
+    // 2. Comprehensive Hero / Banner Keys Check
+    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner', 'splash', 'image', 'background'];
     for (const k of heroKeys) {
-        const raw = assets[k];
+        const raw = assets[k] || config[k] || data[k];
         if (!raw || typeof raw !== 'string') continue;
         let s = raw.trim();
         if (!s) continue;
@@ -91,11 +93,13 @@ function getQuestImages(quest) {
         }
     }
 
+    // 3. Fallback to direct banner URLs if assets failed
     if (!banner) {
-        const direct = config.banner_url || data.bannerURL;
+        const direct = config.banner_url || data.bannerURL || config.splash_url;
         if (typeof direct === 'string' && direct.startsWith('https://')) banner = direct;
     }
 
+    // 4. Final Fallback to Icon if no banner found
     if (!banner) banner = icon;
 
     return { banner, icon };
@@ -141,7 +145,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         let errorDesc = "Failed to fetch quest details from Discord API.";
         
-        // 🎯 Detailed Token Expiry / Invalid Error Message
         if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
             errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link your token using the \`?link\` command or slot settings.";
         } else if (e.message && e.message.includes('INVALID_TOKEN')) {
