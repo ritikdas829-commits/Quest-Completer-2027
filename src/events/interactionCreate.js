@@ -1,11 +1,12 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Quest & Token Dashboard Support
+ * interactionCreate.js — Complete Interaction Handler with Custom Emojis & Dashboard Support
  * Location: src/events/interactionCreate.js
  */
 
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
+import { buildHelpPanel } from '../commands/help.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
@@ -108,7 +109,22 @@ export default {
                 return;
             }
 
-            // 4. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
+            // 4. Help Dropdown Menu Handler
+            if (interaction.isStringSelectMenu() && interaction.customId === 'help_category_select') {
+                await interaction.deferUpdate();
+                const val = interaction.values[0];
+                let cat = 'main';
+                if (val === 'help_cat_presence') cat = 'presence';
+                else if (val === 'help_cat_quest') cat = 'quest';
+                else if (val === 'help_cat_slots') cat = 'slots';
+                else if (val === 'help_cat_utility') cat = 'utility';
+
+                const updatedHelpPanel = await buildHelpPanel(interaction.user, client, guildId, cat);
+                await interaction.editReply(updatedHelpPanel);
+                return;
+            }
+
+            // 5. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
             if (interaction.isStringSelectMenu() && interaction.customId === 'tokensys_slot_select') {
                 await interaction.deferUpdate();
                 const selectedValue = interaction.values[0];
@@ -152,7 +168,7 @@ export default {
                 return;
             }
 
-            // 5. Modals Handler
+            // 6. Modals Handler
             if (interaction.isModalSubmit()) {
                 if (interaction.customId === 'linkid-modal') {
                     await interaction.deferReply({ flags: 64 });
@@ -208,7 +224,7 @@ export default {
                 }
             }
 
-            // 6. Quest Select Menu Handler
+            // 7. Quest Select Menu Handler
             if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
@@ -217,7 +233,7 @@ export default {
                 return;
             }
 
-            // 7. Refresh Button Handler (Preserves selected quest context)
+            // 8. Refresh Button Handler (Preserves selected quest context)
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
 
@@ -245,7 +261,7 @@ export default {
                 return;
             }
 
-            // 8. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
+            // 9. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -386,7 +402,7 @@ export default {
                 return;
             }
 
-            // 9. Stop Button Handler
+            // 10. Stop Button Handler
             if (interaction.isButton() && interaction.customId.startsWith('quest_stop_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_stop_', '');
@@ -405,7 +421,7 @@ export default {
                 return;
             }
 
-            // 10. Slash Commands Handler
+            // 11. Slash Commands Handler
             if (interaction.isChatInputCommand()) {
                 const command = client.commands.get(interaction.commandName);
                 if (!command) return;
