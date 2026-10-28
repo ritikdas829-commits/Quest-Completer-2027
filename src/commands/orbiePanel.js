@@ -13,7 +13,9 @@ export const orbiePanelCmd = {
     prefix: 'orbiepanel',
 
     async execute(interaction) {
-        await sendPanel(interaction, async (opts) => await interaction.reply(opts));
+        // 🛑 Error fix karne ke liye pehle defer reply karein
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await sendPanel(interaction, async (opts) => await interaction.editReply(opts));
     },
 
     async prefixExecute(message) {
