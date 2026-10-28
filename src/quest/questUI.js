@@ -1,5 +1,5 @@
 /**
- * questUI.js — Fixed Banner Fallbacks & Clean 4-Button Layout
+ * questUI.js — Official Discord App-Assets Banner Resolver & Clean 4-Button UI
  * Location: src/quest/questUI.js
  */
 
@@ -49,12 +49,13 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
+// 🎯 OFFICIAL DISCORD APP-ASSETS BANNER RESOLVER
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
     const app = quest?.application ?? config.application ?? data.application ?? {};
-    const appId = app.id || config.application_id || config.application?.id || quest.application?.id;
+    const appId = app.id || config.application_id || config.application?.id;
 
     let banner = null;
     let icon = null;
@@ -65,22 +66,27 @@ function getQuestImages(quest) {
         if (t.startsWith('https://')) {
             icon = t;
         } else if (appId) {
-            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=512`;
+            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=1024`;
         }
     }
 
-    const keysToTry = ['hero', 'banner', 'card', 'game_tile', 'quest_tile', 'hero_video'];
-    for (const k of keysToTry) {
-        let raw = assets[k];
+    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner'];
+    for (const k of heroKeys) {
+        const raw = assets[k];
         if (!raw || typeof raw !== 'string') continue;
         let s = raw.trim();
         if (!s) continue;
-        if (/\.mp4$/i.test(s)) s = s.replace(/\.mp4$/i, '.png');
-        if (s.startsWith('https://')) { banner = s; break; }
+        
+        if (s.startsWith('https://')) {
+            if (!/\.mp4/i.test(s)) { banner = s; break; }
+            banner = s.replace(/\.mp4$/i, '.png');
+            break;
+        }
+
         if (appId) {
-            let filename = s.split('/').pop().replace(/\.mp4$/i, '.png');
-            if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
-            banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+            let file = s.split('/').pop().replace(/\.mp4$/i, '.png');
+            if (!/\.(png|jpe?g|webp)$/i.test(file)) file += '.png';
+            banner = `https://cdn.discordapp.com/app-assets/${appId}/${file}`;
             break;
         }
     }
@@ -213,7 +219,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY — Only rendered if a valid https URL exists
+    // BANNER GALLERY — Official CDN banner display
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('https://')) {
         try { 
@@ -248,7 +254,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS — Exactly 4 buttons with clean direct emojis
+    // CONTROL BUTTONS — Exactly 4 buttons
     const isRunning = customLogs && customLogs.toLowerCase().includes('fast mode') && selected.progress.total < 100;
     
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
