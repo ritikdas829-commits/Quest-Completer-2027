@@ -1,5 +1,5 @@
 /**
- * questUI.js — Fully Optimized UI Panel with Dynamic Links & Clean Logs
+ * questUI.js — Fixed Banner Fallbacks & Clean 4-Button Layout
  * Location: src/quest/questUI.js
  */
 
@@ -57,38 +57,42 @@ function getQuestImages(quest) {
     const appId = app.id || config.application_id || config.application?.id || quest.application?.id;
 
     let banner = null;
-    const keysToTry = ['hero', 'banner', 'card', 'game_tile', 'quest_tile'];
-    
+    let icon = null;
+
+    const rawIcon = app.icon || config.icon;
+    if (rawIcon) {
+        const t = String(rawIcon).trim();
+        if (t.startsWith('https://')) {
+            icon = t;
+        } else if (appId) {
+            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=512`;
+        }
+    }
+
+    const keysToTry = ['hero', 'banner', 'card', 'game_tile', 'quest_tile', 'hero_video'];
     for (const k of keysToTry) {
         let raw = assets[k];
         if (!raw || typeof raw !== 'string') continue;
         let s = raw.trim();
         if (!s) continue;
-
-        if (s.startsWith('https://')) {
-            if (!/\.mp4$/i.test(s)) { banner = s; break; }
-            banner = s.replace(/\.mp4$/i, '.png');
-            break;
-        }
-
+        if (/\.mp4$/i.test(s)) s = s.replace(/\.mp4$/i, '.png');
+        if (s.startsWith('https://')) { banner = s; break; }
         if (appId) {
-            let filename = s.split('/').pop();
-            if (/\.mp4$/i.test(filename)) filename = filename.replace(/\.mp4$/i, '.png');
+            let filename = s.split('/').pop().replace(/\.mp4$/i, '.png');
             if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
-            
             banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
             break;
         }
     }
 
     if (!banner) {
-        const direct = config.banner_url || data.bannerURL || config.image_url;
-        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) {
-            banner = direct;
-        }
+        const direct = config.banner_url || data.bannerURL;
+        if (typeof direct === 'string' && direct.startsWith('https://')) banner = direct;
     }
 
-    return { banner };
+    if (!banner) banner = icon;
+
+    return { banner, icon };
 }
 
 function formatTimestamp(v) { if (!v) return 'N/A'; const d = new Date(v); if (isNaN(d.getTime())) return 'N/A'; return `<t:${Math.floor(d.getTime() / 1000)}:d>`; }
@@ -209,9 +213,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY — Only rendered if a valid HTTP URL exists
+    // BANNER GALLERY — Only rendered if a valid https URL exists
     const bannerUrl = selected.images?.banner;
-    if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
+    if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('https://')) {
         try { 
             const gallery = new MediaGalleryBuilder().addItems(
                 new MediaGalleryItemBuilder()
@@ -244,21 +248,19 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS — Start button is automatically disabled (tapped) when running
-    const isRunning = customLogs && (customLogs.toLowerCase().includes('fast mode') || customLogs.toLowerCase().includes('progress ->')) && selected.progress.total < 100 && !customLogs.toLowerCase().includes('completed');
+    // CONTROL BUTTONS — Exactly 4 buttons with clean direct emojis
+    const isRunning = customLogs && customLogs.toLowerCase().includes('fast mode') && selected.progress.total < 100;
     
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji('▶️').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(!!isRunning),
+        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji('⏹️').setStyle(ButtonStyle.Danger)
     ));
-    
-    // DYNAMIC SELECTED QUEST LINK BUTTON
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
+        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji('🔗').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
-    // LOGS PANEL — Cleaned to show ONLY progress and essential status updates
+    // LOGS PANEL
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
     const now = new Date();
