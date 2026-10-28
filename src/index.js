@@ -86,32 +86,19 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Dynamic Command Loader ──────────────────────────────────────────────────
+// ── Dynamic Command Loader (Optimized to Prevent Double Registration) ────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
+    const cmd = mod.default;
 
-    const registerCmd = (cmd) => {
-        if (!cmd) return;
-        const cmdName = cmd.name || cmd.prefix || cmd.data?.name;
-        // Safely check if cmdName is a valid string before calling toLowerCase()
-        if (cmdName && typeof cmdName === 'string') {
-            client.prefixCommands.set(cmdName.toLowerCase(), cmd);
-            if (cmd.data && typeof cmd.data.name === 'string') {
-                client.commands.set(cmd.data.name, cmd);
-            }
+    if (cmd) {
+        if (cmd.data && typeof cmd.data.name === 'string') {
+            client.commands.set(cmd.data.name, cmd);
         }
-    };
-
-    if (mod.default) registerCmd(mod.default);
-
-    if (mod.name && mod.execute) {
-        registerCmd(mod);
-    }
-
-    for (const [key, cmd] of Object.entries(mod)) {
-        if (['default', 'makeTokenStore', 'handleLinkModal', 'handleLinkPromptButton', 'runAutoquestForUser', 'buildPremiumLinkPanel', 'handleButton', 'handleModal'].includes(key)) continue;
-        registerCmd(cmd);
+        if (cmd.prefix && typeof cmd.prefix === 'string') {
+            client.prefixCommands.set(cmd.prefix.toLowerCase(), cmd);
+        }
     }
 }
 
