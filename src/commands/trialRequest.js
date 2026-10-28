@@ -1,5 +1,5 @@
 /**
- * trialRequest.js - Request and Receive a Trial Key in DM
+ * trialRequest.js - Request and Receive a Trial Key in DM (Slash & Prefix Support)
  * Location: src/commands/trialRequest.js
  */
 
@@ -13,12 +13,24 @@ export const trialRequestCmd = {
         .setDescription('Request your 30-day Orbie Trial Key in DM'),
     prefix: 'activatetrial',
 
+    // Slash Command Execution
     async execute(interaction) {
-        await handleTrialRequest(interaction.user, interaction.guild, async (opts) => await interaction.reply(opts));
+        // Timeout bachane ke liye pehle defer kar dein
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await handleTrialRequest(
+            interaction.user, 
+            interaction.guild, 
+            async (opts) => await interaction.editReply(opts)
+        );
     },
 
+    // Prefix Command Execution (;activatetrial)
     async prefixExecute(message) {
-        await handleTrialRequest(message.author, message.guild, async (opts) => await message.reply(opts));
+        await handleTrialRequest(
+            message.author, 
+            message.guild, 
+            async (opts) => await message.reply(opts)
+        );
     }
 };
 
@@ -27,15 +39,17 @@ async function handleTrialRequest(user, guild, replyFn) {
     const guildOwnerId = guild.ownerId;
     const guildName = guild.name;
 
+    // Generate 1-time self-trial key (30 days)
     const result = await generateKeyByRole(userId, guildOwnerId, userId, 30);
 
     if (!result.success) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
         errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Trial Error\n${result.message}`));
-        return await replyFn({ components: [errCard], flags: MessageFlags.Ephemeral });
+        return await replyFn({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 
     try {
+        // Send trial key via DM
         await sendTrialDmCard(user, result.key, guildName);
 
         const successCard = new ContainerBuilder().setAccentColor(0x57F287);
@@ -52,7 +66,7 @@ async function handleTrialRequest(user, guild, replyFn) {
         dmErrCard.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
                 `# ❌ DM Failed\n` +
-                `Aapke DMs closed hain! Pehle apne server DMs open karein, phir dobara command chalayein.`
+                `Aapke DMs closed hain! Kripya apne server DMs open karein, phir dobara command chalayein.`
             )
         );
         await replyFn({ components: [dmErrCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
