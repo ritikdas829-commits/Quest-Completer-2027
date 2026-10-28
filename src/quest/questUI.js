@@ -1,5 +1,5 @@
 /**
- * questUI.js — Official Discord App-Assets Banner & Clean 4-Button Layout
+ * questUI.js — Official Discord Quests CDN Banner & Clean 4-Button Layout
  * Location: src/quest/questUI.js
  */
 
@@ -49,51 +49,48 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 FINAL - Official Banner Resolver - Grey Box Fix
+// 🎯 OFFICIAL QUESTS CDN BANNER RESOLVER (Grey Box & Poop Icon Fix)
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
-    const app = quest?.application ?? config.application ?? data.application ?? {};
-    const appId = app.id || config.application_id || config.application?.id;
+    const questId = quest?.id || data.id;
 
     let banner = null;
-    let icon = null;
 
-    const rawIcon = app.icon || config.icon;
-    if (rawIcon) {
-        const t = String(rawIcon).trim();
-        if (t.startsWith('https://')) icon = t;
-        else if (appId) icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=1024`;
-    }
-
-    const heroKeys = ['hero', 'hero_video', 'game_tile', 'quest_tile', 'banner'];
-    for (const k of heroKeys) {
-        const raw = assets[k] || config[k];
+    const keys = ['hero', 'quest_bar_hero', 'game_tile', 'logotype', 'banner'];
+    for (const key of keys) {
+        const raw = assets[key] || config[key];
         if (!raw || typeof raw !== 'string') continue;
-        let s = raw.trim();
-        if (!s) continue;
-        
-        if (s.startsWith('https://')) {
-            if (!/\.mp4/i.test(s)) { banner = s; break; }
-            banner = s.replace(/\.mp4$/i, '.png');
+        let asset = raw.trim();
+        if (!asset) continue;
+
+        if (asset.startsWith('http')) {
+            banner = asset;
             break;
         }
 
-        if (appId) {
-            let file = s.split('/').pop().replace(/\.mp4$/i, '.png');
-            if (!/\.(png|jpe?g|webp)$/i.test(file)) file += '.png';
-            banner = `https://cdn.discordapp.com/app-assets/${appId}/${file}`;
+        if (asset.startsWith('quests/')) {
+            banner = `https://cdn.discordapp.com/${asset}`;
+            break;
+        }
+
+        if (questId) {
+            banner = `https://cdn.discordapp.com/quests/${questId}/${asset}`;
             break;
         }
     }
 
-    if (!banner) {
-        const direct = config.banner_url || data.bannerURL;
-        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) banner = direct;
+    let icon = null;
+    const app = quest?.application || config.application || data.application || {};
+    const appId = app.id || config.application_id;
+    const rawIcon = app.icon || config.icon;
+    if (rawIcon && appId) {
+        icon = rawIcon.startsWith('http')
+            ? rawIcon
+            : `https://cdn.discordapp.com/app-icons/${appId}/${rawIcon}.png?size=512`;
     }
 
-    // Icon ko banner mat banao - grey box fix
     return { banner, icon };
 }
 
@@ -137,7 +134,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         let errorDesc = "Failed to fetch quest details.";
         if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
-            errorDesc = "Your 【entity-Discord¦canonical_name=Discord】 token is **expired or invalid**.\nPlease re-link using \`?link\`.";
+            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link using \`?link\`.";
         }
         c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Authentication Error\n${errorDesc}`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -183,9 +180,15 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         };
     });
 
+    // 🛑 PROFESSIONAL NO QUESTS EMPTY STATE (Matched with design requirement)
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text(`# ${EMOJI.list || '📋'} Quest Solver\n\n### ${EMOJI.search || '🔍'} No Active Quests`));
+        c.addTextDisplayComponents(text(
+            `# ${EMOJI.search || '🔍'} No Quests Available\n\n` +
+            `📋 There are no active, uncompleted quests on your account right now.\n\n` +
+            `⚙️ New quests drop periodically — check back later!\n\n` +
+            `-# 🔔 Use \`?autoquest\` to auto-complete quests when they drop`
+        ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -219,9 +222,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER - sirf asli hero banner ho toh dikhao, grey box khatam
+    // BANNER - Asli banner URL validate karke show karo
     const bannerUrl = selected.images?.banner;
-    const isRealBanner = bannerUrl && bannerUrl.startsWith('https://') && bannerUrl.includes('app-assets');
+    const isRealBanner = bannerUrl && bannerUrl.startsWith('https://');
     if (isRealBanner) {
         try { 
             const gallery = new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(bannerUrl));
