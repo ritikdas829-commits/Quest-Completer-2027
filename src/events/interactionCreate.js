@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Custom Emojis & Dashboard Support
+ * interactionCreate.js — Complete Interaction Handler with Security, Cooldown & Panel Locks
  * Location: src/events/interactionCreate.js
  */
 
@@ -12,9 +12,17 @@ import { QuestManager } from '../quest/questManager.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import { getEmojis } from '../quest/emoji.js';
 import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
+import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
 
 // Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
+
+// Helper: Track original panel requesters to restrict unauthorized access
+const panelOwners = new Map(); // messageId -> userId
+
+export function setPanelOwner(messageId, userId) {
+    panelOwners.set(messageId, userId);
+}
 
 // Helper: Build Token Dashboard Panel for Button Interactions
 async function buildTokenDashboardContent(client, guildId, userId) {
@@ -87,13 +95,39 @@ export default {
             const userId = interaction.user?.id;
             const EMOJI = await getEmojis(guildId);
 
-            // 1. Guide Buttons Handler
+            // 🛑 1. SECURITY COOLDOWN CHECK (Active Task / ToS Ban Prevention)
+            const cooldown = checkActivityCooldown(userId);
+            if (cooldown.active) {
+                return interaction.reply({
+                    content: `### ${EMOJI.error || '❌'} Security Cooldown Active\n` +
+                             `\`\`\`prolog\n` +
+                             `[SECURITY] Account temporarily locked due to activity safety.\n` +
+                             `[STATUS] Cooldown remaining: ~${cooldown.remaining} hours.\n` +
+                             `[INFO] Please wait until the activity restriction lifts to avoid account flags.\n` +
+                             `\`\`\``,
+                    flags: 64
+                }).catch(() => {});
+            }
+
+            // 🛡️ 2. ORIGINAL USER LOCK CHECK (Prevent unauthorized clicks on someone else's panel)
+            if (interaction.message && panelOwners.has(interaction.message.id)) {
+                const ownerId = panelOwners.get(interaction.message.id);
+                if (userId !== ownerId) {
+                    return interaction.reply({
+                        content: `### ${EMOJI.error || '❌'} Unauthorized Access\n` +
+                                 `> This control panel does not belong to you! Please execute your own command to interact with quests.`,
+                        flags: 64
+                    }).catch(() => {});
+                }
+            }
+
+            // 3. Guide Buttons Handler
             if (interaction.isButton() && ['btn_pc', 'btn_android', 'btn_ios'].includes(interaction.customId)) {
                 await handleGuideButtons(interaction);
                 return;
             }
 
-            // 2. Premium Slot Buttons Handler
+            // 4. Premium Slot Buttons Handler
             if (interaction.isButton() && (
                 interaction.customId.startsWith('link_slot_') ||
                 interaction.customId.startsWith('unlink_slot_') ||
@@ -103,13 +137,13 @@ export default {
                 return;
             }
 
-            // 3. Link Prompt Button
+            // 5. Link Prompt Button
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
                 await interaction.reply({ content: `${EMOJI.link || '🔗'} Please use the link command or manage slots via premium panel.`, flags: 64 }).catch(() => {});
                 return;
             }
 
-            // 4. Help Dropdown Menu Handler
+            // 6. Help Dropdown Menu Handler
             if (interaction.isStringSelectMenu() && interaction.customId === 'help_category_select') {
                 await interaction.deferUpdate();
                 const val = interaction.values[0];
@@ -124,7 +158,7 @@ export default {
                 return;
             }
 
-            // 5. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
+            // 7. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
             if (interaction.isStringSelectMenu() && interaction.customId === 'tokensys_slot_select') {
                 await interaction.deferUpdate();
                 const selectedValue = interaction.values[0];
@@ -168,7 +202,7 @@ export default {
                 return;
             }
 
-            // 6. Modals Handler
+            // 8. Modals Handler
             if (interaction.isModalSubmit()) {
                 if (interaction.customId === 'linkid-modal') {
                     await interaction.deferReply({ flags: 64 });
@@ -224,16 +258,17 @@ export default {
                 }
             }
 
-            // 7. Quest Select Menu Handler
+            // 9. Quest Select Menu Handler
             if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
                 const panel = await buildQuestSolverPanel(client, guildId, userId, selectedQuestId);
-                await interaction.editReply(panel);
+                const replyMsg = await interaction.editReply(panel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
-            // 8. Refresh Button Handler (Preserves selected quest context)
+            // 10. Refresh Button Handler (Preserves selected quest context)
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
 
@@ -251,17 +286,19 @@ export default {
                 const loadingLogs = `${EMOJI.loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
 
                 const panel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId, loadingLogs);
-                await interaction.editReply(panel);
+                const replyMsg = await interaction.editReply(panel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
 
                 setTimeout(async () => {
                     const freshPanel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId);
-                    await interaction.editReply(freshPanel).catch(() => {});
+                    const freshMsg = await interaction.editReply(freshPanel).catch(() => {});
+                    if (freshMsg?.id) setPanelOwner(freshMsg.id, userId);
                 }, 1500);
 
                 return;
             }
 
-            // 9. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
+            // 11. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -291,14 +328,16 @@ export default {
                     manager = await qc.fetchQuests();
                 } catch (err) {
                     const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Fetch Error: ${err.message}`);
-                    await interaction.editReply(errorPanel);
+                    const errorMsg = await interaction.editReply(errorPanel);
+                    if (errorMsg?.id) setPanelOwner(errorMsg.id, userId);
                     return;
                 }
 
                 const quest = manager.get(questId);
                 if (!quest) {
                     const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Quest ID ${questId} not found or expired.`);
-                    await interaction.editReply(missingPanel);
+                    const missingMsg = await interaction.editReply(missingPanel);
+                    if (missingMsg?.id) setPanelOwner(missingMsg.id, userId);
                     return;
                 }
 
@@ -307,7 +346,8 @@ export default {
                 if (quest.isCompleted()) {
                     const claimLog = `${EMOJI.gift || '🎁'} Claiming reward for quest: ${questName}...`;
                     const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
-                    await interaction.editReply(claimPanel);
+                    const claimMsg = await interaction.editReply(claimPanel);
+                    if (claimMsg?.id) setPanelOwner(claimMsg.id, userId);
 
                     const claimedCount = await manager.claimRewards(async (msg) => {
                         console.log(`[Claim Log] ${msg}`);
@@ -318,7 +358,8 @@ export default {
                         : `${EMOJI.warn || '⚠️'} Quest completed, reward already claimed or pending verification.`;
 
                     const finalPanel = await buildQuestSolverPanel(client, guildId, userId, questId, resultLog);
-                    await interaction.editReply(finalPanel);
+                    const finalMsg = await interaction.editReply(finalPanel);
+                    if (finalMsg?.id) setPanelOwner(finalMsg.id, userId);
                     return;
                 }
 
@@ -326,7 +367,8 @@ export default {
                 activeRunners.set(runnerKey, runnerContext);
 
                 const initPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
-                await interaction.editReply(initPanel);
+                const initMsg = await interaction.editReply(initPanel);
+                if (initMsg?.id) setPanelOwner(initMsg.id, userId);
 
                 manager.doingQuest(
                     quest, 
@@ -356,7 +398,8 @@ export default {
                     } catch {}
 
                     const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
-                    await interaction.editReply(completePanel).catch(() => {});
+                    const completeMsg = await interaction.editReply(completePanel).catch(() => {});
+                    if (completeMsg?.id) setPanelOwner(completeMsg.id, userId);
 
                     if (success && !runnerContext.notified) {
                         runnerContext.notified = true;
@@ -385,7 +428,8 @@ export default {
 
                     try {
                         const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
-                        await interaction.editReply(autoPanel).catch(() => {});
+                        const autoMsg = await interaction.editReply(autoPanel).catch(() => {});
+                        if (autoMsg?.id) setPanelOwner(autoMsg.id, userId);
                     } catch (e) {
                         console.error('Auto-refresh UI update error:', e.message);
                     }
@@ -402,7 +446,7 @@ export default {
                 return;
             }
 
-            // 10. Stop Button Handler
+            // 12. Stop Button Handler
             if (interaction.isButton() && interaction.customId.startsWith('quest_stop_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_stop_', '');
@@ -417,11 +461,12 @@ export default {
 
                 const stopLog = `⏹️ Stopped\n[${new Date().toLocaleTimeString()}] Quest runner stopped by user.`;
                 const panel = await buildQuestSolverPanel(client, guildId, userId, questId, stopLog);
-                await interaction.editReply(panel);
+                const stopMsg = await interaction.editReply(panel);
+                if (stopMsg?.id) setPanelOwner(stopMsg.id, userId);
                 return;
             }
 
-            // 11. Slash Commands Handler
+            // 13. Slash Commands Handler
             if (interaction.isChatInputCommand()) {
                 const command = client.commands.get(interaction.commandName);
                 if (!command) return;
