@@ -1,5 +1,5 @@
 /**
- * questUI.js — Official Discord App-Assets Banner Resolver & Clean 4-Button UI
+ * questUI.js — Official Discord App-Assets Banner & Improved Token Error Handling
  * Location: src/quest/questUI.js
  */
 
@@ -128,7 +128,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     if (!active || !token) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease link a valid token using \`?link\`.`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease activate a slot or use \`?link\` to link a valid token.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -139,7 +139,16 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         rawQuests = manager.list() ?? [];
     } catch (e) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Discord API Authentication Error\nFailed to fetch quest details.`));
+        let errorDesc = "Failed to fetch quest details from Discord API.";
+        
+        // 🎯 Detailed Token Expiry / Invalid Error Message
+        if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
+            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link your token using the \`?link\` command or slot settings.";
+        } else if (e.message && e.message.includes('INVALID_TOKEN')) {
+            errorDesc = "No valid token found in database. Please link your account first.";
+        }
+
+        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Authentication / Token Error\n${errorDesc}`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
