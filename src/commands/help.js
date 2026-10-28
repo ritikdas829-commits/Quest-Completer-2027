@@ -1,5 +1,5 @@
 /**
- * help.js - Components V2 Help Command with All Commands Organized
+ * help.js — Interactive Components V2 Help Command with Dropdown & Custom Emojis
  * Location: src/commands/help.js
  */
 
@@ -11,8 +11,12 @@ import {
     SeparatorSpacingSize,
     SectionBuilder,
     ThumbnailBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder,
     MessageFlags,
 } from 'discord.js';
+import { getEmojis } from '../quest/emoji.js';
 
 function getClientPrefix(client, guildId) {
     try {
@@ -26,22 +30,29 @@ function getClientPrefix(client, guildId) {
 export default {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('See all available commands and system guide'),
+        .setDescription('See all available commands and system guide via interactive menu'),
     prefix: 'help',
 
     async execute(interaction, client) {
-        await interaction.reply(await buildHelp(interaction.user, client, interaction.guild?.id));
+        const guildId = interaction.guild?.id || 'global';
+        const panel = await buildHelpPanel(interaction.user, client, guildId, 'main');
+        await interaction.reply(panel);
     },
 
     async prefixExecute(message, _a, client) {
-        await message.reply(await buildHelp(message.author, client, message.guild?.id));
+        const guildId = message.guild?.id || 'global';
+        const panel = await buildHelpPanel(message.author, client, guildId, 'main');
+        await message.reply(panel);
     },
 };
 
-async function buildHelp(user, client, guildId) {
+// Helper: Build Help Panel based on selection category
+export async function buildHelpPanel(user, client, guildId, category = 'main') {
+    const emojis = await getEmojis(guildId);
     const prefix = getClientPrefix(client, guildId);
     const avatar = user.displayAvatarURL({ size: 128, extension: 'png' });
     const botAvatar = client.user.displayAvatarURL({ size: 128, extension: 'png' });
+    
     const c = new ContainerBuilder().setAccentColor(0x5865F2);
 
     // ── Header ──────────────────────────────────────────────────────────────
@@ -49,7 +60,7 @@ async function buildHelp(user, client, guildId) {
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# 🤖 Quest Bot — Command Guide\n-# Hey **${user.username}**, here is the complete breakdown of all commands and categories`,
+                    `# ${emojis.s_admin || '🤖'} Quest Bot — Command Guide\n-# Hey **${user.username}**, explore commands and system guide using the menu below.`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatar)),
@@ -57,63 +68,84 @@ async function buildHelp(user, client, guildId) {
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── 24/7 Presence Category ───────────────────────────────────────────────
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `🟢 **24/7 Online Presence System**\n` +
-            `• \`/onlineid\`  \`${prefix}onlineid\` — Set your active slot and keep your account **24/7 online continuously** via secure WebSocket gateway presence 🟢.\n` +
-            `• \`/offlineid\`  \`${prefix}offlineid\` — Disconnect your active account gateway presence, turning your status offline 🔴.\n` +
-            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — View all your linked account slots along with their current status and user details.`,
-        ),
-    );
+    // ── Dynamic Content Based on Category Selection ──────────────────────────
+    let contentText = '';
+
+    if (category === 'presence') {
+        contentText = `🟢 **24/7 Online Presence System**\n\n` +
+            `• \`/onlineon\`  \`${prefix}onlineon\` — Set your active slot and bring your account **24/7 online continuously** via secure WebSocket gateway presence 🟢.\n\n` +
+            `• \`/onlineoff\`  \`${prefix}onlineoff\` — Disconnect your active account gateway presence, turning your status offline 🔴.\n\n` +
+            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — View all your linked account slots along with their current status, user details, and control panel buttons.`;
+    } else if (category === 'quest') {
+        contentText = `🔗 **Quest & Token Management**\n\n` +
+            `• \`/link\`  \`${prefix}link\` — Link your Discord user token securely via modal popup.\n\n` +
+            `• \`/unlink\`  \`${prefix}unlink\` — Remove your saved token from a specific slot.\n\n` +
+            `• \`/quest\`  \`${prefix}quest\` — Pick and complete a specific Discord quest with live progress tracking.\n\n` +
+            `• \`/tokencheck\`  \`${prefix}tokencheck\` — Check if your active token is still valid and not expired.`;
+    } else if (category === 'slots') {
+        contentText = `⚙️ **Slot Link & Management Commands**\n\n` +
+            `• \`/linkid\`  \`${prefix}linkid\` — Link your token specifying a specific slot number (1–5).\n\n` +
+            `• \`/unlinkid\`  \`${prefix}unlinkid\` — Unlink a token from a specific slot number (1–5).\n\n` +
+            `• \`Slot Control Panel\` — Manage your accounts directly via interactive buttons (Online On / Online Off).`;
+    } else if (category === 'utility') {
+        contentText = `🛠️ **Utility & Guide**\n\n` +
+            `• \`/guide\`  \`${prefix}guide\` — View quick setup instructions for PC, Android, and iOS devices.\n\n` +
+            `• \`/ping\`  \`${prefix}ping\` — Check bot latency and response time.\n\n` +
+            `• \`/help\`  \`${prefix}help\` — Open this interactive command guide dashboard.`;
+    } else {
+        // Main Overview Page
+        contentText = `📋 **Welcome to Quest Bot Help Center!**\n\n` +
+            `Please select a category from the **dropdown menu below** to view detailed descriptions and usage instructions for each command:\n\n` +
+            `🟢 **24/7 Presence System** — Keep your accounts online 24/7.\n` +
+            `🔗 **Quest Management** — Complete quests and claim rewards.\n` +
+            `⚙️ **Slot Settings** — Manage multi-account token slots (1-5).\n` +
+            `🛠️ **Utility & Guide** — Setup guides and system tools.`;
+    }
+
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(contentText));
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Quest & Token Management Category ────────────────────────────────────
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `🔗 **Quest & Token Management**\n` +
-            `• \`/link\`  \`${prefix}link\` — Link your Discord user token securely via modal popup.\n` +
-            `• \`/unlink\`  \`${prefix}unlink\` — Remove your saved token from a specific slot.\n` +
-            `• \`/quest\`  \`${prefix}quest\` — Pick and complete one quest.\n` +
-            `• \`/questall\`  \`${prefix}questall\` — Complete all quests at once.\n` +
-            `• \`/questlist\`  \`${prefix}questlist\` — View all your quests & status.\n` +
-            `• \`/autoquest\`  \`${prefix}autoquest\` — Auto-complete new quests as they drop.\n` +
-            `• \`/tokencheck\`  \`${prefix}tokencheck\` — Check if your active token is still valid.`,
-        ),
-    );
+    // ── Interactive Dropdown Menu ────────────────────────────────────────────
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('help_category_select')
+        .setPlaceholder('📂 Select a category to view command details...')
+        .addOptions(
+            new StringSelectMenuOptionBuilder()
+                .setValue('help_cat_main')
+                .setLabel('Main Overview')
+                .setDescription('Return to the main help home page')
+                .setDefault(category === 'main'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('help_cat_presence')
+                .setLabel('24/7 Online Presence')
+                .setDescription('View gateway online/offline commands')
+                .setDefault(category === 'presence'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('help_cat_quest')
+                .setLabel('Quest & Token Management')
+                .setDescription('View quest solver and token tools')
+                .setDefault(category === 'quest'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('help_cat_slots')
+                .setLabel('Slot Link & Management')
+                .setDescription('View multi-account slot commands')
+                .setDefault(category === 'slots'),
+            new StringSelectMenuOptionBuilder()
+                .setValue('help_cat_utility')
+                .setLabel('Utility & Guides')
+                .setDescription('View setup guides and ping tool')
+                .setDefault(category === 'utility')
+        );
 
-    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
-
-    // ── Slot Link Commands Category ──────────────────────────────────────────
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `⚙️ **Slot Link & Unlink Commands**\n` +
-            `• \`/linkid\`  \`${prefix}linkid\` — Link your token specifying a slot number (1–5).\n` +
-            `• \`/unlinkid\`  \`${prefix}unlinkid\` — Unlink a token from a specific slot number (1–5).`,
-        ),
-    );
-
-    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
-
-    // ── Utility Section ──────────────────────────────────────────────────────
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `🛠️ **Utility**\n` +
-            `• \`/guide\`  \`${prefix}guide\` — View quick setup instructions for PC, Android, and iOS.\n` +
-            `• \`/ping\`  \`${prefix}ping\` — Check bot latency.\n` +
-            `• \`/help\`  \`${prefix}help\` — You are already here.`,
-        ),
-    );
-
-    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    c.addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
 
     // ── Footer ───────────────────────────────────────────────────────────────
     c.addSectionComponents(
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `-# 🌐 Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${prefix}\``,
+                    `-# ${emojis.online || '🌐'} Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${prefix}\``,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)),
