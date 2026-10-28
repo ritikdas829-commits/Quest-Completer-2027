@@ -20,53 +20,23 @@ async function getActiveToken(guildId, userId, tokenStore) {
     return active.token || await tokenStore.get(guildId, userId, active.slot);
 }
 
-// ── Helper: Safe Thumbnail Asset Extractor with Official CDN Resolver ─────
-function getThumbUrl(cfg) {
-    const app = cfg?.application ?? {};
-    const appId = app.id || cfg?.application_id;
-    const assets = cfg?.assets ?? {};
+// ── Helper: Safe Thumbnail Asset Extractor with Fixed Template Literal ────
+function getThumbUrl(cfg, questId) {
+    if (!cfg || !questId) return null;
+    const assets = cfg.assets || {};
+    const keys = ['hero', 'quest_bar_hero', 'game_tile', 'logotype'];
 
-    let banner = null;
-    let icon = null;
-
-    const rawIcon = app.icon || cfg?.icon;
-    if (rawIcon) {
-        const t = String(rawIcon).trim();
-        if (t.startsWith('https://')) {
-            icon = t;
-        } else if (appId) {
-            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=512`;
-        }
-    }
-
-    const heroKeys = ['hero', 'hero_video', 'quest_bar_hero', 'game_tile', 'quest_tile', 'banner', 'splash', 'image', 'background'];
-    for (const k of heroKeys) {
-        const raw = assets[k] || cfg[k];
+    for (const key of keys) {
+        const raw = assets[key];
         if (!raw || typeof raw !== 'string') continue;
-        let s = raw.trim();
-        if (!s) continue;
-        
-        if (s.startsWith('https://')) {
-            if (!/\.mp4/i.test(s)) { banner = s; break; }
-            banner = s.replace(/\.mp4$/i, '.png');
-            break;
-        }
+        const asset = raw.trim();
+        if (!asset) continue;
 
-        if (appId) {
-            let file = s.split('/').pop().replace(/\.mp4$/i, '.png');
-            if (!/\.(png|jpe?g|webp)$/i.test(file)) file += '.png';
-            banner = `https://cdn.discordapp.com/app-assets/${appId}/${file}`;
-            break;
-        }
+        if (asset.startsWith('http')) return asset;
+        if (asset.startsWith('quests/')) return `https://cdn.discordapp.com/${asset}`;
+        return `https://cdn.discordapp.com/quests/${questId}/${asset}`;
     }
-
-    if (!banner) {
-        const direct = cfg.banner_url || cfg.splash_url;
-        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) banner = direct;
-    }
-
-    if (!banner) banner = icon;
-    return banner;
+    return null;
 }
 
 // ── UI Cards with 100% Dynamic Custom Emojis ──────────────────────────────
@@ -123,7 +93,7 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     const EMOJI = await getEmojis(guildId);
     const cfg  = quest.config;
     const msgs = cfg.messages;
-    const thumbUrl = getThumbUrl(cfg);
+    const thumbUrl = getThumbUrl(cfg, quest.id);
 
     const TASK_META = {
         PLAY_ON_DESKTOP:       { icon: EMOJI.desktop || '🖥️', label: 'Play on Desktop' },
@@ -315,7 +285,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
         for (const q of all.slice(0, 10)) {
             const cfg = q.config;
             const msgs = cfg.messages;
-            const thumbUrl = getThumbUrl(cfg);
+            const thumbUrl = getThumbUrl(cfg, q.id);
             const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
             const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
