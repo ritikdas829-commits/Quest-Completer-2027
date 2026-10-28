@@ -49,50 +49,63 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
+// 🎯 UPGRADED ROBUST BANNER RESOLVER (FIXED 404 / GREY BOX ISSUE)
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
     const assets = config.assets ?? {};
-    const app = quest?.application ?? config.application ?? {};
-    const appId = app.id || config.application_id || config.application?.id;
-    
+    const app = quest?.application ?? config.application ?? data.application ?? {};
+    const appId = app.id || config.application_id || config.application?.id || quest.application?.id;
+
     let banner = null;
+
+    // 1. Sab possible asset keys check karo
+    const keysToTry = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'banner', 'hero_video', 'gameTile', 'questTile'];
     
-    // Check all possible asset properties including quest-assets subfolder paths
-    const possibleAssets = [
-        assets.hero,
-        assets.game_tile,
-        assets.quest_tile,
-        assets.card,
-        assets.banner,
-        config.banner_url,
-        config.image_url
-    ];
+    for (const k of keysToTry) {
+        let raw = assets[k];
+        if (!raw || typeof raw !== 'string') continue;
+        let s = raw.trim();
+        if (!s) continue;
 
-    for (const assetKey of possibleAssets) {
-        if (typeof assetKey === 'string' && assetKey.trim() !== '') {
-            const cleaned = assetKey.trim();
-            if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
-                if (!/\.mp4/i.test(cleaned)) {
-                    banner = cleaned;
-                    break;
-                }
-            } else if (appId && cleaned.length > 0) {
-                // Construct standard Discord CDN asset URL
-                banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cleaned}.png?size=1024`;
-                break;
-            }
+        if (s.startsWith('https://')) {
+            if (!/\.mp4$/i.test(s)) { banner = s; break; }
+            s = s.replace(/\.mp4$/i, '.png');
+            banner = s;
+            break;
+        }
+
+        if (appId) {
+            let filename = s.split('/').pop();
+            if (/\.mp4$/i.test(filename)) filename = filename.replace(/\.mp4$/i, '.png');
+            if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
+            
+            // Clean CDN URL without unsupported size query params
+            banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
+            break;
         }
     }
 
-    // Fallback to app icon if no banner asset found
+    // 2. Direct banner URL from config
+    if (!banner) {
+        const direct = config.banner_url || data.bannerURL || config.image_url;
+        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) {
+            banner = direct;
+        }
+    }
+
+    // 3. FINAL FALLBACK - Use App Icon as banner if asset not found
     if (!banner && appId) {
-        const rawIcon = app.icon || config.icon || assets.icon;
-        if (rawIcon && typeof rawIcon === 'string') {
-            if (rawIcon.startsWith('http')) banner = rawIcon;
-            else banner = `https://cdn.discordapp.com/app-icons/${appId}/${rawIcon}.png?size=512`;
+        const rawIcon = app.icon || config.icon;
+        if (rawIcon) {
+            const t = String(rawIcon).trim();
+            if (t.startsWith('https://')) banner = t;
+            else banner = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png`;
         }
     }
+
+    // Console debug for tracking asset parsing in logs
+    console.log('[NEKOME DEBUG]', { questId: quest.id, appId, assets, finalBanner: banner });
 
     return { banner };
 }
@@ -215,20 +228,17 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY WITH ENHANCED RESOLVER
-    const galleryItems = [];
+    // BANNER GALLERY WITH FIXED CDN URL
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
         try { 
-            galleryItems.push(
+            const gallery = new MediaGalleryBuilder().addItems(
                 new MediaGalleryItemBuilder()
                     .setURL(bannerUrl)
                     .setDescription(shorten(selected.game, 100))
-            ); 
+            );
+            container.addMediaGalleryComponents(gallery); 
         } catch {}
-    }
-    if (galleryItems.length > 0) {
-        try { container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(galleryItems)); } catch {}
     }
 
     // SELECT DROPDOWN WITH CLEAR PLATFORM IDENTIFIER & REWARD DESC
@@ -253,10 +263,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS
-    const isRunning = customLogs && String(customLogs).toLowerCase().includes('fast mode');
+    // CONTROL BUTTONS — Start button remains normal/success
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
     ));
