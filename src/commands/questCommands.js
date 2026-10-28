@@ -57,7 +57,10 @@ async function buildNoQuestsCard(guildId = 'global') {
     const c = new ContainerBuilder().setAccentColor(0x4F545C);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ${EMOJI.search || '🔍'} No Quests Available\nThere are no active, uncompleted quests on your active slot account right now.`,
+            `# ${EMOJI.search || '🔍'} No Quests Available\n\n` +
+            `${EMOJI.list || '📑'} There are no active, uncompleted quests on your active slot account right now.\n\n` +
+            `${EMOJI.gear || '⚙️'} New quests drop periodically — check back later!\n\n` +
+            `-# ${EMOJI.bell || '🔔'} Use \`${PREFIX}autoquest\` to auto-complete quests when they drop`
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
