@@ -1,5 +1,5 @@
 /**
- * questUI.js — Official Discord Quests CDN Banner & Clean 4-Button Layout
+ * questUI.js — Official Quests CDN Banner, Dynamic Button Emojis & Cooldown State
  * Location: src/quest/questUI.js
  */
 
@@ -17,6 +17,8 @@ import {
 } from 'discord.js';
 import { QuestClient } from './questClient.js';
 import { getEmojis } from './emoji.js';
+import { PREFIX } from '../utils/config.js';
+import { checkActivityCooldown } from './suspiciousActivity.js';
 
 const ACCENT = 0x2B2D31;
 const EXCLUDED_QUEST_ID = '1412491570820812933';
@@ -49,7 +51,7 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 OFFICIAL QUESTS CDN BANNER RESOLVER (Grey Box & Poop Icon Fix)
+// 🎯 OFFICIAL QUESTS CDN BANNER RESOLVER
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -99,8 +101,23 @@ function shorten(v, max = 100) { return String(v ?? '').slice(0, max); }
 function progressBar(p) { const f = Math.round(p / 10); return '█'.repeat(f) + '░'.repeat(10 - f); }
 function text(c) { return new TextDisplayBuilder().setContent(c); }
 
-export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId, customLogs) {
+export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId, customLogs, isTaskActive = false) {
     const EMOJI = await getEmojis(guildId);
+
+    // 🛑 COOLDOWN & SECURITY CHECK
+    const cooldown = checkActivityCooldown(userId);
+    if (cooldown.active) {
+        const c = new ContainerBuilder().setAccentColor(0xED4245);
+        c.addTextDisplayComponents(text(
+            `### ${EMOJI.error || '❌'} Security Cooldown Active\n` +
+            `\`\`\`prolog\n` +
+            `[SECURITY] Account temporarily locked due to activity safety.\n` +
+            `[STATUS] Cooldown remaining: ~${cooldown.remaining} hours.\n` +
+            `[INFO] Please wait until the activity restriction lifts to avoid account flags.\n` +
+            `\`\`\``
+        ));
+        return { components: [c], flags: MessageFlags.IsComponentsV2 };
+    }
 
     const tokenStore = client.tokenStore;
     if (!tokenStore) {
@@ -121,7 +138,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
     if (!active || !token) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease use \`?link\`.`));
+        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease use \`${PREFIX}link\`.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -132,11 +149,15 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         rawQuests = manager.list() ?? [];
     } catch (e) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        let errorDesc = "Failed to fetch quest details.";
+        let errorDesc = "Failed to fetch quest details due to timeout or network delay.";
         if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
-            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link using \`?link\`.";
+            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link using \`${PREFIX}link\`.";
         }
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Authentication Error\n${errorDesc}`));
+        // 🛑 PROFESSIONAL ERROR BOX WITH CONFIG EMOJIS
+        c.addTextDisplayComponents(text(
+            `### ${EMOJI.error || '❌'} Authentication Error\n` +
+            `\`\`\`prolog\n[ERROR] ${errorDesc}\n[INFO] Check console for batch HTTP 204 / auth errors\n[INFO] ToS risk if 401/403, token may be dead or Cloudflare cookie needed\n\`\`\``
+        ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
@@ -180,14 +201,14 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         };
     });
 
-    // 🛑 PROFESSIONAL NO QUESTS EMPTY STATE (Matched with design requirement)
+    // 🛑 PROFESSIONAL NO QUESTS EMPTY STATE
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
         c.addTextDisplayComponents(text(
             `# ${EMOJI.search || '🔍'} No Quests Available\n\n` +
-            `📋 There are no active, uncompleted quests on your account right now.\n\n` +
-            `⚙️ New quests drop periodically — check back later!\n\n` +
-            `-# 🔔 Use \`?autoquest\` to auto-complete quests when they drop`
+            `${EMOJI.list || '📑'} There are no active, uncompleted quests on your account right now.\n\n` +
+            `${EMOJI.gear || '⚙️'} New quests drop periodically — check back later!\n\n` +
+            `-# ${EMOJI.bell || '🔔'} Use \`${PREFIX}autoquest\` to auto-complete quests when they drop`
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
@@ -222,7 +243,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER - Asli banner URL validate karke show karo
+    // BANNER
     const bannerUrl = selected.images?.banner;
     const isRealBanner = bannerUrl && bannerUrl.startsWith('https://');
     if (isRealBanner) {
@@ -232,7 +253,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         } catch {}
     }
 
-    // SELECT DROPDOWN
+    // SELECT DROPDOWN WITH EMOJI PARSING
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
@@ -250,15 +271,38 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         new StringSelectMenuBuilder().setCustomId('quest_select').setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100)).addOptions(menuOptions)
     ));
 
-    // 4 BUTTONS ONLY
-    const isRunning = customLogs && customLogs.toLowerCase().includes('fast mode') && selected.progress.total < 100;
+    // 4 BUTTONS LAYOUT WITH DYNAMIC EMOJIS & ACTIVITY STATUS
+    const running = isTaskActive || (customLogs && customLogs.toLowerCase().includes('fast mode') && selected.progress.total < 100);
+    
+    const startEmoji = parseEmoji(EMOJI.play || '▶️');
+    const stopEmoji = parseEmoji(EMOJI.stop || '⏹️');
+    const refreshEmoji = parseEmoji(EMOJI.refresh || '🔄');
+    const viewEmoji = parseEmoji(EMOJI.link || '🔗');
+
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji('▶️').setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(!!isRunning),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji('⏹️').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder()
+            .setCustomId('quest_start_' + selected.id)
+            .setLabel(running ? 'Activity Active (Cooldown)' : 'Start Task')
+            .setEmoji(startEmoji)
+            .setStyle(running ? ButtonStyle.Secondary : ButtonStyle.Success)
+            .setDisabled(!!running),
+        new ButtonBuilder()
+            .setCustomId('quest_stop_' + selected.id)
+            .setLabel('Stop Task')
+            .setEmoji(stopEmoji)
+            .setStyle(ButtonStyle.Danger)
     ));
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji('🔗').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
+        new ButtonBuilder()
+            .setCustomId('quest_refresh')
+            .setLabel('Refresh UI')
+            .setEmoji(refreshEmoji)
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setLabel(`View ${selected.game} Quest on Discord`)
+            .setEmoji(viewEmoji)
+            .setStyle(ButtonStyle.Link)
+            .setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
     // LOGS
