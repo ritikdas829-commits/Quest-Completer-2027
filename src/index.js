@@ -86,19 +86,31 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Dynamic Command Loader (Optimized) ───────────────────────────────────────
+// ── Dynamic Command Loader (Fixed to Register ALL Commands Correctly) ────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
-    const cmd = mod.default;
 
-    if (cmd) {
+    const registerCmd = (cmd) => {
+        if (!cmd || typeof cmd !== 'object') return;
+
+        // Register Slash Commands
         if (cmd.data && typeof cmd.data.name === 'string') {
             client.commands.set(cmd.data.name, cmd);
         }
-        if (cmd.prefix && typeof cmd.prefix === 'string') {
-            client.prefixCommands.set(cmd.prefix.toLowerCase(), cmd);
+
+        // Register Prefix Commands
+        const prefixName = cmd.prefix || cmd.name || cmd.data?.name;
+        if (prefixName && typeof prefixName === 'string') {
+            client.prefixCommands.set(prefixName.toLowerCase(), cmd);
         }
+    };
+
+    if (mod.default) registerCmd(mod.default);
+
+    for (const [key, cmd] of Object.entries(mod)) {
+        if (['default', 'makeTokenStore', 'handleLinkModal', 'handleLinkPromptButton', 'runAutoquestForUser', 'buildPremiumLinkPanel', 'handleButton', 'handleModal'].includes(key)) continue;
+        registerCmd(cmd);
     }
 }
 
