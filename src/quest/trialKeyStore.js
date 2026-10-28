@@ -1,31 +1,37 @@
 /**
- * trialKeyStore.js - Advanced Key Generation with Owner & Admin Limits
+ * trialKeyStore.js - MongoDB Based Key Generation, One-Time Trial & Status Tracking
  * Location: src/quest/trialKeyStore.js
  */
 
-import fs from 'fs';
-import path from 'path';
+import mongoose from 'mongoose';
 
-const filePath = path.resolve('data/trialKeys.json');
+// Define Schemas for MongoDB
+const adminLimitSchema = new mongoose.Schema({
+    adminId: { type: String, required: true, unique: true },
+    maxKeys: { type: Number, default: 4 },
+    usedKeys: { type: Number, default: 0 }
+});
 
-if (!fs.existsSync(path.dirname(filePath))) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-}
+const userTrialSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    claimedTrial: { type: Boolean, default: false },
+    active: { type: Boolean, default: false },
+    expiresAt: { type: Number, default: null },
+    durationDays: { type: Number, default: 30 }
+});
 
-function loadData() {
-    if (!fs.existsSync(filePath)) return { users: {}, keys: {}, adminLimits: {} };
-    try {
-        const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if (!raw.adminLimits) raw.adminLimits = {};
-        return raw;
-    } catch {
-        return { users: {}, keys: {}, adminLimits: {} };
-    }
-}
+const keySchema = new mongoose.Schema({
+    keyString: { type: String, required: true, unique: true },
+    assignedTo: { type: String, default: null },
+    type: { type: String, default: 'admin_generated' },
+    durationDays: { type: Number, default: 30 },
+    redeemed: { type: Boolean, default: false },
+    createdAt: { type: Number, default: Date.now }
+});
 
-function saveData(data) {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+const AdminLimit = mongoose.models.AdminLimit || mongoose.model('AdminLimit', adminLimitSchema);
+const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', userTrialSchema);
+const KeyStore = mongoose.models.KeyStore || mongoose.model('KeyStore', keySchema);
 
 function generateKeyString() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -33,56 +39,103 @@ function generateKeyString() {
     return `${segment()}-${segment()}-${segment()}`;
 }
 
-// Set or update an admin's creation limit (e.g., 4 keys)
+// Set or update an admin's creation limit in MongoDB
 export async function setAdminKeyLimit(adminId, maxKeys) {
-    const db = loadData();
-    if (!db.adminLimits[adminId]) {
-        db.adminLimits[adminId] = { maxKeys: 4, usedKeys: 0 };
+    let limitDoc = await AdminLimit.findOne({ adminId });
+    if (!limitDoc) {
+        limitDoc = new AdminLimit({ adminId, maxKeys: 4, usedKeys: 0 });
     }
-    db.adminLimits[adminId].maxKeys = maxKeys;
-    saveData(db);
+    limitDoc.maxKeys = maxKeys;
+    await limitDoc.save();
 }
 
-// Generate key with strict role & limit checks
+// Check User Trial Status & Remaining Days from MongoDB
+export async function getUserTrialStatus(userId) {
+    const userData = await UserTrial.findOne({ userId });
+
+    if (!userData || !userData.active) {
+        return { hasClaimed: false, active: false, daysRemaining: 0 };
+    }
+
+    if (userData.durationDays === -1) {
+        return { hasClaimed: true, active: true, daysRemaining: 'Lifetime / Permanent' };
+    }
+
+    const now = Date.now();
+    const expiresAt = userData.expiresAt;
+    const diffMs = expiresAt - now;
+
+    if (diffMs <= 0) {
+        return { hasClaimed: true, active: false, daysRemaining: 0, expired: true };
+    }
+
+    const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return { hasClaimed: true, active: true, daysRemaining };
+}
+
+// Generate key with One-Time Trial restriction using MongoDB
 export async function generateKeyByRole(userId, guildOwnerId, targetUserId = null, requestedDays = 30) {
-    const db = loadData();
     const isOwner = (userId === guildOwnerId);
 
+    // 🛑 Check if target user has already claimed their 1-time trial
+    if (targetUserId && targetUserId === userId && !isOwner) {
+        let existingUser = await UserTrial.findOne({ userId });
+        if (existingUser && existingUser.claimedTrial) {
+            return { 
+                success: false, 
+                message: `❌ Aapne apna **One-Time Free Trial** pehle hi claim kar liya hai! Aap dobara trial key generate nahi kar sakte.` 
+            };
+        }
+    }
+
     let durationDays = requestedDays;
+    let remainingText = '';
 
     if (!isOwner) {
-        // Normal admin logic: Check if admin has limit set
-        if (!db.adminLimits[userId]) {
-            // Default limit for admins if not explicitly set (e.g., 4 keys)
-            db.adminLimits[userId] = { maxKeys: 4, usedKeys: 0 };
+        let adminData = await AdminLimit.findOne({ adminId: userId });
+        if (!adminData) {
+            adminData = new AdminLimit({ adminId: userId, maxKeys: 4, usedKeys: 0 });
+            await adminData.save();
         }
-
-        const adminData = db.adminLimits[userId];
 
         if (adminData.usedKeys >= adminData.maxKeys) {
             return { success: false, message: `Aapki key generation limit khatam ho chuki hai! (${adminData.usedKeys}/${adminData.maxKeys} keys used)` };
         }
 
-        // Admins cannot give more than 30 days or lifetime keys
         if (requestedDays > 30 || requestedDays <= 0) {
-            durationDays = 30; // Force maximum 30 days for admins
+            durationDays = 30;
         }
 
         adminData.usedKeys += 1;
+        await adminData.save();
+        remainingText = `${adminData.maxKeys - adminData.usedKeys} left`;
     } else {
-        // Owner can set lifetime or any custom days freely
-        durationDays = requestedDays; 
+        durationDays = requestedDays;
+        remainingText = 'Unlimited (Owner)';
     }
 
     const key = generateKeyString();
-    db.keys[key] = {
+    await KeyStore.create({
+        keyString: key,
         assignedTo: targetUserId,
         type: isOwner ? 'owner_custom' : 'admin_generated',
-        durationDays: durationDays, // Owner can make lifetime (-1 or 365+), admins max 30d
+        durationDays: durationDays,
         redeemed: false,
         createdAt: Date.now()
-    };
+    });
 
-    saveData(db);
-    return { success: true, key, remaining: isOwner ? 'Unlimited (Owner)' : `${db.adminLimits[userId].maxKeys - db.adminLimits[userId].usedKeys} left` };
+    // If it's a self-trial generation, mark that they have claimed their trial ticket
+    if (targetUserId && targetUserId === userId) {
+        await UserTrial.findOneAndUpdate(
+            { userId },
+            { $set: { claimedTrial: true } },
+            { upsert: true, new: true }
+        );
+    }
+
+    return { 
+        success: true, 
+        key, 
+        remaining: remainingText 
+    };
 }
