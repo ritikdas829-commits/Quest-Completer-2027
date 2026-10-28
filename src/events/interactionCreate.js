@@ -1,5 +1,5 @@
 /**
- * questUI.js — Clean Logs, Fixed Start Button State & Robust Banner Resolver
+ * questUI.js — Dynamic Selected Quest Link & Clean UI Panel
  * Location: src/quest/questUI.js
  */
 
@@ -49,7 +49,6 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 STRICT BANNER RESOLVER (Only real banners, no ugly grey icon fallbacks)
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -210,7 +209,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY — Only added if valid URL exists, completely hidden otherwise to prevent grey boxes
+    // BANNER GALLERY
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
         try { 
@@ -245,7 +244,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS — Start button is disabled (tapped) when running or progress < 100 and running
+    // CONTROL BUTTONS
     const isRunning = customLogs && (customLogs.toLowerCase().includes('fast mode') || customLogs.toLowerCase().includes('progress ->')) && selected.progress.total < 100 && !customLogs.toLowerCase().includes('completed');
     
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -253,11 +252,12 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
     ));
+    // DYNAMIC SELECTED QUEST LINK BUTTON
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel('View Quest on Discord').setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
+        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
-    // LOGS PANEL — Cleaned to show ONLY progress and essential status updates
+    // LOGS PANEL
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
     const now = new Date();
@@ -265,7 +265,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     
     let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Real-time monitoring active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
     
-    // Filter out verbose info lines, keep only meaningful progress & status messages
     const cleanedLogs = String(rawLog)
         .split('\n')
         .filter(line => !line.includes('[INFO]') && !line.includes('task keys =') && !line.includes('using task type'))
