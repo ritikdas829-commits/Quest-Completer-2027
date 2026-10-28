@@ -1,5 +1,5 @@
 /**
- * keyActivationHandler.js - Handle "Activate Premium" button & modal submission
+ * keyActivationHandler.js - Handle "Activate Premium" button & modal submission with Role & Slot assignment
  * Location: src/handlers/keyActivationHandler.js
  */
 
@@ -11,13 +11,17 @@ import fs from 'fs';
 import path from 'path';
 
 const filePath = path.resolve('data/trialKeys.json');
+const TRIAL_ROLE_ID = 'YOUR_TRIAL_ROLE_ID'; // Yahan apna Discord Trial Role ID daalein
 
 function loadKeysData() {
-    if (!fs.existsSync(filePath)) return { keys: {} };
+    if (!fs.existsSync(filePath)) return { keys: {}, users: {} };
     try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (!raw.keys) raw.keys = {};
+        if (!raw.users) raw.users = {};
+        return raw;
     } catch {
-        return { keys: {} };
+        return { keys: {}, users: {} };
     }
 }
 
@@ -45,7 +49,7 @@ export async function handleActivationButton(interaction) {
     return true;
 }
 
-// 2. Modal submit hone par key verify aur activate karne ka function
+// 2. Modal submit hone par key verify, activate, role assign aur slots unlock karne ka function
 export async function handleActivationModalSubmit(interaction) {
     if (interaction.customId !== 'orbie_activate_modal') return false;
 
@@ -79,16 +83,38 @@ export async function handleActivationModalSubmit(interaction) {
     keyData.redeemed = true;
     keyData.redeemedBy = userId;
     keyData.redeemedAt = Date.now();
+
+    // Save user active trial & slot status
+    db.users[userId] = {
+        active: true,
+        durationDays: keyData.durationDays,
+        redeemedAt: Date.now(),
+        expiresAt: keyData.durationDays === -1 ? null : Date.now() + (keyData.durationDays * 24 * 60 * 60 * 1000),
+        unlockedSlots: [1] // Trial redeem karne par Slot #1 unlock ho jayega
+    };
+
     saveKeysData(db);
 
-    // Success response
+    // Assign Trial Role to the user automatically
+    try {
+        if (interaction.guild && TRIAL_ROLE_ID !== 'YOUR_TRIAL_ROLE_ID') {
+            const member = await interaction.guild.members.fetch(userId);
+            await member.roles.add(TRIAL_ROLE_ID);
+        }
+    } catch (err) {
+        console.error('Could not assign trial role:', err.message);
+    }
+
+    // Success response with slot info
     const successCard = new ContainerBuilder().setAccentColor(0x57F287);
     successCard.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ✅ Premium Activated Successfully!\n` +
-            `Your key has been successfully redeemed.\n` +
-            `**Duration:** ${keyData.durationDays} Days\n` +
-            `Enjoy your automated quests!`
+            `# ✅ Premium / Trial Activated Successfully!\n` +
+            `Your key has been successfully redeemed.\n\n` +
+            `• **Duration:** ${keyData.durationDays} Days\n` +
+            `• **Unlocked Slot:** Slot #1 Active\n` +
+            `• **Assigned Role:** Trial role successfully granted!\n\n` +
+            `Aap ab apne quests run kar sakte hain!`
         )
     );
     await interaction.editReply({ components: [successCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
