@@ -1,5 +1,5 @@
 /**
- * questUI.js — High-Performance MongoDB Emoji Integration & Robust Banner Resolver
+ * questUI.js — Fully Optimized UI Panel with Dynamic Links & Clean Logs
  * Location: src/quest/questUI.js
  */
 
@@ -49,7 +49,6 @@ function getTaskProgress(type, cfg, status) {
     return Math.min(100, Math.floor((cur / target) * 100));
 }
 
-// 🎯 UPGRADED ROBUST BANNER RESOLVER (FIXED 404 / GREY BOX ISSUE)
 function getQuestImages(quest) {
     const data = quest?.toJSON?.() ?? {};
     const config = quest?.config ?? data.config ?? {};
@@ -58,9 +57,7 @@ function getQuestImages(quest) {
     const appId = app.id || config.application_id || config.application?.id || quest.application?.id;
 
     let banner = null;
-
-    // 1. Sab possible asset keys check karo
-    const keysToTry = ['hero', 'game_tile', 'quest_tile', 'quest_bar', 'card', 'banner', 'hero_video', 'gameTile', 'questTile'];
+    const keysToTry = ['hero', 'banner', 'card', 'game_tile', 'quest_tile'];
     
     for (const k of keysToTry) {
         let raw = assets[k];
@@ -70,8 +67,7 @@ function getQuestImages(quest) {
 
         if (s.startsWith('https://')) {
             if (!/\.mp4$/i.test(s)) { banner = s; break; }
-            s = s.replace(/\.mp4$/i, '.png');
-            banner = s;
+            banner = s.replace(/\.mp4$/i, '.png');
             break;
         }
 
@@ -80,32 +76,17 @@ function getQuestImages(quest) {
             if (/\.mp4$/i.test(filename)) filename = filename.replace(/\.mp4$/i, '.png');
             if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
             
-            // Clean CDN URL without unsupported size query params
             banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
             break;
         }
     }
 
-    // 2. Direct banner URL from config
     if (!banner) {
         const direct = config.banner_url || data.bannerURL || config.image_url;
         if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) {
             banner = direct;
         }
     }
-
-    // 3. FINAL FALLBACK - Use App Icon as banner if asset not found
-    if (!banner && appId) {
-        const rawIcon = app.icon || config.icon;
-        if (rawIcon) {
-            const t = String(rawIcon).trim();
-            if (t.startsWith('https://')) banner = t;
-            else banner = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png`;
-        }
-    }
-
-    // Console debug for tracking asset parsing in logs
-    console.log('[NEKOME DEBUG]', { questId: quest.id, appId, assets, finalBanner: banner });
 
     return { banner };
 }
@@ -228,7 +209,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
-    // BANNER GALLERY WITH FIXED CDN URL
+    // BANNER GALLERY — Only rendered if a valid HTTP URL exists
     const bannerUrl = selected.images?.banner;
     if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
         try { 
@@ -241,7 +222,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         } catch {}
     }
 
-    // SELECT DROPDOWN WITH CLEAR PLATFORM IDENTIFIER & REWARD DESC
+    // SELECT DROPDOWN
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
@@ -263,23 +244,34 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             .addOptions(menuOptions)
     ));
 
-    // CONTROL BUTTONS — Start button remains normal/success
+    // CONTROL BUTTONS — Start button is automatically disabled (tapped) when running
+    const isRunning = customLogs && (customLogs.toLowerCase().includes('fast mode') || customLogs.toLowerCase().includes('progress ->')) && selected.progress.total < 100 && !customLogs.toLowerCase().includes('completed');
+    
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
         new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
     ));
+    
+    // DYNAMIC SELECTED QUEST LINK BUTTON
     container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel('View Quest on Discord').setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
+        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
     ));
 
-    // LOGS PANEL
+    // LOGS PANEL — Cleaned to show ONLY progress and essential status updates
     const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
     logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
     const now = new Date();
     const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+    
     let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Real-time monitoring active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
-    logsContainer.addTextDisplayComponents(text('```prolog\n' + String(rawLog).slice(0, 900) + '\n```'));
+    
+    const cleanedLogs = String(rawLog)
+        .split('\n')
+        .filter(line => !line.includes('[INFO]') && !line.includes('task keys =') && !line.includes('using task type'))
+        .join('\n');
+
+    logsContainer.addTextDisplayComponents(text('```prolog\n' + cleanedLogs.slice(0, 900) + '\n```'));
 
     return { components: [container, logsContainer], flags: MessageFlags.IsComponentsV2 };
 }
