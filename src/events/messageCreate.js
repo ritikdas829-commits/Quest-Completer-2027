@@ -1,4 +1,4 @@
-import { getEmoji } from '../handlers/emoji.js';
+import { getEmojis } from '../quest/emoji.js';
 import { PREFIX } from '../utils/config.js';
 
 export default {
@@ -18,7 +18,8 @@ export default {
       await command.prefixExecute(message, args, client);
     } catch (err) {
       console.error(err);
-      await message.reply(`${getEmoji('error')} Something went wrong.`).catch(() => {});
+      const EMOJI = await getEmojis(message.guildId || 'global');
+      await message.reply(`${EMOJI.error || '❌'} Something went wrong.`).catch(() => {});
     }
   },
 };
