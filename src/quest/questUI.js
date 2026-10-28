@@ -126,37 +126,45 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
-    let active, token;
+    let active, rawToken;
     try {
         active = await tokenStore.getActiveSlot(guildId, userId);
-        token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
+        rawToken = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
     } catch (err) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(text(`### ${EMOJI.warn || '⚠️'} Database Read Failure`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
-    if (!active || !token) {
+    if (!active || !rawToken) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease use \`${PREFIX}link\`.`));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
+    // Clean token string thoroughly (remove quotes, spaces, newlines)
+    const token = String(rawToken).trim().replace(/^['"]+|['"]+$/g, '').replace(/\s+/g, '');
+
     let rawQuests;
     try {
-        const qc = new QuestClient(token.trim().replace(/^['"]|['"]$/g, ''));
+        const qc = new QuestClient(token);
         const manager = await qc.fetchQuests();
         rawQuests = manager.list() ?? [];
     } catch (e) {
+        console.error("Quest Fetch Error:", e);
         const c = new ContainerBuilder().setAccentColor(0xED4245);
         let errorDesc = "Failed to fetch quest details due to timeout or network delay.";
+        
+        // Strict check: only show auth error if status is explicitly 401/403
         if (e.status === 401 || e.status === 403 || (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Unauthorized')))) {
-            errorDesc = "Your Discord token is **expired or invalid**.\nPlease re-link using \`${PREFIX}link\`.";
+            errorDesc = `Your Discord token is **expired or invalid**.\nPlease re-link using \`${PREFIX}link\`.`;
+        } else {
+            errorDesc = `Failed to connect to Discord API: ${e.message || 'Unknown network error'}\nPlease try again later.`;
         }
-        // 🛑 PROFESSIONAL ERROR BOX WITH CONFIG EMOJIS
+
         c.addTextDisplayComponents(text(
-            `### ${EMOJI.error || '❌'} Authentication Error\n` +
-            `\`\`\`prolog\n[ERROR] ${errorDesc}\n[INFO] Check console for batch HTTP 204 / auth errors\n[INFO] ToS risk if 401/403, token may be dead or Cloudflare cookie needed\n\`\`\``
+            `### ${EMOJI.error || '❌'} Quest Fetch Error\n` +
+            `\`\`\`prolog\n[ERROR] ${errorDesc}\n\`\`\``
         ));
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
