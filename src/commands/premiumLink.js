@@ -185,11 +185,16 @@ export async function handleButton(interaction, client) {
         const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
         if (!slotData?.can) {
-            return await interaction.reply({ 
+            const payload = { 
                 content: `🔒 **Slot #${slotNum} Locked!**\n**Requirement:** ${slotData?.need}\n${slotData?.reason}`, 
                 flags: MessageFlags.Ephemeral 
-            });
+            };
+            if (interaction.deferred || interaction.replied) {
+                return await interaction.followUp(payload);
+            }
+            return await interaction.reply(payload);
         }
+        if (interaction.deferred || interaction.replied) return;
         return await interaction.showModal(buildLinkModal(slotNum));
     }
 
@@ -197,6 +202,9 @@ export async function handleButton(interaction, client) {
         const slotToUnlink = parseInt(interaction.customId.split('_')[2]);
         await client.tokenStore.removeSlot(guildId, ownerId, slotToUnlink);
         const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client, member);
+        if (interaction.deferred || interaction.replied) {
+            return await interaction.editReply(panel);
+        }
         return await interaction.update(panel);
     }
 
@@ -204,6 +212,9 @@ export async function handleButton(interaction, client) {
         const slotToSelect = parseInt(interaction.customId.split('_')[2]);
         await client.tokenStore.setActiveSlot(guildId, ownerId, slotToSelect);
         const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client, member);
+        if (interaction.deferred || interaction.replied) {
+            return await interaction.editReply(panel);
+        }
         return await interaction.update(panel);
     }
 }
