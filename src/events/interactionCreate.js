@@ -1,276 +1,326 @@
 /**
- * questUI.js — Dynamic Selected Quest Link & Clean UI Panel
- * Location: src/quest/questUI.js
+ * interactionCreate.js — Complete Interaction Handler with Fixed Quest Execution & Live Logs
+ * Location: src/events/interactionCreate.js
  */
 
-import {
-    ContainerBuilder,
-    TextDisplayBuilder,
-    MediaGalleryBuilder,
-    MediaGalleryItemBuilder,
-    ActionRowBuilder,
-    StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    MessageFlags,
-} from 'discord.js';
-import { QuestClient } from './questClient.js';
-import { getEmojis } from './emoji.js';
+import { handleGuideButtons } from '../commands/guide.js';
+import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
+import { buildQuestSolverPanel } from '../quest/questUI.js';
+import { QuestClient } from '../quest/questClient.js';
+import { QuestManager } from '../quest/questManager.js';
+import { EmbedBuilder } from 'discord.js';
+import { getEmojis } from '../quest/emoji.js';
 
-const ACCENT = 0x2B2D31;
-const EXCLUDED_QUEST_ID = '1412491570820812933';
+// Map to track active running intervals and abort flags across users
+const activeRunners = new Map();
 
-function parseEmoji(s) {
-    if (!s) return { name: '💎' };
-    const m = s.match(/<a?:(\w+):(\d+)>/);
-    if (m) return { name: m[1], id: m[2], animated: s.startsWith('<a:') };
-    return { name: s };
-}
+export default {
+    name: 'interactionCreate',
+    once: false,
+    async execute(interaction, client) {
+        try {
+            const guildId = interaction.guildId || 'global';
+            const userId = interaction.user?.id;
+            const EMOJI = await getEmojis(guildId);
 
-function getTasks(c) { return c?.task_config?.tasks ?? c?.task_config_v2?.tasks ?? {}; }
+            // 1. Guide Buttons Handler
+            if (interaction.isButton() && ['btn_pc', 'btn_android', 'btn_ios'].includes(interaction.customId)) {
+                await handleGuideButtons(interaction);
+                return;
+            }
 
-function getTaskProgress(type, cfg, status) {
-    if (!status) return 0;
-    const target = Number(cfg?.target ?? 1);
-    if (!Number.isFinite(target) || target <= 0) return 0;
-    const p = status.progress ?? {}, d = status.details ?? {};
-    const en = cfg?.event_name ?? cfg?.type ?? type;
-    const cand = [d[type]?.progress, d[type]?.value, d[en]?.progress, p[type]?.value, p[type]?.progress, p[en]?.value];
-    let cur = 0;
-    for (const c of cand) { 
-        if (c == null) continue; 
-        const v = typeof c === 'object' ? (c.value ?? c.progress) : c; 
-        const n = Number(v); 
-        if (Number.isFinite(n)) { cur = Math.max(0, n); break; } 
-    }
-    if (status.stream_progress_seconds != null) cur = Math.max(cur, Number(status.stream_progress_seconds) || 0);
-    if (status.video_progress_seconds != null) cur = Math.max(cur, Number(status.video_progress_seconds) || 0);
-    return Math.min(100, Math.floor((cur / target) * 100));
-}
+            // 2. Premium Slot Buttons Handler
+            if (interaction.isButton() && (
+                interaction.customId.startsWith('link_slot_') ||
+                interaction.customId.startsWith('unlink_slot_') ||
+                interaction.customId.startsWith('select_slot_')
+            )) {
+                await handlePremiumButton(interaction, client);
+                return;
+            }
 
-function getQuestImages(quest) {
-    const data = quest?.toJSON?.() ?? {};
-    const config = quest?.config ?? data.config ?? {};
-    const assets = config.assets ?? {};
-    const app = quest?.application ?? config.application ?? data.application ?? {};
-    const appId = app.id || config.application_id || config.application?.id || quest.application?.id;
+            // 3. Link Prompt Button
+            if (interaction.isButton() && interaction.customId === 'link_prompt') {
+                await interaction.reply({ content: `${EMOJI.link || '🔗'} Please use the link command or manage slots via premium panel.`, flags: 64 }).catch(() => {});
+                return;
+            }
 
-    let banner = null;
-    const keysToTry = ['hero', 'banner', 'card', 'game_tile', 'quest_tile'];
-    
-    for (const k of keysToTry) {
-        let raw = assets[k];
-        if (!raw || typeof raw !== 'string') continue;
-        let s = raw.trim();
-        if (!s) continue;
+            // 4. Modals Handler
+            if (interaction.isModalSubmit()) {
+                if (interaction.customId === 'linkid-modal') {
+                    await interaction.deferReply({ ephemeral: true });
 
-        if (s.startsWith('https://')) {
-            if (!/\.mp4$/i.test(s)) { banner = s; break; }
-            banner = s.replace(/\.mp4$/i, '.png');
-            break;
+                    const token = interaction.fields.getTextInputValue('discord_token_input');
+                    let userData = null;
+
+                    try {
+                        const res = await fetch('https://discord.com/api/v9/users/@me', {
+                            headers: { Authorization: token }
+                        });
+
+                        if (!res.ok) {
+                            const errorEmbed = new EmbedBuilder()
+                                .setColor(0xED4245)
+                                .setTitle(`${EMOJI.error || '❌'} Invalid Token`)
+                                .setDescription('The token you provided was rejected by Discord. Please check and try again.');
+                            return await interaction.editReply({ embeds: [errorEmbed] });
+                        }
+
+                        userData = await res.json();
+                    } catch (err) {
+                        const errorEmbed = new EmbedBuilder()
+                            .setColor(0xED4245)
+                            .setTitle(`${EMOJI.error || '❌'} Connection Error`)
+                            .setDescription('Failed to validate token with Discord API.');
+                        return await interaction.editReply({ embeds: [errorEmbed] });
+                    }
+
+                    await client.tokenStore.saveSlot({
+                        guildId: guildId || 'global',
+                        ownerId: userId,
+                        slot: 1,
+                        token: token,
+                        username: userData.username,
+                        linkedUserId: userData.id,
+                        avatar: userData.avatar,
+                        isActive: true
+                    });
+
+                    const successEmbed = new EmbedBuilder()
+                        .setColor(0x57F287)
+                        .setTitle(`${EMOJI.success || '✅'} Successfully Linked!`)
+                        .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
+
+                    await interaction.editReply({ embeds: [successEmbed] });
+                    return;
+                }
+
+                if (interaction.customId.startsWith('link_modal_slot_')) {
+                    await handlePremiumModal(interaction, client);
+                    return;
+                }
+                if (interaction.customId === 'link_token_modal') {
+                    await interaction.reply({ content: `${EMOJI.success || '✅'} Token modal received.`, flags: 64 }).catch(() => {});
+                    return;
+                }
+            }
+
+            // 5. Quest Select Menu Handler
+            if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
+                await interaction.deferUpdate();
+                const selectedQuestId = interaction.values[0];
+                const panel = await buildQuestSolverPanel(client, guildId, userId, selectedQuestId);
+                await interaction.editReply(panel);
+                return;
+            }
+
+            // 6. Refresh Button Handler (Preserves selected quest context)
+            if (interaction.isButton() && interaction.customId === 'quest_refresh') {
+                await interaction.deferUpdate();
+
+                let currentQuestId = null;
+                try {
+                    const row = interaction.message.components.find(r => r.components?.some(c => c.customId === 'quest_select'));
+                    const menu = row?.components?.find(c => c.customId === 'quest_select');
+                    if (menu?.options) {
+                        const defaultOpt = menu.options.find(o => o.default);
+                        if (defaultOpt) currentQuestId = defaultOpt.value;
+                    }
+                } catch {}
+
+                const timeString = new Date().toLocaleTimeString();
+                const loadingLogs = `${EMOJI.loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
+
+                const panel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId, loadingLogs);
+                await interaction.editReply(panel);
+
+                setTimeout(async () => {
+                    const freshPanel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId);
+                    await interaction.editReply(freshPanel).catch(() => {});
+                }, 1500);
+
+                return;
+            }
+
+            // 7. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
+            if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
+                await interaction.deferUpdate();
+                const questId = interaction.customId.replace('quest_start_', '');
+                const runnerKey = `${guildId}_${userId}`;
+
+                if (activeRunners.has(runnerKey)) {
+                    const existing = activeRunners.get(runnerKey);
+                    existing.isRunning = false;
+                    clearInterval(existing.interval);
+                    activeRunners.delete(runnerKey);
+                }
+
+                const tokenStore = client.tokenStore;
+                const active = await tokenStore.getActiveSlot(guildId, userId);
+                const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
+
+                if (!active || !token) {
+                    await interaction.followUp({ content: `${EMOJI.error || '❌'} No active token slot found! Use \`/link\` first.`, flags: 64 });
+                    return;
+                }
+
+                const cleanToken = typeof token === 'string' ? token.trim().replace(/['"]+/g, '') : token;
+                const qc = new QuestClient(cleanToken);
+
+                let manager;
+                try {
+                    manager = await qc.fetchQuests();
+                } catch (err) {
+                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Fetch Error: ${err.message}`);
+                    await interaction.editReply(errorPanel);
+                    return;
+                }
+
+                const quest = manager.get(questId);
+                if (!quest) {
+                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Quest ID ${questId} not found or expired.`);
+                    await interaction.editReply(missingPanel);
+                    return;
+                }
+
+                const questName = quest.config?.messages?.quest_name || quest.config?.application?.name || 'Discord Quest';
+
+                if (quest.isCompleted()) {
+                    const claimLog = `${EMOJI.gift || '🎁'} Claiming reward for quest: ${questName}...`;
+                    const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
+                    await interaction.editReply(claimPanel);
+
+                    const claimedCount = await manager.claimRewards(async (msg) => {
+                        console.log(`[Claim Log] ${msg}`);
+                    }, quest.id);
+
+                    const resultLog = claimedCount > 0
+                        ? `${EMOJI.success || '🎉'} Quest completed & reward claimed successfully!`
+                        : `${EMOJI.warn || '⚠️'} Quest completed, reward already claimed or pending verification.`;
+
+                    const finalPanel = await buildQuestSolverPanel(client, guildId, userId, questId, resultLog);
+                    await interaction.editReply(finalPanel);
+                    return;
+                }
+
+                const runnerContext = { isRunning: true, interval: null, notified: false, latestLog: `Quest initialized.\n[${new Date().toLocaleTimeString()}] Fast mode active.` };
+                activeRunners.set(runnerKey, runnerContext);
+
+                // Initial starting panel update
+                const initPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
+                await interaction.editReply(initPanel);
+
+                // Execute background quest runner with live progress callback
+                manager.doingQuest(
+                    quest, 
+                    async (msg) => {
+                        console.log(`[Quest Runner Log] ${msg}`);
+                        runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+                    }, 
+                    async (done, total) => {
+                        const pct = Math.min(100, Math.floor((done / total) * 100));
+                        runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] Progress -> ${pct}%`;
+                    }
+                ).then(async (success) => {
+                    runnerContext.isRunning = false;
+                    if (activeRunners.get(runnerKey) === runnerContext) {
+                        clearInterval(runnerContext.interval);
+                        activeRunners.delete(runnerKey);
+                    }
+
+                    const doneLog = success
+                        ? `${EMOJI.success || '🎉'} Quest completed successfully!`
+                        : `${EMOJI.warn || '⚠️'} Quest runner finished. Claiming rewards...`;
+
+                    runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${doneLog}`;
+                    
+                    // Claim rewards automatically upon completion
+                    try {
+                        await manager.claimRewards(console.log, quest.id);
+                    } catch {}
+
+                    const completePanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
+                    await interaction.editReply(completePanel).catch(() => {});
+
+                    if (success && !runnerContext.notified) {
+                        runnerContext.notified = true;
+                        const specificQuestLink = `https://discord.com/quests/${questId}`;
+                        try {
+                            const targetUser = await client.users.fetch(userId);
+                            await targetUser.send(`${EMOJI.success || '🎉'} **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
+                        } catch {
+                            await interaction.followUp({
+                                content: `<@${userId}> ${EMOJI.success || '🎉'} **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
+                                allowedMentions: { users: [userId] }
+                            }).catch(() => {});
+                        }
+                    }
+                }).catch((err) => {
+                    runnerContext.isRunning = false;
+                    console.error('Quest execution error:', err);
+                });
+
+                // Periodic UI live-refresh interval
+                runnerContext.interval = setInterval(async () => {
+                    if (!runnerContext.isRunning) {
+                        clearInterval(runnerContext.interval);
+                        activeRunners.delete(runnerKey);
+                        return;
+                    }
+
+                    try {
+                        const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
+                        await interaction.editReply(autoPanel).catch(() => {});
+                    } catch (e) {
+                        console.error('Auto-refresh UI update error:', e.message);
+                    }
+                }, 4000);
+
+                setTimeout(() => {
+                    if (activeRunners.get(runnerKey) === runnerContext) {
+                        runnerContext.isRunning = false;
+                        clearInterval(runnerContext.interval);
+                        activeRunners.delete(runnerKey);
+                    }
+                }, 10 * 60 * 1000);
+
+                return;
+            }
+
+            // 8. Stop Button Handler
+            if (interaction.isButton() && interaction.customId.startsWith('quest_stop_')) {
+                await interaction.deferUpdate();
+                const questId = interaction.customId.replace('quest_stop_', '');
+                const runnerKey = `${guildId}_${userId}`;
+
+                if (activeRunners.has(runnerKey)) {
+                    const existing = activeRunners.get(runnerKey);
+                    existing.isRunning = false;
+                    clearInterval(existing.interval);
+                    activeRunners.delete(runnerKey);
+                }
+
+                const stopLog = `⏹️ Stopped\n[${new Date().toLocaleTimeString()}] Quest runner stopped by user.`;
+                const panel = await buildQuestSolverPanel(client, guildId, userId, questId, stopLog);
+                await interaction.editReply(panel);
+                return;
+            }
+
+            // 9. Slash Commands Handler
+            if (interaction.isChatInputCommand()) {
+                const command = client.commands.get(interaction.commandName);
+                if (!command) return;
+                await command.execute(interaction, client);
+            }
+        } catch (err) {
+            console.error('❌ Interaction Error:', err);
+            const EMOJI = await getEmojis(interaction.guildId || 'global');
+            const msg = { content: `${EMOJI.error || '❌'} Something went wrong.`, flags: 64 };
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                await interaction.reply(msg).catch(() => {});
+            } else if (interaction.isRepliable() && interaction.deferred) {
+                await interaction.followUp(msg).catch(() => {});
+            }
         }
-
-        if (appId) {
-            let filename = s.split('/').pop();
-            if (/\.mp4$/i.test(filename)) filename = filename.replace(/\.mp4$/i, '.png');
-            if (!/\.(png|jpe?g|webp)$/i.test(filename)) filename += '.png';
-            
-            banner = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${filename}`;
-            break;
-        }
-    }
-
-    if (!banner) {
-        const direct = config.banner_url || data.bannerURL || config.image_url;
-        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) {
-            banner = direct;
-        }
-    }
-
-    return { banner };
-}
-
-function formatTimestamp(v) { if (!v) return 'N/A'; const d = new Date(v); if (isNaN(d.getTime())) return 'N/A'; return `<t:${Math.floor(d.getTime() / 1000)}:d>`; }
-function shorten(v, max = 100) { return String(v ?? '').slice(0, max); }
-function progressBar(p) { const f = Math.round(p / 10); return '█'.repeat(f) + '░'.repeat(10 - f); }
-function text(c) { return new TextDisplayBuilder().setContent(c); }
-
-export async function buildQuestSolverPanel(client, guildId, userId, selectedQuestId, customLogs) {
-    const EMOJI = await getEmojis(guildId);
-
-    const tokenStore = client.tokenStore;
-    if (!tokenStore) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Token System Unreachable\nThe internal Token Store system is unavailable.`));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
-    }
-
-    let active, token;
-    try {
-        active = await tokenStore.getActiveSlot(guildId, userId);
-        token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
-    } catch (err) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.warn || '⚠️'} Database Read Failure\nUnable to retrieve user token.`));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
-    }
-
-    if (!active || !token) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.link || '🔑'} No Active Discord Account Linked\nPlease link a valid token using \`?link\`.`));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
-    }
-
-    let rawQuests;
-    try {
-        const qc = new QuestClient(token.trim().replace(/^['"]|['"]$/g, ''));
-        const manager = await qc.fetchQuests();
-        rawQuests = manager.list() ?? [];
-    } catch (e) {
-        const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(text(`### ${EMOJI.error || '❌'} Discord API Authentication Error\nFailed to fetch quest details.`));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
-    }
-
-    const activeQuests = rawQuests.filter(q => {
-        try { return q.id !== EXCLUDED_QUEST_ID && !q.isExpired?.() && !q.isCompleted?.(); } catch { return true; }
-    });
-
-    const allQuests = activeQuests.map(quest => {
-        const config = quest.config ?? {}, messages = config.messages ?? {}, tasks = getTasks(config), status = quest.userStatus ?? {}, images = getQuestImages(quest);
-        const platformProgress = {};
-        for (const t of Object.keys(tasks)) platformProgress[t] = getTaskProgress(t, tasks[t], status);
-        
-        const desktopKeys = Object.keys(platformProgress).filter(k => !k.includes('MOBILE'));
-        const mobileKeys = Object.keys(platformProgress).filter(k => k.includes('MOBILE'));
-
-        const desktopTotal = desktopKeys.length ? Math.max(...desktopKeys.map(k => platformProgress[k])) : 0;
-        const mobileTotal = mobileKeys.length ? Math.max(...mobileKeys.map(k => platformProgress[k])) : 0;
-        const total = Math.max(desktopTotal, mobileTotal);
-
-        const rewardsList = config.rewards_config?.rewards ?? [];
-        const rewardTexts = rewardsList.map(r => {
-            const rName = r.messages?.name || 'Reward';
-            if (r.orb_quantity) return `${r.orb_quantity} Orbs`;
-            if (r.quantity) return `${r.quantity}d Nitro`;
-            return rName;
-        });
-        const rewardSummary = rewardTexts.length ? rewardTexts.join(', ') : 'Exclusive Reward';
-
-        return { 
-            id: quest.id, 
-            game: messages.game_title || config.application?.name || 'Unknown Game', 
-            publisher: messages.game_publisher || 'Unknown Publisher', 
-            questName: messages.quest_name || 'Discord Quest', 
-            enrolledAt: formatTimestamp(status.enrolled_at), 
-            expiresAt: formatTimestamp(config.expires_at), 
-            tasks, 
-            platformProgress: { desktop: desktopTotal, mobile: mobileTotal }, 
-            images, 
-            progress: { total },
-            rewardSummary 
-        };
-    });
-
-    if (!allQuests.length) {
-        const c = new ContainerBuilder().setAccentColor(ACCENT);
-        c.addTextDisplayComponents(text(`# ${EMOJI.list || '📋'} Quest Solver\n\n### ${EMOJI.search || '🔍'} No Active Quests Available`));
-        return { components: [c], flags: MessageFlags.IsComponentsV2 };
-    }
-
-    const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
-    const container = new ContainerBuilder().setAccentColor(ACCENT);
-    container.addTextDisplayComponents(text(`# ${EMOJI.s_admin || '🛠️'} ${selected.game}`));
-
-    let info = `### ${EMOJI.orbs || '✨'} Quest Overview\n`;
-    info += `${EMOJI.gift || '🎁'} **Reward:** ${selected.rewardSummary} ${EMOJI.orbs || '✨'}\n`;
-    info += `${EMOJI.online || '🟢'} **Game:** ${selected.game}\n`;
-    info += `${EMOJI.list || '📋'} **Publisher:** ${selected.publisher}\n`;
-    info += `${EMOJI.expire || '📅'} **Enrolled At:** ${selected.enrolledAt}\n`;
-    info += `${EMOJI.arrow || '➡️'} **Expires At:** ${selected.expiresAt}\n\n`;
-    info += `### ${EMOJI.stats || '📊'} Live Progress\n`;
-    const progIcon = selected.progress.total >= 100 ? (EMOJI.success || '✅') : (EMOJI.loading || '⏳');
-    info += `${progIcon} **Progress:** \`${selected.progress.total}%\` \`${progressBar(selected.progress.total)}\`\n`;
-    info += `-# ${EMOJI.desktop || '🖥️'} **Web/Desktop**: ${selected.platformProgress.desktop}%\n`;
-    info += `-# ${EMOJI.mobile || '📱'} **Mobile**: ${selected.platformProgress.mobile}%\n`;
-    container.addTextDisplayComponents(text(info));
-
-    const seenT = new Set(), taskLines = [];
-    for (const type of Object.keys(selected.tasks)) {
-        const base = type.replace(/_\d+$/, '');
-        if (seenT.has(base)) continue;
-        seenT.add(base);
-        const t = selected.tasks[type];
-        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`${EMOJI.desktop || '🖥️'} Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`${EMOJI.mobile || '📱'} Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO')) taskLines.push(`${EMOJI.video || '🎬'} Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else taskLines.push(`${EMOJI.gear || '⚙️'} ${type.replace(/_/g, ' ')}`);
-    }
-    container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
-
-    // BANNER GALLERY
-    const bannerUrl = selected.images?.banner;
-    if (bannerUrl && typeof bannerUrl === 'string' && bannerUrl.startsWith('http')) {
-        try { 
-            const gallery = new MediaGalleryBuilder().addItems(
-                new MediaGalleryItemBuilder()
-                    .setURL(bannerUrl)
-                    .setDescription(shorten(selected.game, 100))
-            );
-            container.addMediaGalleryComponents(gallery); 
-        } catch {}
-    }
-
-    // SELECT DROPDOWN
-    const menuOptions = [];
-    for (const q of allQuests.slice(0, 25)) {
-        const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
-        const pEmoji = hasMobile ? (EMOJI.mobile || '📱') : (EMOJI.desktop || '🖥️');
-        const pLabelPrefix = hasMobile ? '[Mobile] ' : '[Desktop] ';
-        
-        const opt = new StringSelectMenuOptionBuilder()
-            .setLabel(shorten(pLabelPrefix + q.game + ': ' + q.questName, 95))
-            .setValue(String(q.id))
-            .setDescription(`${q.progress.total}% Complete — Reward: ${q.rewardSummary}`)
-            .setEmoji(parseEmoji(pEmoji));
-        if (String(q.id) === String(selected.id)) opt.setDefault(true);
-        menuOptions.push(opt);
-    }
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId('quest_select')
-            .setPlaceholder(shorten(selected.game + ': ' + selected.questName, 100))
-            .addOptions(menuOptions)
-    ));
-
-    // CONTROL BUTTONS
-    const isRunning = customLogs && (customLogs.toLowerCase().includes('fast mode') || customLogs.toLowerCase().includes('progress ->')) && selected.progress.total < 100 && !customLogs.toLowerCase().includes('completed');
-    
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('quest_start_' + selected.id).setLabel('Start Task').setEmoji(parseEmoji(EMOJI.success || '▶️')).setStyle(isRunning ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(isRunning),
-        new ButtonBuilder().setCustomId('quest_stop_' + selected.id).setLabel('Stop Task').setEmoji(parseEmoji(EMOJI.error || '⏹️')).setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('quest_refresh').setLabel('Refresh UI').setEmoji(parseEmoji(EMOJI.loading || '🔄')).setStyle(ButtonStyle.Secondary)
-    ));
-    // DYNAMIC SELECTED QUEST LINK BUTTON
-    container.addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel(`View ${selected.game} Quest on Discord`).setEmoji(parseEmoji(EMOJI.links || '🔗')).setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${selected.id}`)
-    ));
-
-    // LOGS PANEL
-    const logsContainer = new ContainerBuilder().setAccentColor(ACCENT);
-    logsContainer.addTextDisplayComponents(text(`### ${EMOJI.list || '📋'} ${selected.game} Solver Status Logs`));
-    const now = new Date();
-    const tStr = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-    
-    let rawLog = customLogs || `Quest initialized.\n[${tStr(now)}] Real-time monitoring active.\n[${tStr(now)}] Current Progress -> ${selected.questName} [${selected.progress.total}%] [${progressBar(selected.progress.total)}]`;
-    
-    const cleanedLogs = String(rawLog)
-        .split('\n')
-        .filter(line => !line.includes('[INFO]') && !line.includes('task keys =') && !line.includes('using task type'))
-        .join('\n');
-
-    logsContainer.addTextDisplayComponents(text('```prolog\n' + cleanedLogs.slice(0, 900) + '\n```'));
-
-    return { components: [container, logsContainer], flags: MessageFlags.IsComponentsV2 };
-}
+    },
+};
