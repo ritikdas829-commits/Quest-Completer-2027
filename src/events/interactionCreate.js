@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Fixed Quest Execution & Live Logs
+ * interactionCreate.js — Complete Interaction Handler with Quest & Token Dashboard Support
  * Location: src/events/interactionCreate.js
  */
 
@@ -8,11 +8,74 @@ import { handleButton as handlePremiumButton, handleModal as handlePremiumModal 
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import { getEmojis } from '../quest/emoji.js';
+import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 
 // Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
+
+// Helper: Build Token Dashboard Panel for Button Interactions
+async function buildTokenDashboardContent(client, guildId, userId) {
+    const emojis = await getEmojis(guildId);
+    const accounts = await client.tokenStore.getAllSlots(guildId, userId);
+    const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
+    
+    const embed = new EmbedBuilder();
+    const components = [];
+
+    if (!accounts || accounts.length === 0) {
+        embed.setColor(0xED4245)
+             .setTitle(`${emojis.warn || '❌'} No Tokens Linked`)
+             .setDescription('No accounts linked yet. Please use the `?link` command to add a token.');
+        return { embeds: [embed], components: [], flags: 64 };
+    }
+
+    embed.setColor(0x5865F2)
+         .setTitle(`${emojis.list || '📊'} Token Status Dashboard & Control Panel`)
+         .setDescription('Use the buttons below to bring your accounts online/offline or select a slot.');
+
+    const menuOptions = [];
+    for (const acc of accounts) {
+        const isActive = activeSlot?.slot === acc.slot;
+        const statusIcon = isActive ? (emojis.online || '🟢') : (emojis.dot || '⚪');
+        
+        embed.addFields({
+            name: `Slot #${acc.slot} — ${acc.username || 'Linked Account'}`,
+            value: `• **Status:** ${statusIcon} ${isActive ? 'Active (Online)' : 'Stored'}\n• **User ID:** \`${acc.linkedUserId || 'N/A'}\``,
+            inline: false
+        });
+
+        menuOptions.push(
+            new StringSelectMenuOptionBuilder()
+                .setLabel(`Slot #${acc.slot}: ${acc.username || 'Account'}`)
+                .setValue(`tokensys_select_${acc.slot}`)
+                .setDescription(isActive ? 'Currently Active Slot' : 'Switch to this slot')
+                .setDefault(isActive)
+        );
+    }
+
+    if (menuOptions.length > 0) {
+        components.push(
+            new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('tokensys_slot_select')
+                    .setPlaceholder('Select active account slot...')
+                    .addOptions(menuOptions)
+            )
+        );
+    }
+
+    components.push(
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('tokensys_btn_on').setLabel('Online On').setEmoji('🟢').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('tokensys_btn_off').setLabel('Online Off').setEmoji('🔴').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('tokensys_btn_refresh').setLabel('Refresh Panel').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
+        )
+    );
+
+    return { embeds: [embed], components, flags: 64 };
+}
 
 export default {
     name: 'interactionCreate',
@@ -45,10 +108,54 @@ export default {
                 return;
             }
 
-            // 4. Modals Handler
+            // 4. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
+            if (interaction.isStringSelectMenu() && interaction.customId === 'tokensys_slot_select') {
+                await interaction.deferUpdate();
+                const selectedValue = interaction.values[0];
+                const slotNum = parseInt(selectedValue.replace('tokensys_select_', ''));
+                
+                await client.tokenStore.setActiveSlot(guildId, userId, slotNum);
+                const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
+                await interaction.editReply(updatedPanel);
+                return;
+            }
+
+            if (interaction.isButton() && interaction.customId === 'tokensys_btn_on') {
+                await interaction.deferUpdate();
+                const active = await client.tokenStore.getActiveSlot(guildId, userId);
+                
+                if (!active || !active.token) {
+                    await interaction.followUp({ content: `${EMOJI.error || '❌'} No active slot selected or token is missing!`, flags: 64 });
+                    return;
+                }
+
+                startUserOnlinePresence(userId, active.token, 'online');
+                const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
+                await interaction.followUp({ content: `${EMOJI.success || '🟢'} **Slot #${active.slot}** is now brought online 24/7!`, flags: 64 });
+                await interaction.editReply(updatedPanel);
+                return;
+            }
+
+            if (interaction.isButton() && interaction.customId === 'tokensys_btn_off') {
+                await interaction.deferUpdate();
+                stopUserOnlinePresence(userId);
+                const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
+                await interaction.followUp({ content: `${EMOJI.warn || '🔴'} Account online gateway connection disconnected.`, flags: 64 });
+                await interaction.editReply(updatedPanel);
+                return;
+            }
+
+            if (interaction.isButton() && interaction.customId === 'tokensys_btn_refresh') {
+                await interaction.deferUpdate();
+                const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
+                await interaction.editReply(updatedPanel);
+                return;
+            }
+
+            // 5. Modals Handler
             if (interaction.isModalSubmit()) {
                 if (interaction.customId === 'linkid-modal') {
-                    await interaction.deferReply({ ephemeral: true });
+                    await interaction.deferReply({ flags: 64 });
 
                     const token = interaction.fields.getTextInputValue('discord_token_input');
                     let userData = null;
@@ -99,13 +206,9 @@ export default {
                     await handlePremiumModal(interaction, client);
                     return;
                 }
-                if (interaction.customId === 'link_token_modal') {
-                    await interaction.reply({ content: `${EMOJI.success || '✅'} Token modal received.`, flags: 64 }).catch(() => {});
-                    return;
-                }
             }
 
-            // 5. Quest Select Menu Handler
+            // 6. Quest Select Menu Handler
             if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
@@ -114,7 +217,7 @@ export default {
                 return;
             }
 
-            // 6. Refresh Button Handler (Preserves selected quest context)
+            // 7. Refresh Button Handler (Preserves selected quest context)
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
 
@@ -142,7 +245,7 @@ export default {
                 return;
             }
 
-            // 7. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
+            // 8. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
@@ -206,11 +309,9 @@ export default {
                 const runnerContext = { isRunning: true, interval: null, notified: false, latestLog: `Quest initialized.\n[${new Date().toLocaleTimeString()}] Fast mode active.` };
                 activeRunners.set(runnerKey, runnerContext);
 
-                // Initial starting panel update
                 const initPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
                 await interaction.editReply(initPanel);
 
-                // Execute background quest runner with live progress callback
                 manager.doingQuest(
                     quest, 
                     async (msg) => {
@@ -234,7 +335,6 @@ export default {
 
                     runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${doneLog}`;
                     
-                    // Claim rewards automatically upon completion
                     try {
                         await manager.claimRewards(console.log, quest.id);
                     } catch {}
@@ -260,7 +360,6 @@ export default {
                     console.error('Quest execution error:', err);
                 });
 
-                // Periodic UI live-refresh interval
                 runnerContext.interval = setInterval(async () => {
                     if (!runnerContext.isRunning) {
                         clearInterval(runnerContext.interval);
@@ -287,7 +386,7 @@ export default {
                 return;
             }
 
-            // 8. Stop Button Handler
+            // 9. Stop Button Handler
             if (interaction.isButton() && interaction.customId.startsWith('quest_stop_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_stop_', '');
@@ -306,7 +405,7 @@ export default {
                 return;
             }
 
-            // 9. Slash Commands Handler
+            // 10. Slash Commands Handler
             if (interaction.isChatInputCommand()) {
                 const command = client.commands.get(interaction.commandName);
                 if (!command) return;
