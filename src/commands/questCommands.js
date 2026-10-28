@@ -20,18 +20,53 @@ async function getActiveToken(guildId, userId, tokenStore) {
     return active.token || await tokenStore.get(guildId, userId, active.slot);
 }
 
-// ── Helper: Safe Thumbnail Asset Extractor with Clean CDN Fallback ────────
+// ── Helper: Safe Thumbnail Asset Extractor with Official CDN Resolver ─────
 function getThumbUrl(cfg) {
-    const appId = cfg?.application?.id;
-    const assets = cfg?.assets;
-    if (!appId || !assets) return null;
+    const app = cfg?.application ?? {};
+    const appId = app.id || cfg?.application_id;
+    const assets = cfg?.assets ?? {};
 
-    // Filter out invalid or placeholder asset keys like default icons
-    const assetKey = assets.game_tile || assets.hero || assets.quest_bar || assets.card;
-    if (!assetKey || typeof assetKey !== 'string') return null;
+    let banner = null;
+    let icon = null;
 
-    if (assetKey.startsWith('http')) return assetKey;
-    return `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${assetKey}.png?size=512`;
+    const rawIcon = app.icon || cfg?.icon;
+    if (rawIcon) {
+        const t = String(rawIcon).trim();
+        if (t.startsWith('https://')) {
+            icon = t;
+        } else if (appId) {
+            icon = `https://cdn.discordapp.com/app-icons/${appId}/${t.split('/').pop().replace('.png','')}.png?size=512`;
+        }
+    }
+
+    const heroKeys = ['hero', 'hero_video', 'quest_bar_hero', 'game_tile', 'quest_tile', 'banner', 'splash', 'image', 'background'];
+    for (const k of heroKeys) {
+        const raw = assets[k] || cfg[k];
+        if (!raw || typeof raw !== 'string') continue;
+        let s = raw.trim();
+        if (!s) continue;
+        
+        if (s.startsWith('https://')) {
+            if (!/\.mp4/i.test(s)) { banner = s; break; }
+            banner = s.replace(/\.mp4$/i, '.png');
+            break;
+        }
+
+        if (appId) {
+            let file = s.split('/').pop().replace(/\.mp4$/i, '.png');
+            if (!/\.(png|jpe?g|webp)$/i.test(file)) file += '.png';
+            banner = `https://cdn.discordapp.com/app-assets/${appId}/${file}`;
+            break;
+        }
+    }
+
+    if (!banner) {
+        const direct = cfg.banner_url || cfg.splash_url;
+        if (typeof direct === 'string' && direct.startsWith('https://') && !/\.mp4/i.test(direct)) banner = direct;
+    }
+
+    if (!banner) banner = icon;
+    return banner;
 }
 
 // ── UI Cards with 100% Dynamic Custom Emojis ──────────────────────────────
@@ -110,7 +145,6 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
         return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? `  ${EMOJI.success || '✅'}` : ''}`;
     });
 
-    // Fixed Clean Reward Parsing (No Duplicates)
     const rewardLines = (cfg.rewards_config?.rewards ?? []).map((r) => {
         const rName = r.messages?.name || 'Exclusive Reward';
         if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.orbs || '✨'}`;
