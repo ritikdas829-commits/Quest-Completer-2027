@@ -184,7 +184,7 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
 
 // ── Quest Runners Logic ────────────────────────────────────────────────    
 
-async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
+async function runQuestAll(guildId, userId, tokenStore, send, prefix, client) {
     const token = await getActiveToken(guildId, userId, tokenStore);
     if (!token) { await send(await buildLinkPrompt(prefix, guildId)); return false; }
 
@@ -250,6 +250,24 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix) {
             const card = await buildQuestInfoCard(q, 'done', i === 0 ? claimed : claimedPer, '', 100, guildId);
             return progressMsgs[idx].edit(card);
         }));
+
+        // 📩 Send DM Notification upon successful completion of questall
+        if (client && completed.length > 0) {
+            try {
+                const EMOJI = await getEmojis(guildId);
+                const targetUser = await client.users.fetch(userId);
+                const questNames = completed.map(q => q.config?.messages?.quest_name || 'Discord Quest').join(', ');
+                await targetUser.send(
+                    `${EMOJI.success || '🎉'} **All Quests Completed Successfully!**\n\n` +
+                    `📌 **Completed Quests:** ${questNames}\n` +
+                    `✨ **Total Rewards Claimed:** ${claimed}\n` +
+                    `🔗 **Status:** 100% Completed via \`${prefix}questall\``
+                );
+            } catch (dmErr) {
+                console.log(`[QuestAll] Could not send DM to user ${userId}:`, dmErr.message);
+            }
+        }
+
         return true;
 
     } catch (err) {
@@ -389,10 +407,10 @@ export const questAllCmd = {
     prefix: 'questall',
     async execute(interaction, client) {
         await interaction.deferReply();
-        await runQuestAll(interaction.guild?.id || 'global', interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
+        await runQuestAll(interaction.guild?.id || 'global', interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX, client);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestAll(message.guild?.id || 'global', message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
+        await runQuestAll(message.guild?.id || 'global', message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX, client);
     },
 };
 
@@ -401,10 +419,10 @@ export const qCmd = {
     prefix: 'q',
     async execute(interaction, client) {
         await interaction.deferReply();
-        await runQuestAll(interaction.guild?.id || 'global', interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX);
+        await runQuestAll(interaction.guild?.id || 'global', interaction.user.id, client.tokenStore, (opts) => interaction.followUp(opts), PREFIX, client);
     },
     async prefixExecute(message, _args, client) {
-        await runQuestAll(message.guild?.id || 'global', message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX);
+        await runQuestAll(message.guild?.id || 'global', message.author.id, client.tokenStore, (opts) => message.channel.send(opts), PREFIX, client);
     },
 };
 
