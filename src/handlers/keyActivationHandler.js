@@ -1,5 +1,5 @@
 /**
- * keyActivationHandler.js - MongoDB-backed activation handler with dynamic roleStore integration
+ * keyActivationHandler.js - MongoDB-backed activation handler connected with setupRolesCommand / roleStore
  * Location: src/handlers/keyActivationHandler.js
  */
 
@@ -9,7 +9,7 @@ import {
 } from 'discord.js';
 import mongoose from 'mongoose';
 import { getEmojis } from '../quest/emoji.js';
-import { getRoleForGuild } from '../quest/roleStore.js'; // Role store import kiya gaya hai
+import { getRolesAsync } from '../quest/roleStore.js'; // Progressive roles store import
 
 // Mongoose Schemas
 const keySchema = new mongoose.Schema({
@@ -57,7 +57,7 @@ export async function handleActivationButton(interaction) {
     return true;
 }
 
-// 2. Modal submit hone par key verify aur database se role assign karne ka function
+// 2. Modal submit hone par key verify aur setupRoles/roleStore se role assign karne ka function
 export async function handleActivationModalSubmit(interaction) {
     if (interaction.customId !== 'orbie_activate_modal') return false;
 
@@ -121,23 +121,26 @@ export async function handleActivationModalSubmit(interaction) {
         { upsert: true, new: true }
     );
 
-    // 🔄 Dynamic Role Assign using roleStore (jo setRole command se set hota hai)
-    let roleAssignedStatus = 'No role configured';
+    // 🔄 Connected with setupRolesCommand / roleStore
+    let roleStatusText = 'No role configured';
     try {
         if (interaction.guild) {
-            // Guild ke liye configured trial/premium role fetch karein
-            const targetRoleId = await getRoleForGuild(guildId); 
+            const configuredRoles = await getRolesAsync(guildId);
+            const member = await interaction.guild.members.fetch(userId);
+            
+            // setupRoles command se set kiya hua Full Access (ROLE_2_BOOST) ya Trial role check karein
+            const targetRoleId = configuredRoles.ROLE_2_BOOST || configuredRoles.ROLE_1_BOOST || configuredRoles.ROLE_2_INVITES;
+
             if (targetRoleId) {
-                const member = await interaction.guild.members.fetch(userId);
                 await member.roles.add(targetRoleId);
-                roleAssignedStatus = `Successfully granted role (<@&${targetRoleId}>)`;
+                roleStatusText = `<@&${targetRoleId}> assigned successfully!`;
             } else {
-                roleAssignedStatus = 'No role set via setRole command';
+                roleStatusText = 'No active slot role configured in `/setuproles`';
             }
         }
     } catch (err) {
-        console.error('Could not assign role dynamically:', err.message);
-        roleAssignedStatus = 'Failed to assign role (Check bot permissions)';
+        console.error('Error assigning setupRoles role:', err.message);
+        roleStatusText = 'Failed to give role (Check bot permissions)';
     }
 
     // Success response
@@ -148,7 +151,7 @@ export async function handleActivationModalSubmit(interaction) {
             `Your key has been successfully redeemed.\n\n` +
             `• **Duration:** ${keyData.durationDays === -1 ? 'Lifetime' : `${keyData.durationDays} Days`}\n` +
             `• **Unlocked Slot:** Slot #1 Active\n` +
-            `• **Role Status:** ${roleAssignedStatus}\n\n` +
+            `• **Configured Role:** ${roleStatusText}\n\n` +
             `### 📋 Your Activated Key:\n\`\`\`${userEnteredKey}\`\`\``
         )
     );
