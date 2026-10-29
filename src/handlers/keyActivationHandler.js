@@ -1,5 +1,5 @@
 /**
- * keyActivationHandler.js - Fully Updated MongoDB Activation Handler with Trial/Premium Role & Slot Integration
+ * keyActivationHandler.js - Fully Updated MongoDB Activation Handler with Fixed Trial/Premium Detection
  * Location: src/handlers/keyActivationHandler.js
  */
 
@@ -15,7 +15,7 @@ import { getRolesAsync } from '../quest/roleStore.js';
 const keySchema = new mongoose.Schema({
     keyString: { type: String, required: true, unique: true },
     assignedTo: { type: String, default: null },
-    type: { type: String, default: 'trial' }, // 'trial' ya 'premium'
+    type: { type: String, default: 'trial' }, // 'trial', 'admin_generated', 'premium', etc.
     durationDays: { type: Number, default: 30 },
     redeemed: { type: Boolean, default: false },
     redeemedBy: { type: String, default: null },
@@ -35,7 +35,7 @@ const userTrialSchema = new mongoose.Schema({
 const KeyStore = mongoose.models.KeyStore || mongoose.model('KeyStore', keySchema);
 const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', userTrialSchema);
 
-// 1. Button click par Modal open karne ka function (14-character length validation ke sath)
+// 1. Button click par Modal open karne ka function (14-character length validation)
 export async function handleActivationButton(interaction) {
     if (interaction.customId !== 'open_activate_modal') return false;
 
@@ -94,7 +94,7 @@ export async function handleActivationModalSubmit(interaction) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
         errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `# ${EMOJI.error || '❌'} Unauthorized Key\n` +
-            `Yeh key sirf us user ke liye locked hai jise yeh assign ki gayi thi! Aap ise use nahi kar sakte.\n\n` +
+            `This key is locked to another user and cannot be used by you.\n\n` +
             `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
         ));
         return await interaction.editReply({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
@@ -106,8 +106,8 @@ export async function handleActivationModalSubmit(interaction) {
     keyData.redeemedAt = Date.now();
     await keyData.save();
 
-    // Determine slots based on key type (Trial = Slot 1, Premium = Slots 1 to 5)
-    const isTrial = keyData.type === 'trial';
+    // 🛠️ FIXED: Correctly identify if it's a trial key (covering admin_generated and trial types)
+    const isTrial = keyData.type === 'trial' || keyData.type === 'admin_generated' || keyData.durationDays <= 30;
     const unlockedSlotsArray = isTrial ? [1] : [1, 2, 3, 4, 5];
 
     // Save user active trial/premium & slot status in MongoDB
@@ -132,7 +132,7 @@ export async function handleActivationModalSubmit(interaction) {
             const configuredRoles = await getRolesAsync(guildId);
             const member = await interaction.guild.members.fetch(userId);
             
-            // Agar Trial key hai toh ROLE_TRIAL, agar Premium key hai toh ROLE_PREMIUM assign hoga
+            // Assign ROLE_TRIAL if trial, otherwise ROLE_PREMIUM
             const targetRoleId = isTrial ? configuredRoles.ROLE_TRIAL : (configuredRoles.ROLE_PREMIUM || configuredRoles.ROLE_2_BOOST);
 
             if (targetRoleId) {
