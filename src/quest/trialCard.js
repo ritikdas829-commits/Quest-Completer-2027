@@ -1,13 +1,16 @@
 /**
- * trialCard.js - Generate and send Trial Key DM Embed Card with Dynamic Channel Name
+ * trialCard.js - Generate and send Trial Key DM Embed Card with Clickable Channel Link
  * Location: src/quest/trialCard.js
  */
 
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getEmojis } from './emoji.js';
 
-export async function sendTrialDmCard(user, key, guildName = 'SyntheX Development', channelName = 'orbie-panel') {
+export async function sendTrialDmCard(user, key, guildName = 'SyntheX Development', channelId = null) {
     const emojis = await getEmojis('global');
+
+    // Agar channelId diya hai toh blue clickable link banega, warna fallback text
+    const channelMention = channelId ? `<#${channelId}>` : `#orbie-panel`;
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -23,7 +26,7 @@ export async function sendTrialDmCard(user, key, guildName = 'SyntheX Developmen
             `🔑 **Trial Key**\n` +
             `\`${key}\`\n\n` +
             `🎫 **Redeem Instructions**\n` +
-            `Go to the redeem panel, **${guildName}** › **#${channelName}**, click the **Activate Premium** button, and paste this key.\n\n` +
+            `Go to the redeem panel in **${guildName}** at ${channelMention}, click the **Activate Premium** button, and paste this key.\n\n` +
             `📜 **Important Notes**\n` +
             `• Only you can redeem this key.\n` +
             `• Trial can only be redeemed once.\n` +
