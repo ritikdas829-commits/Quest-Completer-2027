@@ -53,6 +53,7 @@ export default {
     if (!command) return;
 
     try {
+      // Prioritize prefixExecute safely without duplicate calls
       if (typeof command.prefixExecute === 'function') {
         await command.prefixExecute(message, args, client);
       } else if (typeof command.execute === 'function' && !command.data) {
