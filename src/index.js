@@ -1,5 +1,5 @@
 /**
- * index.js — Updated Main Entry Point (Fixed Double Messages & Added Expiry Service)
+ * index.js — Fixed Command Loader Loop & Prevented Duplicate Execution
  * Location: index.js
  */
 
@@ -91,35 +91,27 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Dynamic Command Loader ─────────────────────────────────────────────────
+// ── Strict Dynamic Command Loader (Cleaned to Prevent Duplicates) ───────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
 
-    const registerCmd = (cmd) => {
-        if (!cmd || typeof cmd !== 'object') return;
+    const cmd = mod.default || mod;
+    if (!cmd || typeof cmd !== 'object') continue;
 
-        // Register Slash Commands
-        if (cmd.data && typeof cmd.data.name === 'string') {
-            client.commands.set(cmd.data.name, cmd);
-        }
+    // Register Slash Commands
+    if (cmd.data && typeof cmd.data.name === 'string') {
+        client.commands.set(cmd.data.name, cmd);
+    }
 
-        // Register Prefix Commands
-        const prefixName = cmd.prefix || cmd.name || cmd.data?.name;
-        if (prefixName && typeof prefixName === 'string') {
-            client.prefixCommands.set(prefixName.toLowerCase(), cmd);
-        }
-    };
-
-    if (mod.default) registerCmd(mod.default);
-
-    for (const [key, cmd] of Object.entries(mod)) {
-        if (['default', 'makeTokenStore', 'handleLinkModal', 'handleLinkPromptButton', 'runAutoquestForUser', 'buildPremiumLinkPanel', 'handleButton', 'handleModal'].includes(key)) continue;
-        registerCmd(cmd);
+    // Register Prefix Commands (Strictly registered ONCE per file)
+    const prefixName = cmd.prefix || cmd.name || cmd.data?.name;
+    if (prefixName && typeof prefixName === 'string') {
+        client.prefixCommands.set(prefixName.toLowerCase(), cmd);
     }
 }
 
-// ── Dynamic Event Loader (Handles all events dynamically via src/events/) ──
+// ── Dynamic Event Loader ────────────────────────────────────────────────────
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
