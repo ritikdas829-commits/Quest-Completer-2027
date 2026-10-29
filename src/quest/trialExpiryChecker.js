@@ -1,5 +1,5 @@
 /**
- * trialExpiryChecker.js - Automatically checks and removes expired trial/premium roles
+ * trialExpiryChecker.js - Safely checks and removes expired trial/premium roles without touching lifetime/active users
  * Location: src/quest/trialExpiryChecker.js
  */
 
@@ -11,21 +11,23 @@ const userTrialSchema = new mongoose.Schema({
     claimedTrial: { type: Boolean, default: false },
     active: { type: Boolean, default: false },
     expiresAt: { type: Number, default: null },
-    durationDays: { type: Number, default: 30 },
-    unlockedSlots: { type: [Number], default: [1] }
+    durationDays: { type: mongoose.Schema.Types.Mixed, default: 30 }, // 🛡️ Fixed to Mixed type for 'lifetime' support
+    slot: { type: Number, default: 1 }
 });
 
 const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', userTrialSchema);
 
 export function startTrialExpiryChecker(client) {
-    // Har 10 minute mein check karega ki kisika trial expire hua ya nahi
+    // Har 10 minute mein check karega
     setInterval(async () => {
         try {
             const now = Date.now();
-            // Find users whose trial is active but expiresAt time has passed
+            
+            // 🛑 Safety Filter: Lifetime users ya jinka duration 'lifetime' hai, unhe query se bilkul bahar rakho
             const expiredUsers = await UserTrial.find({
                 active: true,
-                expiresAt: { $ne: null, $lte: now }
+                expiresAt: { $ne: null, $lte: now },
+                durationDays: { $ne: 'lifetime' } // Lifetime keys kabhi expire nahi hongi
             });
 
             if (!expiredUsers || expiredUsers.length === 0) return;
@@ -33,9 +35,11 @@ export function startTrialExpiryChecker(client) {
             for (const userDoc of expiredUsers) {
                 const userId = userDoc.userId;
 
-                // Mark user inactive in MongoDB and reset slots/duration
+                // Double check in case expiresAt was somehow null or invalid
+                if (!userDoc.expiresAt || userDoc.expiresAt > now) continue;
+
+                // Mark user inactive in MongoDB
                 userDoc.active = false;
-                userDoc.unlockedSlots = [1]; // Reset slots
                 await userDoc.save();
 
                 // Remove role from all guilds where the bot and user are present
