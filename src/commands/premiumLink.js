@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Fixed Formatting & Clean UI Panel - FINAL
+ * premiumLink.js - Dynamic Emoji Integration & Clean UI Panel
  * Location: src/commands/premiumLink.js
  */
 
@@ -11,6 +11,7 @@ import {
     MessageFlags, SlashCommandBuilder,
 } from 'discord.js';
 import { getProgressiveSlots } from '../quest/slotSystem.js';
+import { getEmojis } from '../quest/emoji.js';
 
 const SUPPORT_SERVER = 'https://discord.gg/y5f29e5tQb';
 
@@ -36,6 +37,7 @@ function getAccountAge(discordId) {
 }
 
 export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client, member = null) {
+    const EMOJI = await getEmojis(guildId || 'global');
     const prefix = getClientPrefix(client, guildId);
     const guildMember = member || await client.guilds.cache.get(guildId)?.members.fetch(ownerId).catch(() => null);
     const { slots, invites, boosts, slotsToShow } = await getProgressiveSlots(guildMember);
@@ -52,16 +54,16 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
     }
 
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
-    c1.addTextDisplayComponents(new TextDisplayBuilder().setContent('# Premium Link'));
+    c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.link || '🔗'} Premium Link`));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
         `**Terms & Privacy**\nBy linking your Discord token, you allow the premium bot to use it for quest completion.\n` +
         `Use \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n` +
-        `> **Invites:** ${invites} \vert{} **Boosts:**${boosts}`
+        `> **Invites:** ${invites} | **Boosts:** ${boosts}`
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## Account Panel (${slotsToShow} Visible Slots)`));
+    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${EMOJI.gear || '⚙️'} Account Panel (${slotsToShow} Visible Slots)`));
 
     for (let idx = 0; idx < slots.length; idx++) {
         const slotData = slots[idx];
@@ -74,28 +76,28 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                     `### #${slotNum} Account Configuration\n` +
                     `• **User:** Not Linked (${slotData.label})\n` +
                     `• **Status:** Not Active\n` +
-                    `• **Requirement:** ${slotData.need} - ✅ Unlocked\n` +
+                    `• **Requirement:** ${slotData.need} - ${EMOJI.success || '✅'} Unlocked\n` +
                     `• **Account Age:** N/A\n` +
                     `• **Linked At:** N/A`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success)
+                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success).setEmoji(EMOJI.link || '🔗')
                 ));
             } else {
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${slotNum} Account Configuration 🔒\n` +
+                    `### #${slotNum} Account Configuration ${EMOJI.lock || '🔒'}\n` +
                     `• **User:** Locked (${slotData.label})\n` +
                     `• **Status:** Locked\n` +
                     `• **Requirement:** ${slotData.need}\n` +
                     `• **Note:** ${slotData.reason}`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`locked_slot_${slotNum}`).setLabel(`Locked (${slotData.need})`).setStyle(ButtonStyle.Secondary).setDisabled(true)
+                    new ButtonBuilder().setCustomId(`locked_slot_${slotNum}`).setLabel(`Locked (${slotData.need})`).setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji(EMOJI.lock || '🔒')
                 ));
             }
         } else {
             const isCurrentlyActive = Boolean(linked.isActive);
-            const status = isCurrentlyActive ? 'Active ✅' : 'Not Active';
+            const status = isCurrentlyActive ? `Active ${EMOJI.success || '✅'}` : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
             const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
             const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
@@ -166,9 +168,10 @@ export const unlinkCmd = {
         await interaction.editReply(panel);
     },
     async prefixExecute(message, args, client) {
+        const EMOJI = await getEmojis(message.guild.id);
         const prefix = getClientPrefix(client, message.guild.id);
         const slot = parseInt(args[0]); 
-        if (!slot || slot < 1 || slot > 5) return message.reply(`Usage: \`${prefix}unlink 1\``);
+        if (!slot || slot < 1 || slot > 5) return message.reply(`${EMOJI.error || '❌'} Correct usage: \`${prefix}unlink 1\``);
         await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
         const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
         await message.reply(panel);
@@ -179,6 +182,7 @@ export async function handleButton(interaction, client) {
     const guildId = interaction.guild.id;
     const ownerId = interaction.user.id;
     const member = interaction.member;
+    const EMOJI = await getEmojis(guildId);
 
     if (interaction.customId.startsWith('link_slot_')) {
         const slotNum = parseInt(interaction.customId.split('_')[2]);
@@ -186,7 +190,7 @@ export async function handleButton(interaction, client) {
         const slotData = prog.slots.find(s => s.slot === slotNum);
         if (!slotData?.can) {
             const payload = { 
-                content: `🔒 **Slot #${slotNum} Locked!**\n**Requirement:** ${slotData?.need}\n${slotData?.reason}`, 
+                content: `${EMOJI.lock || '🔒'} **Slot #${slotNum} Locked!**\n**Requirement:** ${slotData?.need}\n${slotData?.reason}`, 
                 flags: MessageFlags.Ephemeral 
             };
             if (interaction.deferred || interaction.replied) {
@@ -224,6 +228,8 @@ export async function handleModal(interaction, client) {
     const slot = parseInt(interaction.customId.split('_')[3]);
     const token = interaction.fields.getTextInputValue('token_input').trim();
     const prefix = getClientPrefix(client, interaction.guild.id);
+    const EMOJI = await getEmojis(interaction.guild.id);
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
         const prog = await getProgressiveSlots(interaction.member);
@@ -243,12 +249,12 @@ export async function handleModal(interaction, client) {
         }
         const successContainer = new ContainerBuilder().setAccentColor(0x57F287);
         successContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# ✅ Slot #${slot} Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink${slot}\`.`
+            `# ${EMOJI.success || '✅'} Slot #${slot} Linked!\nLinked as **"${data.username}"**.\n\nYou can now use \`${prefix}quest\`, \`${prefix}questall\`, and \`${prefix}questlist\`.\nTo remove it, use \`${prefix}unlink ${slot}\`.`
         ));
         await interaction.editReply({ components: [successContainer], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     } catch (e) {
         const errContainer = new ContainerBuilder().setAccentColor(0xED4245);
-        errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Slot #${slot} Failed\n${e.message}`));
+        errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.error || '❌'} Slot #${slot} Failed\n${e.message}`));
         await interaction.editReply({ components: [errContainer], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 }
