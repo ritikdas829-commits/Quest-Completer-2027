@@ -1,10 +1,11 @@
 /**
- * keyCommand.js - Key Generation with Auto-DM and Strict User Locking
+ * keyCommand.js - Key Generation with Auto-DM, Strict User Locking & Dynamic Emoji System
  * Location: src/commands/keyCommand.js
  */
 
 import { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { generateKeyByRole, setAdminKeyLimit } from '../quest/trialKeyStore.js';
+import { getEmojis } from '../quest/emoji.js';
 
 export const adminCreateKeyCmd = {
     data: new SlashCommandBuilder()
@@ -19,12 +20,13 @@ export const adminCreateKeyCmd = {
     async execute(interaction) {
         const userId = interaction.user.id;
         const guildOwnerId = interaction.guild.ownerId;
+        const guildId = interaction.guildId;
         
         const targetUser = interaction.options.getUser('user');
         const requestedDays = interaction.options.getInteger('days') || 30;
 
         await handleKeyGeneration(
-            userId, guildOwnerId, targetUser, requestedDays,
+            userId, guildOwnerId, targetUser, requestedDays, guildId,
             async (opts) => await interaction.reply(opts)
         );
     },
@@ -35,48 +37,54 @@ export const adminCreateKeyCmd = {
 
         const userId = message.author.id;
         const guildOwnerId = message.guild.ownerId;
+        const guildId = message.guild.id;
 
         const targetUser = message.mentions.users.first() || null;
         const requestedDays = args[1] ? parseInt(args[1]) || 30 : 30;
 
         if (!targetUser) {
-            return await message.reply(`❌ Kripya target user ko mention karein: \`;createkey @user 30\``);
+            const EMOJI = await getEmojis(guildId);
+            return await message.reply({ 
+                content: `${EMOJI.error || '❌'} Please mention a target user: \`;createkey @user 30\``, 
+                allowedMentions: { repliedUser: false } 
+            });
         }
 
         await handleKeyGeneration(
-            userId, guildOwnerId, targetUser, requestedDays,
-            async (opts) => await message.reply(opts)
+            userId, guildOwnerId, targetUser, requestedDays, guildId,
+            async (opts) => await message.reply({ ...opts, allowedMentions: { repliedUser: false } })
         );
     }
 };
 
-async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDays, replyFn) {
+async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDays, guildId, replyFn) {
+    const EMOJI = await getEmojis(guildId || 'global');
     const targetUserId = targetUser ? targetUser.id : null;
     const result = await generateKeyByRole(userId, guildOwnerId, targetUserId, requestedDays);
 
     if (!result.success) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
-        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Permission / Limit Error\n${result.message}`));
+        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.error || '❌'} Permission / Limit Error\n${result.message}`));
         return await replyFn({ components: [errCard], flags: MessageFlags.Ephemeral });
     }
 
-    // 📬 Auto-DM to the target user with key details & strict warning
+    // 📬 Auto-DM to the target user with key details & strict security warning
     if (targetUser) {
         try {
             const dmCard = new ContainerBuilder().setAccentColor(0x57F287);
             dmCard.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# 🎁 Aapke Liye Orbie Key Generate Ho Gayi Hai!\n\n` +
-                    `Aapke liye ek exclusive key banai gayi hai:\n` +
+                    `# ${EMOJI.gift || '🎁'} Your Orbie Key Has Been Generated!\n\n` +
+                    `An exclusive key has been created for you:\n` +
                     `**Key:** \`\`\`${result.key}\`\`\`\n` +
-                    `**Duration:** ${requestedDays} Days\n\n` +
-                    `### 🔒 Security Notice:\n` +
-                    `• Yeh key **sirf aur sirf aapke account** ke liye locked hai.\n` +
-                    `• Agar aap yeh key kisi aur ko doge, toh woh ise redeem nahi kar payega!\n\n` +
-                    `### 🚀 Kaise Activate Karein?\n` +
-                    `1. Server ke **#orbie-panel** channel par jayein.\n` +
-                    `2. **Activate Premium** button par click karke apni key enter karein.\n` +
-                    `3. Aapka Trial/Premium role aur Slots turant unlock ho jayenge!`
+                    `${EMOJI.duration || '🎯'} **Duration:** ${requestedDays} Days\n\n` +
+                    `### ${EMOJI.shield || '🔒'} Security Notice:\n` +
+                    `• This key is **strictly locked** to your Discord account.\n` +
+                    `• If shared with anyone else, they will not be able to redeem it!\n\n` +
+                    `### ${EMOJI.rocket || '🚀'} How to Activate:\n` +
+                    `1. Go to the **#orbie-panel** channel in the server.\n` +
+                    `2. Click the **Activate Premium** button and paste your key.\n` +
+                    `3. Your Trial/Premium role and slots will be unlocked instantly!`
                 )
             );
             await targetUser.send({ components: [dmCard], flags: MessageFlags.IsComponentsV2 });
@@ -89,11 +97,11 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDa
     const c = new ContainerBuilder().setAccentColor(0x57F287);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ✅ Key Generated & Locked Successfully\n` +
+            `# ${EMOJI.success || '✅'} Key Generated & Locked Successfully\n` +
             `**Key:** \`\`\`${result.key}\`\`\`\n` +
             `**Locked To:** ${targetUser ? targetUser.tag : 'Anyone'}\n` +
-            `**Duration:** ${requestedDays} Days\n` +
-            `**Status:** Key user ke **DM** mein bhej di gayi hai aur yeh sirf wahi use kar payega! (${result.remaining})`
+            `${EMOJI.duration || '🎯'} **Duration:** ${requestedDays} Days\n` +
+            `**Status:** Key has been sent to the user's **DM** and is exclusively locked to them! (${result.remaining})`
         )
     );
     await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
@@ -110,8 +118,9 @@ export const setLimitCmd = {
     prefix: 'setadminlimit',
 
     async execute(interaction) {
+        const EMOJI = await getEmojis(interaction.guildId);
         if (interaction.user.id !== interaction.guild.ownerId) {
-            return await interaction.reply({ content: `❌ Yeh command sirf server ka **Original Owner** hi use kar sakta hai!`, flags: MessageFlags.Ephemeral });
+            return await interaction.reply({ content: `${EMOJI.error || '❌'} This command can only be used by the server **Original Owner**!`, flags: MessageFlags.Ephemeral });
         }
 
         const targetAdmin = interaction.options.getUser('admin');
@@ -120,26 +129,27 @@ export const setLimitCmd = {
         await setAdminKeyLimit(targetAdmin.id, limit);
 
         const c = new ContainerBuilder().setAccentColor(0x57F287);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ✅ Limit Updated\nAdmin ${targetAdmin.tag} ko **${limit}** keys banane ki limit de di gayi hai!`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
         await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     },
 
     async prefixExecute(message, args) {
+        const EMOJI = await getEmojis(message.guild.id);
         if (message.author.id !== message.guild.ownerId) {
-            return await message.reply(`❌ Yeh command sirf server ka **OriginalOwner** hi use kar sakta hai!`);
+            return await message.reply({ content: `${EMOJI.error || '❌'} This command can only be used by the server **Original Owner**!`, allowedMentions: { repliedUser: false } });
         }
 
         const targetAdmin = message.mentions.users.first();
         const limit = parseInt(args[1]);
 
         if (!targetAdmin || isNaN(limit)) {
-            return await message.reply(`❌ Sahi format use karein: \`;setadminlimit @admin 5\``);
+            return await message.reply({ content: `${EMOJI.error || '❌'} Correct format usage: \`;setadminlimit @admin 5\``, allowedMentions: { repliedUser: false } });
         }
 
         await setAdminKeyLimit(targetAdmin.id, limit);
 
         const c = new ContainerBuilder().setAccentColor(0x57F287);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ✅ Limit Updated\nAdmin ${targetAdmin.tag} ko **${limit}** keys banane ki limit de di gayi hai!`));
-        await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
+        await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
     }
 };
