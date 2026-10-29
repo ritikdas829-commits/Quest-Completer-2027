@@ -153,10 +153,21 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    // 🛑 Check 3: Key Already Redeemed Check
+    // 🛑 Check 3: Key Already Redeemed Check (With self-recovery / role restore support)
     if (keyDoc.redeemed) {
+        // Agar key pehle se redeemed hai, par woh usi user ki hai toh role wapas de do
+        if (keyDoc.assignedTo === userId) {
+            const targetRoleId = roles.ROLE_PREMIUM || roles.ROLE_TRIAL;
+            if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
+                await member.roles.add(targetRoleId).catch(err => console.error("Failed to restore role:", err));
+            }
+            return await interaction.editReply({
+                content: `${EMOJI.success || '✅'} **Role Restored Successfully!**\nYour subscription is still active, so your role has been successfully given back to you!`
+            });
+        }
+
         return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used and cannot be redeemed again.`
+            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used by someone else.`
         });
     }
 
