@@ -1,5 +1,5 @@
 /**
- * index.js — Fixed Command Loader Loop & Prevented Duplicate Execution
+ * index.js — Fully Fixed Main Entry Point with Robust Command Loader
  * Location: index.js
  */
 
@@ -91,23 +91,37 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Strict Dynamic Command Loader (Cleaned to Prevent Duplicates) ───────────
+// ── Robust & Safe Dynamic Command Loader ───────────────────────────────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
 
-    const cmd = mod.default || mod;
-    if (!cmd || typeof cmd !== 'object') continue;
+    const registerCmd = (cmd) => {
+        if (!cmd || typeof cmd !== 'object') return;
 
-    // Register Slash Commands
-    if (cmd.data && typeof cmd.data.name === 'string') {
-        client.commands.set(cmd.data.name, cmd);
+        // Register Slash Commands
+        if (cmd.data && typeof cmd.data.name === 'string') {
+            client.commands.set(cmd.data.name, cmd);
+        }
+
+        // Register Prefix Commands
+        const prefixName = cmd.prefix || cmd.name || cmd.data?.name;
+        if (prefixName && typeof prefixName === 'string') {
+            client.prefixCommands.set(prefixName.toLowerCase(), cmd);
+        }
+    };
+
+    // 1. Register default export if present
+    if (mod.default) {
+        registerCmd(mod.default);
     }
 
-    // Register Prefix Commands (Strictly registered ONCE per file)
-    const prefixName = cmd.prefix || cmd.name || cmd.data?.name;
-    if (prefixName && typeof prefixName === 'string') {
-        client.prefixCommands.set(prefixName.toLowerCase(), cmd);
+    // 2. Register any valid named exports securely
+    for (const [key, cmd] of Object.entries(mod)) {
+        if (key === 'default' || !cmd || typeof cmd !== 'object') continue;
+        if (cmd.data || cmd.name || cmd.prefix) {
+            registerCmd(cmd);
+        }
     }
 }
 
