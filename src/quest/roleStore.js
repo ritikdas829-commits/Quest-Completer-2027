@@ -1,5 +1,5 @@
 /**
- * roleStore.js - 5 Roles Per Guild - MongoDB Persistent - Multi Server Safe
+ * roleStore.js - Roles Per Guild - MongoDB Persistent - Multi Server Safe (Updated with Trial & Premium)
  * Location: src/quest/roleStore.js
  */
 
@@ -12,6 +12,8 @@ const COLLECTION_NAME = 'roles_data';
 const COLLECTION_INVITES = 'invites_data';
 
 const DEFAULT_ROLES = {
+    ROLE_TRIAL: null,      // Trial Key Activation Role
+    ROLE_PREMIUM: null,    // Premium Key Activation Role
     ROLE_2_INVITES: null,  // Role 1: 2 Invites - Slot 2
     ROLE_5_INVITES: null,  // Role 2: 5 Invites - Slot 3
     ROLE_10_INVITES: null, // Role 3: 10 Invites - Slot 4 (Invites)
