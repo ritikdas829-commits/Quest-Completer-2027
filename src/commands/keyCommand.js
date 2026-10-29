@@ -1,5 +1,5 @@
 /**
- * keyCommand.js - Key Generation with Auto-DM, Strict User Locking & Dynamic Emoji System
+ * keyCommand.js - Key Generation with Slot Selector, Lifetime/Duration, Auto-DM & Security
  * Location: src/commands/keyCommand.js
  */
 
@@ -10,9 +10,21 @@ import { getEmojis } from '../quest/emoji.js';
 export const adminCreateKeyCmd = {
     data: new SlashCommandBuilder()
         .setName('createkey')
-        .setDescription('Generate a locked key for a specific user and auto-send to DM')
+        .setDescription('Generate a locked key with Slot and Duration (Admin Only)')
         .addUserOption(o => o.setName('user').setDescription('Target user who can exclusively use this key').setRequired(true))
-        .addIntegerOption(o => o.setName('days').setDescription('Duration in days (Owner custom, Admin max 30)').setRequired(false))
+        .addIntegerOption(o => 
+            o.setName('slot')
+             .setDescription('Select account slot (1 to 5)')
+             .setRequired(true)
+             .addChoices(
+                 { name: 'Slot 1', value: 1 },
+                 { name: 'Slot 2', value: 2 },
+                 { name: 'Slot 3', value: 3 },
+                 { name: 'Slot 4', value: 4 },
+                 { name: 'Slot 5', value: 5 }
+             )
+        )
+        .addStringOption(o => o.setName('duration').setDescription('Duration (e.g., 30d, 11d, lifetime)').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     prefix: 'createkey',
 
@@ -23,15 +35,16 @@ export const adminCreateKeyCmd = {
         const guildId = interaction.guildId;
         
         const targetUser = interaction.options.getUser('user');
-        const requestedDays = interaction.options.getInteger('days') || 30;
+        const slot = interaction.options.getInteger('slot');
+        const duration = interaction.options.getString('duration');
 
         await handleKeyGeneration(
-            userId, guildOwnerId, targetUser, requestedDays, guildId,
+            userId, guildOwnerId, targetUser, slot, duration, guildId, interaction.guild,
             async (opts) => await interaction.reply(opts)
         );
     },
 
-    // Prefix Command Execution (;createkey @user 30)
+    // Prefix Command Execution (;createkey @user 1 30d)
     async prefixExecute(message, args) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
 
@@ -40,27 +53,30 @@ export const adminCreateKeyCmd = {
         const guildId = message.guild.id;
 
         const targetUser = message.mentions.users.first() || null;
-        const requestedDays = args[1] ? parseInt(args[1]) || 30 : 30;
+        const slot = parseInt(args[1]);
+        const duration = args[2] || '30d';
 
-        if (!targetUser) {
+        if (!targetUser || !slot || slot < 1 || slot > 5) {
             const EMOJI = await getEmojis(guildId);
             return await message.reply({ 
-                content: `${EMOJI.error || '❌'} Please mention a target user: \`;createkey @user 30\``, 
+                content: `${EMOJI.error || '❌'} Correct usage: \`;createkey @user [slot 1-5] [duration]\` (Example: \`;createkey @user 1 30d\`)`, 
                 allowedMentions: { repliedUser: false } 
             });
         }
 
         await handleKeyGeneration(
-            userId, guildOwnerId, targetUser, requestedDays, guildId,
+            userId, guildOwnerId, targetUser, slot, duration, guildId, message.guild,
             async (opts) => await message.reply({ ...opts, allowedMentions: { repliedUser: false } })
         );
     }
 };
 
-async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDays, guildId, replyFn) {
+async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, duration, guildId, guild, replyFn) {
     const EMOJI = await getEmojis(guildId || 'global');
     const targetUserId = targetUser ? targetUser.id : null;
-    const result = await generateKeyByRole(userId, guildOwnerId, targetUserId, requestedDays);
+    
+    // Pass duration/slot to key store generator
+    const result = await generateKeyByRole(userId, guildOwnerId, targetUserId, duration, slot);
 
     if (!result.success) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
@@ -68,7 +84,10 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDa
         return await replyFn({ components: [errCard], flags: MessageFlags.Ephemeral });
     }
 
-    // 📬 Auto-DM to the target user with key details & strict security warning
+    // Find panel channel dynamically in guild if possible (e.g., named 'orbie-panel' or similar)
+    const panelChannel = guild?.channels.cache.find(c => c.name.includes('panel') || c.name.includes('orbie')) || '#orbie-panel';
+
+    // 📬 Auto-DM to the target user with slot, duration, and key details
     if (targetUser) {
         try {
             const dmCard = new ContainerBuilder().setAccentColor(0x57F287);
@@ -77,14 +96,15 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDa
                     `# ${EMOJI.gift || '🎁'} Your Orbie Key Has Been Generated!\n\n` +
                     `An exclusive key has been created for you:\n` +
                     `**Key:** \`\`\`${result.key}\`\`\`\n` +
-                    `${EMOJI.duration || '🎯'} **Duration:** ${requestedDays} Days\n\n` +
+                    `${EMOJI.slot || '🎰'} **Assigned Slot:** Slot #${slot}\n` +
+                    `${EMOJI.duration || '🎯'} **Duration:** ${duration}\n\n` +
                     `### ${EMOJI.shield || '🔒'} Security Notice:\n` +
                     `• This key is **strictly locked** to your Discord account.\n` +
                     `• If shared with anyone else, they will not be able to redeem it!\n\n` +
                     `### ${EMOJI.rocket || '🚀'} How to Activate:\n` +
-                    `1. Go to the **#orbie-panel** channel in the server.\n` +
+                    `1. Go to the ${panelChannel} channel in the server.\n` +
                     `2. Click the **Activate Premium** button and paste your key.\n` +
-                    `3. Your Trial/Premium role and slots will be unlocked instantly!`
+                    `3. Your Trial/Premium role and **Slot #${slot}** will be unlocked instantly!`
                 )
             );
             await targetUser.send({ components: [dmCard], flags: MessageFlags.IsComponentsV2 });
@@ -100,14 +120,15 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, requestedDa
             `# ${EMOJI.success || '✅'} Key Generated & Locked Successfully\n` +
             `**Key:** \`\`\`${result.key}\`\`\`\n` +
             `**Locked To:** ${targetUser ? targetUser.tag : 'Anyone'}\n` +
-            `${EMOJI.duration || '🎯'} **Duration:** ${requestedDays} Days\n` +
-            `**Status:** Key has been sent to the user's **DM** and is exclusively locked to them! (${result.remaining})`
+            `${EMOJI.slot || '🎰'} **Slot:** Slot #${slot}\n` +
+            `${EMOJI.duration || '🎯'} **Duration:** ${duration}\n` +
+            `**Status:** Key has been sent to user's **DM**! (${result.remaining || 'Unlimited'})`
         )
     );
     await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 }
 
-// Optional: Owner command to set specific limit for an admin
+// Owner command to set specific limit for an admin
 export const setLimitCmd = {
     data: new SlashCommandBuilder()
         .setName('setadminlimit')
