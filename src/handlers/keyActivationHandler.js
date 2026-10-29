@@ -1,5 +1,5 @@
 /**
- * keyActivationHandler.js - MongoDB-backed "Activate Premium" button & modal handler
+ * keyActivationHandler.js - MongoDB-backed activation handler with dynamic roleStore integration
  * Location: src/handlers/keyActivationHandler.js
  */
 
@@ -8,10 +8,10 @@ import {
     ActionRowBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags 
 } from 'discord.js';
 import mongoose from 'mongoose';
+import { getEmojis } from '../quest/emoji.js';
+import { getRoleForGuild } from '../quest/roleStore.js'; // Role store import kiya gaya hai
 
-const TRIAL_ROLE_ID = 'YOUR_TRIAL_ROLE_ID'; // Yahan apna Discord Trial Role ID daalein
-
-// Mongoose Schemas (trialKeyStore.js ke sath matching)
+// Mongoose Schemas
 const keySchema = new mongoose.Schema({
     keyString: { type: String, required: true, unique: true },
     assignedTo: { type: String, default: null },
@@ -47,41 +47,56 @@ export async function handleActivationButton(interaction) {
         .setCustomId('key_input')
         .setLabel('Premium / Trial Key *')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('XXXX-XXXX-XXXX')
-        .setRequired(true);
+        .setPlaceholder('Enter 14-character key...')
+        .setRequired(true)
+        .setMinLength(14)
+        .setMaxLength(14);
 
     modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
     await interaction.showModal(modal);
     return true;
 }
 
-// 2. Modal submit hone par key verify, activate, role assign aur slots unlock karne ka function (MongoDB)
+// 2. Modal submit hone par key verify aur database se role assign karne ka function
 export async function handleActivationModalSubmit(interaction) {
     if (interaction.customId !== 'orbie_activate_modal') return false;
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const EMOJI = await getEmojis(interaction.guildId || 'global');
     const userEnteredKey = interaction.fields.getTextInputValue('key_input').trim();
     const userId = interaction.user.id;
+    const guildId = interaction.guildId;
 
     // Find key in MongoDB
     const keyData = await KeyStore.findOne({ keyString: userEnteredKey });
 
     if (!keyData) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
-        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Invalid Key\nThe key you entered does not exist or is incorrect.`));
+        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `# ${EMOJI.error || '❌'} Invalid Key\n` +
+            `The key you entered does not exist or is incorrect.\n\n` +
+            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+        ));
         return await interaction.editReply({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 
     if (keyData.redeemed) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
-        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Key Already Redeemed\nThis key has already been used by someone else.`));
+        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `# ${EMOJI.error || '❌'} Key Already Redeemed\n` +
+            `This key has already been used by someone else.\n\n` +
+            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+        ));
         return await interaction.editReply({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 
-    // 🛑 Strict check: Agar key kisi specific user ke liye locked thi
     if (keyData.assignedTo && keyData.assignedTo !== userId) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
-        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Unauthorized Key\nYeh key sirf us user ke liye locked hai jise yeh assign ki gayi thi! Aap ise use nahi kar sakte.`));
+        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `# ${EMOJI.error || '❌'} Unauthorized Key\n` +
+            `Yeh key sirf us user ke liye locked hai jise yeh assign ki gayi thi! Aap ise use nahi kar sakte.\n\n` +
+            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+        ));
         return await interaction.editReply({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 
@@ -100,32 +115,41 @@ export async function handleActivationModalSubmit(interaction) {
                 active: true,
                 durationDays: keyData.durationDays,
                 expiresAt: expiresAtTime,
-                unlockedSlots: [1] // Trial redeem karne par Slot #1 unlock ho jayega
+                unlockedSlots: [1]
             }
         },
         { upsert: true, new: true }
     );
 
-    // Assign Trial Role to the user automatically
+    // 🔄 Dynamic Role Assign using roleStore (jo setRole command se set hota hai)
+    let roleAssignedStatus = 'No role configured';
     try {
-        if (interaction.guild && TRIAL_ROLE_ID !== 'YOUR_TRIAL_ROLE_ID') {
-            const member = await interaction.guild.members.fetch(userId);
-            await member.roles.add(TRIAL_ROLE_ID);
+        if (interaction.guild) {
+            // Guild ke liye configured trial/premium role fetch karein
+            const targetRoleId = await getRoleForGuild(guildId); 
+            if (targetRoleId) {
+                const member = await interaction.guild.members.fetch(userId);
+                await member.roles.add(targetRoleId);
+                roleAssignedStatus = `Successfully granted role (<@&${targetRoleId}>)`;
+            } else {
+                roleAssignedStatus = 'No role set via setRole command';
+            }
         }
     } catch (err) {
-        console.error('Could not assign trial role:', err.message);
+        console.error('Could not assign role dynamically:', err.message);
+        roleAssignedStatus = 'Failed to assign role (Check bot permissions)';
     }
 
-    // Success response with slot info
+    // Success response
     const successCard = new ContainerBuilder().setAccentColor(0x57F287);
     successCard.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ✅ Premium / Trial Activated Successfully!\n` +
+            `# ${EMOJI.success || '✅'} Premium / Trial Activated Successfully!\n` +
             `Your key has been successfully redeemed.\n\n` +
             `• **Duration:** ${keyData.durationDays === -1 ? 'Lifetime' : `${keyData.durationDays} Days`}\n` +
             `• **Unlocked Slot:** Slot #1 Active\n` +
-            `• **Assigned Role:** Trial role successfully granted!\n\n` +
-            `Aap ab apne quests run kar sakte hain!`
+            `• **Role Status:** ${roleAssignedStatus}\n\n` +
+            `### 📋 Your Activated Key:\n\`\`\`${userEnteredKey}\`\`\``
         )
     );
     await interaction.editReply({ components: [successCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
