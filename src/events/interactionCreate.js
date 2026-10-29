@@ -134,11 +134,11 @@ export default {
                 if (handled) return;
             }
 
-            // 3.6. Copy Key Button Handler (Sends raw code in ephemeral message for 1-tap copy)
+            // 3.6. Copy Key Button Handler (Sends only raw code without backticks)
             if (interaction.isButton() && interaction.customId.startsWith('copy_key_')) {
                 const keyToCopy = interaction.customId.replace('copy_key_', '');
                 return await interaction.reply({
-                    content: `\`${keyToCopy}\``,
+                    content: keyToCopy,
                     flags: MessageFlags.Ephemeral
                 });
             }
