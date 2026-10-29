@@ -16,9 +16,7 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 🎨 Default Emojis including Trial/Premium Card specific icons
 const DEFAULT_EMOJIS = {
-    // Status & UI Indicators
     success: "✅",
     done: "✅",
     error: "❌",
@@ -26,8 +24,6 @@ const DEFAULT_EMOJIS = {
     loading: "⚙️",
     online: "🟢",
     offline: "🔴",
-
-    // Quest & Navigation Elements
     link: "🔗",
     search: "🔍",
     list: "📋",
@@ -39,8 +35,6 @@ const DEFAULT_EMOJIS = {
     gift: "🎁",
     arrow: "➡️",
     dot: "•",
-
-    // Cards & Sections Headings (Trial/Premium Card Icons)
     crown: "👑",
     keyType: "🏷️",
     duration: "🎯",
@@ -51,8 +45,6 @@ const DEFAULT_EMOJIS = {
     task: "📋",
     stats: "📊",
     reward: "🎁",
-
-    // Task Type Icons
     desktop: "🖥️",
     mobile: "📱",
     video: "🎬",
@@ -125,6 +117,7 @@ export class EmojiStore {
 
 export const emojiStore = new EmojiStore();
 
+// Yeh function hona zaroori hai jo keyActivationHandler.js import kar raha hai:
 export async function getEmojis(guildId = 'global') {
     return await emojiStore.getEmojis(guildId);
 }
