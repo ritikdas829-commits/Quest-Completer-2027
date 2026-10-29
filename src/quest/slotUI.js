@@ -1,5 +1,5 @@
 /**
- * slotUI.js - Slot UI - Premium Link Panel - Progressive 4 Roles (MongoDB 5-Slot Compatible)
+ * slotUI.js - Slot UI - Premium Link Panel - Progressive Roles (MongoDB 6-Slot Compatible)
  * Location: src/quest/slotUI.js
  */
 
@@ -32,7 +32,9 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
     const guildId = member.guild?.id;
     const userId = member.id || member.user?.id;
     
-    const { slots, invites, boosts, slotsToShow, stage, roles } = await getProgressiveSlots(member, inviteStore);
+    // Fetch slots and stats safely from slotSystem
+    const slotData = await getProgressiveSlots(member);
+    const { slots, invites, boosts, slotsToShow, isTrialActive } = slotData;
     
     // Fetch all linked slots safely from MongoDB/TokenStore
     let accounts = [];
@@ -45,11 +47,14 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
 
     const c = new ContainerBuilder().setAccentColor(0x2B2D31);
 
+    const stageText = isTrialActive ? 'Active Trial (Slot #1 Only)' : 'Progressive Access';
+
+    // Fixed Top Header without any typo bugs
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `# Premium Link\n## Terms & Privacy\n> By linking your Discord token, you allow premium bot to use it for quest completion. Use \`${DEFAULT_PREFIX}guide\` if you need guide first.\n> **Stage:** ${stage}\n> Invites: ${invites} | Boosts: ${boosts}\n`
+        `# Premium Link\n## Terms & Privacy\n> By linking your Discord token, you allow the premium bot to use it for quest completion. Use \`${DEFAULT_PREFIX}guide\` if you need the token flow guide first.\n> **Status:** ${stageText}\n> **Invites:** ${invites} | **Boosts:** ${boosts}\n`
     ));
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true));
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# Account Panel - ${slotsToShow} Slots - Progressive System`));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# Account Panel (${slotsToShow} Visible Slots)`));
 
     for (const s of slots) {
         const linked = accounts.find(a => a.slot === s.slot);
@@ -62,8 +67,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                 `### #${s.slot} Account Configuration - ${s.label}\n` +
                 `• ${linked.username || 'Linked Account'} - ${s.label}\n` +
                 `• Status: ${status}\n` +
-                `• Requirement: ${s.need}\n` +
-                `• Role: ${s.needRoleId ? `<@&${s.needRoleId}>` : 'Free'}\n` +
+                `• Requirement: ${s.need || 'Free'}\n` +
                 `• Linked At: ${linkedAtStr}`
             ));
             
@@ -79,7 +83,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                     `### #${s.slot} Account Configuration - ${s.label}\n` +
                     `• Not Linked (${s.label})\n` +
                     `• Status: Not Active\n` +
-                    `• Requirement: ${s.need} - ✅ Unlocked\n` +
+                    `• Requirement: ${s.need || 'Free'} - ✅ Unlocked\n` +
                     `• Your Progress: ${invites} invites, ${boosts} boosts\n` +
                     `• ${s.reason}`
                 ));
@@ -91,33 +95,22 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                     `### #${s.slot} Account Configuration - ${s.label} 🔒\n` +
                     `• Locked\n` +
                     `• Status: Locked\n` +
-                    `• Need: ${s.need} - ${s.needRoleId ? `<@&${s.needRoleId}>` : 'Role not set - Use /setuproles'}\n` +
+                    `• Requirement: ${s.need || 'N/A'}\n` +
                     `• Your Progress: ${invites} invites, ${boosts} boosts\n` +
                     `• ${s.reason}`
                 ));
                 c.addActionRowComponents(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`locked_slot_${s.slot}_btn`).setLabel(`Locked - ${s.need}`).setStyle(ButtonStyle.Secondary).setDisabled(true)
+                    new ButtonBuilder().setCustomId(`locked_slot_${s.slot}_btn`).setLabel(`Locked - Slot #${s.slot}`).setStyle(ButtonStyle.Secondary).setDisabled(true)
                 ));
             }
         }
     }
 
-    let guide = '';
-    if (slotsToShow === 2) guide = `-# 📌 No role: 2 slots → Free + 2 invites (Role 1) → Invite 2 members for Slot 2!`;
-    else if (slotsToShow === 3) guide = `-# 📌 Invite access: 3 slots → 2 access + 3rd needs Role 2: 5 invite per - Invite 3 more for Slot 3!`;
-    else if (slotsToShow === 4) guide = `-# 📌 3 slot access: 4 slots visible - Say boost! Role 3: 10 Invites OR 1 Boost needed for Slot 4`;
-    else if (slotsToShow === 5 && boosts < 2) guide = `-# 📌 1 boost/10 invites: 5 slots visible - Role 4: 2 Boosts required for Slot 5 full access!`;
-    else guide = `-# 👑 Full 5 slots - All access - 5 accounts!`;
+    let guide = isTrialActive 
+        ? `-# 📌 **Trial Notice:** You have an active trial. Only Slot #1 is available until your trial expires or you unlock progressive roles.`
+        : `-# 📌 Progressive system active: Keep inviting or boosting to unlock more slots!`;
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(guide));
-
-    const rolesText = `**Roles Setup Status:**\n` +
-        `Role 1 (2 Inv): ${roles?.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}> ✅` : '❌ Not set - Use /setuproles'}\n` +
-        `Role 2 (5 Inv): ${roles?.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}> ✅` : '❌ Not set'}\n` +
-        `Role 3 (10 Inv / 1 Boost): ${roles?.ROLE_1_BOOST ? `<@&${roles.ROLE_1_BOOST}> ✅` : '❌ Not set'}\n` +
-        `Role 4 (2 Boost): ${roles?.ROLE_2_BOOST ? `<@&${roles.ROLE_2_BOOST}> ✅` : '❌ Not set'}`;
-
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`\n${rolesText}`));
 
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
@@ -129,7 +122,7 @@ export async function handleButton(interaction, client) {
 
     if (interaction.customId.startsWith('link_slot_') && interaction.customId.endsWith('_btn')) {
         const slotNum = parseInt(interaction.customId.split('_')[2]);
-        const prog = await getProgressiveSlots(member, 0);
+        const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
         if (!slotData?.can) {
             const c = new ContainerBuilder().setAccentColor(0xFEE75C);
@@ -155,7 +148,7 @@ export async function handleButton(interaction, client) {
     
     if (interaction.customId.startsWith('locked_slot_') && interaction.customId.endsWith('_btn')) {
         const slotNum = parseInt(interaction.customId.split('_')[2]);
-        const prog = await getProgressiveSlots(member, 0);
+        const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
         const c = new ContainerBuilder().setAccentColor(0xFEE75C);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔒 Slot #${slotNum} Locked\n**${slotData?.reason}**\nNeed: ${slotData?.need}`));
@@ -169,7 +162,7 @@ export async function handleModal(interaction, client) {
     const token = interaction.fields.getTextInputValue('token_input').trim();
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-        const prog = await getProgressiveSlots(interaction.member, 0);
+        const prog = await getProgressiveSlots(interaction.member);
         const slotData = prog.slots.find(s => s.slot === slot);
         if (!slotData?.can) throw new Error(`Slot #${slot} locked. ${slotData?.reason}`);
         
