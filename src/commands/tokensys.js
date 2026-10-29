@@ -218,7 +218,6 @@ async function buildOnlineProfileEmbed(slot, targetUser, guildId) {
 // ─────────────────────────────────────────────
 // 3. ONLINEOFF — Disconnects online presence
 // ─────────────────────────────────────────────
-exports = module.exports; // Compatible export wrapper if needed, below standard ESM:
 export const onlineoff = {
     name: 'onlineoff',
     prefix: 'onlineoff',
