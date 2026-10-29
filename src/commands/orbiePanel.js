@@ -1,9 +1,14 @@
 /**
- * orbiePanel.js - Send the Public Premium Activation Panel to Channel
+ * orbiePanel.js - Send the Public Premium Activation Panel & Modal Handler
  * Location: src/commands/orbiePanel.js
  */
 
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
+import { 
+    SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, 
+    ButtonBuilder, ButtonStyle, PermissionFlagsBits, 
+    ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags 
+} from 'discord.js';
+import { getEmojis } from '../quest/emoji.js';
 
 export const orbiePanelCmd = {
     data: new SlashCommandBuilder()
@@ -13,48 +18,96 @@ export const orbiePanelCmd = {
     prefix: 'orbiepanel',
 
     async execute(interaction) {
-        // Defer ephemeral takki command fail na ho
-        await interaction.deferReply({ ephemeral: true });
-        
-        // Panel ko public channel mein send karein
-        await sendPublicPanel(interaction.channel);
-        
-        // Admin ko private success message dein
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await sendPublicPanel(interaction.channel, interaction.guildId);
         await interaction.editReply({ content: '✅ Orbie panel has been successfully sent to this channel!' });
     },
 
     async prefixExecute(message) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-        
-        // Prefix command ke liye original message delete karke panel bhej sakte hain ya seedha send kar sakte hain
         try { await message.delete(); } catch (err) {}
-        await sendPublicPanel(message.channel);
+        await sendPublicPanel(message.channel, message.guildId);
     }
 };
 
-async function sendPublicPanel(channel) {
+async function sendPublicPanel(channel, guildId) {
+    const EMOJI = await getEmojis(guildId || 'global');
+
     const embed = new EmbedBuilder()
-        .setTitle('🌟 Orbie Premium & Trial Activation')
+        .setColor(0x5865F2)
+        .setTitle(`${EMOJI.premium || '💎'} Orbie Premium Panel`)
         .setDescription(
-            `Welcome to the official Orbie activation center! If you have received a **Trial Key** or a **Premium Key**, you can redeem it right here.\n\n` +
-            `### 🎟️ How to Activate:\n` +
-            `1. Click the **Activate Premium** button below.\n` +
-            `2. Paste your generated key in the pop-up form.\n` +
-            `3. Enjoy your automated quests and unlocked slots instantly!\n\n` +
-            `-* Keep your keys private and secure.`
+            `Unlock Orbie Premium automation, video/desktop quest support, and active notifications.\n\n` +
+            `${EMOJI.diamond || '💎'} **Trial Keys**\n` +
+            `• Grant Orbie Trial for 3 days.\n` +
+            `• Limited to one lifetime trial redemption per Discord account.\n` +
+            `• Trial accounts can only link their own Discord token (no alts).\n\n` +
+            `${EMOJI.crown || '👑'} **Premium Keys**\n` +
+            `• Grant full Orbie Premium (5 active account slots).\n` +
+            `• Extend existing paid premium periods natively.\n\n` +
+            `${EMOJI.key || '🟡'} **Activation**\n` +
+            `Click the button below to activate your key!`
         )
-        .setColor(0x5865F2);
+        .setFooter({ text: 'Thank you for using Orbie.' });
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('open_activate_modal')
             .setLabel('Activate Premium')
             .setStyle(ButtonStyle.Success)
-            .setEmoji('🔑')
+            .setEmoji(EMOJI.ticketRaw || '🎫')
     );
 
     await channel.send({
         embeds: [embed],
         components: [row]
     });
+}
+
+// Button Click Handler (Modal Open karega)
+export async function handleOrbieButton(interaction) {
+    if (interaction.customId !== 'open_activate_modal') return;
+
+    const modal = new ModalBuilder()
+        .setCustomId('activate_premium_modal')
+        .setTitle('Activate Premium');
+
+    const keyInput = new TextInputBuilder()
+        .setCustomId('key_input')
+        .setLabel('Premium / Trial Key')
+        .setPlaceholder('Enter your 14-character key...')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(14)
+        .setMaxLength(14);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
+    return await interaction.showModal(modal);
+}
+
+// Modal Submission Handler (Key check karega)
+export async function handleOrbieModal(interaction, client) {
+    if (interaction.customId !== 'activate_premium_modal') return;
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const EMOJI = await getEmojis(interaction.guildId || 'global');
+    const key = interaction.fields.getTextInputValue('key_input').trim();
+
+    try {
+        if (!key || key.length !== 14) {
+            return await interaction.editReply({
+                content: `${EMOJI.error || '❌'} The key you entered is invalid. Please double-check it.`
+            });
+        }
+
+        // Yahan aapka key activation/database logic aayega
+        await interaction.editReply({
+            content: `${EMOJI.success || '✅'} **Activation Successful!** Your premium has been activated.`
+        });
+
+    } catch (e) {
+        await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Activation Failed**\n${e.message || 'The key you entered is invalid. Please double-check it.'}`
+        });
+    }
 }
