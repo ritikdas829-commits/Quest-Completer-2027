@@ -1,5 +1,5 @@
 /**
- * setupRolesCommand.js - Clean UI & Progressive Slot Roles Management
+ * setupRolesCommand.js - Clean UI & Progressive Slot Roles Management (With Trial & Premium Roles)
  * Location: src/commands/setupRolesCommand.js
  */
 
@@ -8,16 +8,18 @@ import { getRolesAsync, setRole, removeRole, syncRolesFromDB } from '../quest/ro
 
 export const data = new SlashCommandBuilder()
     .setName('setuproles')
-    .setDescription('Setup 5 progressive slot roles for your server')
+    .setDescription('Setup progressive slot roles and activation roles for your server')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(sub =>
         sub.setName('set')
-            .setDescription('Set a role for a progressive slot tier')
+            .setDescription('Set a role for a progressive slot or activation tier')
             .addStringOption(opt =>
                 opt.setName('key')
-                    .setDescription('Select slot tier')
+                    .setDescription('Select slot/activation tier')
                     .setRequired(true)
                     .addChoices(
+                        { name: '🎟️ Trial Key Activation Role', value: 'ROLE_TRIAL' },
+                        { name: '👑 Premium Key Activation Role', value: 'ROLE_PREMIUM' },
                         { name: 'Slot 2 — 2 Invites Role', value: 'ROLE_2_INVITES' },
                         { name: 'Slot 3 — 5 Invites Role', value: 'ROLE_5_INVITES' },
                         { name: 'Slot 4 — 10 Invites Role', value: 'ROLE_10_INVITES' },
@@ -39,6 +41,8 @@ export const data = new SlashCommandBuilder()
                     .setDescription('Select tier to clear')
                     .setRequired(true)
                     .addChoices(
+                        { name: '🎟️ Trial Key Activation Role', value: 'ROLE_TRIAL' },
+                        { name: '👑 Premium Key Activation Role', value: 'ROLE_PREMIUM' },
                         { name: 'Slot 2 — 2 Invites Role', value: 'ROLE_2_INVITES' },
                         { name: 'Slot 3 — 5 Invites Role', value: 'ROLE_5_INVITES' },
                         { name: 'Slot 4 — 10 Invites Role', value: 'ROLE_10_INVITES' },
@@ -66,8 +70,11 @@ export async function execute(interaction) {
             const roles = await getRolesAsync(guildId);
             const c = new ContainerBuilder().setAccentColor(0x5865F2);
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                `# ⚙️ Progressive Slot Roles Config\n` +
+                `# ⚙️ Progressive Slot & Key Roles Config\n` +
                 `**Server:** \`${interaction.guild.name}\` | **ID:** \`${guildId}\`\n\n` +
+                `### 🔑 Key Activation Tiers\n` +
+                `• **Trial Key Role:** ${roles.ROLE_TRIAL ? `<@&${roles.ROLE_TRIAL}>` : '`❌ Not Set`'}\n` +
+                `• **Premium Key Role:** ${roles.ROLE_PREMIUM ? `<@&${roles.ROLE_PREMIUM}>` : '`❌ Not Set`'}\n\n` +
                 `### 📩 Invite Tiers\n` +
                 `• **Role 1 (2 Invites ➔ Slot 2):** ${roles.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}>` : '`❌ Not Set`'}\n` +
                 `• **Role 2 (5 Invites ➔ Slot 3):** ${roles.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}>` : '`❌ Not Set`'}\n` +
@@ -92,7 +99,7 @@ export async function execute(interaction) {
                 `• **Tier Key:** \`${key}\`\n` +
                 `• **Assigned Role:** ${role}\n` +
                 `• **Target Server:** \`${interaction.guild.name}\`\n\n` +
-                `Users who unlock this requirement will automatically gain slot permissions!`
+                `Users who unlock this requirement will automatically gain slot/activation permissions!`
             ));
             await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
             return;
@@ -139,8 +146,11 @@ export const setupRolesCmd = {
         const roles = await getRolesAsync(guildId);
         const c = new ContainerBuilder().setAccentColor(0x5865F2);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# ⚙️ Progressive Slot Roles Config\n` +
+            `# ⚙️ Progressive Slot & Key Roles Config\n` +
             `**Server:** \`${message.guild.name}\`\n\n` +
+            `### 🔑 Key Activation Tiers\n` +
+            `• **Trial Key Role:** ${roles.ROLE_TRIAL ? `<@&${roles.ROLE_TRIAL}>` : '`❌ Not Set`'}\n` +
+            `• **Premium Key Role:** ${roles.ROLE_PREMIUM ? `<@&${roles.ROLE_PREMIUM}>` : '`❌ Not Set`'}\n\n` +
             `### 📩 Invite Tiers\n` +
             `• **Role 1 (2 Invites):** ${roles.ROLE_2_INVITES ? `<@&${roles.ROLE_2_INVITES}>` : '`❌ Not Set`'}\n` +
             `• **Role 2 (5 Invites):** ${roles.ROLE_5_INVITES ? `<@&${roles.ROLE_5_INVITES}>` : '`❌ Not Set`'}\n` +
