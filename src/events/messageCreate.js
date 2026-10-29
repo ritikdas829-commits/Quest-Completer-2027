@@ -23,6 +23,7 @@ export default {
       const member = message.member;
       const guildId = message.guild.id;
       const roles = getRoles(guildId);
+      const EMOJI = await getEmojis(guildId);
 
       // Check if user has any valid trial, invite role, booster role, or server boost
       const hasValidRole = 
@@ -37,11 +38,11 @@ export default {
       if (!hasValidRole) {
         const c = new ContainerBuilder().setAccentColor(0x2B2D31);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# 💙 Premium Access Required\n\n` +
+            `# ${EMOJI.premium || '💙'} Premium Access Required\n\n` +
             `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
-            `💎 **Free Orbie Premium Trial!**\n` +
-            `> 🌟 You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-            `> 🎁 Use the command \`;activate trial\` to get your trial key at no cost.\n\n` +
+            `${EMOJI.diamond || '💎'} **Free Orbie Premium Trial!**\n` +
+            `> ${EMOJI.star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
+            `> ${EMOJI.gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n\n` +
             `Join support: https://discord.gg/y5f29e5tQb`
         ));
         return await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }).catch(() => {});
