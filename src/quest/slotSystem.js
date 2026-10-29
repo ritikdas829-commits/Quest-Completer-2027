@@ -30,7 +30,7 @@ async function loadUserData(userId) {
             };
         }
     } catch (err) {
-        // Fallback to JSON
+        // Fallback to local JSON storage
     }
 
     if (!fs.existsSync(filePath)) return null;
@@ -43,7 +43,7 @@ async function loadUserData(userId) {
 }
 
 export const SLOTS = {
-    1: { label: 'Trial Slot', need: 'Trial Active Only', invites: 0, boosts: 0 },
+    1: { label: 'Free Slot (Trial / Base)', need: 'Free', invites: 0, boosts: 0 },
     2: { label: '2 Invite Slot', need: '2 Invites Required', invites: 2, boosts: 0 },
     3: { label: '5 Invite Slot', need: '5 Invites Required', invites: 5, boosts: 0 },
     4: { label: '10 Invite Slot', need: '10 Invites Required', invites: 10, boosts: 0 },
@@ -58,7 +58,13 @@ export async function getCounts(member) {
         const guildId = member.guild.id;
         const userId = member.id;
 
-        let invites = await getUserInvites(userId, guildId);
+        let invites = 0;
+        try {
+            invites = await getUserInvites(userId, guildId);
+        } catch {
+            invites = 0;
+        }
+
         let boosts = 0;
         const roles = getRoles(guildId);
         
@@ -75,12 +81,31 @@ export async function getCounts(member) {
 
 export async function getProgressiveSlots(member) {
     try {
+        if (!member) {
+            return {
+                slots: [],
+                invites: 0,
+                boosts: 0,
+                slotsToShow: 1,
+                isTrialActive: false,
+                userProfile: null
+            };
+        }
+
         const guildId = member?.guild?.id || 'global';
         const userId = member?.id;
         const roles = getRoles(guildId);
         const userData = await loadUserData(userId);
 
         const { invites, boosts } = await getCounts(member);
+
+        // Profile details for rendering in UI
+        const userProfile = {
+            id: member.user.id,
+            username: member.user.username,
+            avatar: member.user.displayAvatarURL({ extension: 'png', size: 256 }),
+            createdTimestamp: member.user.createdTimestamp
+        };
 
         // Dynamic Role Checks
         const hasRole2 = invites >= 2 || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
@@ -119,11 +144,12 @@ export async function getProgressiveSlots(member) {
                 boosts,
                 slotsToShow: 1,
                 isTrialActive: true,
-                alreadyClaimed: true
+                alreadyClaimed: true,
+                userProfile
             };
         }
 
-        // 🚀 RULE 2: NON-TRIAL / UPGRADED PROGRESSIVE SLOTS (Slot 1 Trial Hata Ke)
+        // 🚀 RULE 2: NON-TRIAL / UPGRADED PROGRESSIVE SLOTS
         let unlockedCount = 0;
         if (hasRole2) unlockedCount = 2;
         if (hasRole5) unlockedCount = 3;
@@ -133,26 +159,44 @@ export async function getProgressiveSlots(member) {
 
         const slots = [];
 
+        // Always push Slot #1 as Free Slot
+        slots.push({
+            slot: 1,
+            label: 'Free Slot',
+            can: true,
+            need: 'Free',
+            reason: 'Base free slot available for everyone.'
+        });
+
         // Dynamic unlocking logic based on Invites & Boosts
         if (unlockedCount >= 2) {
-            slots.push({ slot: 1, label: 'Slot 1 (2 Invites)', can: true, reason: 'Unlocked via 2 Invites Role' });
-            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: true, reason: 'Unlocked via 2 Invites Role' });
+            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: true, need: '2 Invites', reason: 'Unlocked via 2 Invites Role' });
+        } else {
+            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: false, need: '2 Invites', reason: 'Requires 2 Invites or Role' });
         }
-        if (unlockedCount >= 3) slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: true, reason: 'Unlocked via 5 Invites Role' });
-        if (unlockedCount >= 4) slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: true, reason: 'Unlocked via 10 Invites Role' });
-        if (unlockedCount >= 5) slots.push({ slot: 5, label: 'Slot 5 (15 Invites / 1 Boost)', can: true, reason: 'Unlocked via 1 Boost Role' });
-        if (unlockedCount >= 6) slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: true, reason: 'Unlocked via 2 Boost Role' });
 
-        // If user has 0 slots unlocked and no trial
-        if (slots.length === 0) {
-            slots.push({
-                slot: 1,
-                label: 'Locked Slot',
-                can: false,
-                reason: 'Need 2 Invites to unlock your first slot (No Active Trial)',
-                currentInvites: invites,
-                currentBoosts: boosts
-            });
+        if (unlockedCount >= 3) {
+            slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: true, need: '5 Invites', reason: 'Unlocked via 5 Invites Role' });
+        } else if (unlockedCount >= 2) {
+            slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: false, need: '5 Invites', reason: 'Requires 5 Invites' });
+        }
+
+        if (unlockedCount >= 4) {
+            slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: true, need: '10 Invites', reason: 'Unlocked via 10 Invites Role' });
+        } else if (unlockedCount >= 3) {
+            slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: false, need: '10 Invites', reason: 'Requires 10 Invites' });
+        }
+
+        if (unlockedCount >= 5) {
+            slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: true, need: '1 Boost or 15 Invites', reason: 'Unlocked via 1 Boost Role' });
+        } else if (unlockedCount >= 4) {
+            slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: false, need: '1 Boost or 15 Invites', reason: 'Requires 1 Boost or 15 Invites' });
+        }
+
+        if (unlockedCount >= 6) {
+            slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: true, need: '2 Boosts', reason: 'Unlocked via 2 Boost Role' });
+        } else if (unlockedCount >= 5) {
+            slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: false, need: '2 Boosts', reason: 'Requires 2 Boosts' });
         }
 
         return { 
@@ -161,14 +205,19 @@ export async function getProgressiveSlots(member) {
             boosts, 
             slotsToShow: slots.length, 
             isTrialActive: false,
-            alreadyClaimed: userData?.claimedTrial || false 
+            alreadyClaimed: userData?.claimedTrial || false,
+            userProfile
         };
 
     } catch (err) {
         console.error("getProgressiveSlots error:", err.message);
         return { 
             slots: [{ slot: 1, ...SLOTS[1], can: false, reason: 'Error loading slots', currentInvites: 0, currentBoosts: 0 }], 
-            invites: 0, boosts: 0, slotsToShow: 1, isTrialActive: false 
+            invites: 0, 
+            boosts: 0, 
+            slotsToShow: 1, 
+            isTrialActive: false,
+            userProfile: null
         };
     }
 }
