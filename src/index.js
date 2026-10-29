@@ -1,5 +1,5 @@
 /**
- * index.js — Cleaned Main Entry Point (Fixed Double Message / Duplicate Event Issue)
+ * index.js — Updated Main Entry Point (Fixed Double Messages & Added Expiry Service)
  * Location: index.js
  */
 
@@ -12,9 +12,10 @@ import deployCommands from './utils/deployCommands.js';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 
-// Trackers & Role Store Imports
+// Trackers, Role Store & Expiry Service Imports
 import { cacheGuildInvites } from './handlers/inviteTracker.js';
 import { syncRolesFromDB } from './quest/roleStore.js';
+import { startTrialExpiryChecker } from './quest/trialExpiryChecker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -60,7 +61,7 @@ if (typeof connectDB === 'function') {
 banner();
 await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
 
-// Sync roles from DB on startup to avoid 'Not set' error
+// Sync roles from DB on startup
 try {
     await syncRolesFromDB();
     console.log(`${col.green}● Roles synced from MongoDB successfully${col.reset}`);
@@ -118,7 +119,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Dynamic Event Loader (Handles messageCreate, invites, boosts via src/events/) ─
+// ── Dynamic Event Loader (Handles all events dynamically via src/events/) ──
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
@@ -141,6 +142,10 @@ client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
     await cacheGuildInvites(client);
     console.log(`⚡ Guild invites cached successfully.`);
+
+    // ⏱️ Start automatic trial expiry checker background job
+    startTrialExpiryChecker(client);
+    console.log(`⏳ Trial expiry background checker service started.`);
 });
 
 client.login(TOKEN);
