@@ -1,16 +1,17 @@
 /**
- * inviteTracker.js - Robust Multi-Server Invite Tracker
+ * inviteTracker.js - Robust Multi-Server Invite Tracker (Fixed)
+ * Location: src/handlers/inviteTracker.js
  * Strict Rules: Account Age >= 7 Days, Rejoin Window >= 14 Days
  */
 
 import { getCollection, getDatabase } from '../utils/mongo.js';
 import { getRoles } from '../quest/roleStore.js';
+import { syncUserSlotsAndRoles } from '../quest/slotSyncEngine.js';
 
 const COLLECTION_INVITES = 'invites_data';
 
 const memoryCache = new Map();
 let isCacheLoaded = false;
-const dmCooldown = new Set();
 const invitesCache = new Map();
 
 async function preloadCache() {
@@ -18,6 +19,7 @@ async function preloadCache() {
         const col = await getCollection(COLLECTION_INVITES);
         if (!col) return;
         const allDocs = await col.find({}).toArray();
+        memoryCache.clear();
         allDocs.forEach(doc => {
             const key = `${doc.guildId}_${doc.userId}`;
             memoryCache.set(key, {
@@ -27,7 +29,7 @@ async function preloadCache() {
             });
         });
         isCacheLoaded = true;
-        console.log(`⚡ Invite cache loaded - ${memoryCache.size} entries - Multi Server`);
+        console.log(`⚡ Invite cache synchronized - ${memoryCache.size} entries`);
     } catch (err) {
         console.error("Invite preload error:", err.message);
     }
@@ -45,7 +47,7 @@ async function saveUserDB(guildId, userId, data) {
                 $set: { 
                     guildId, 
                     userId, 
-                    count: data.count || 0, 
+                    count: data.invitedUsers ? data.invitedUsers.length : 0, 
                     invitedUsers: data.invitedUsers || [], 
                     leaveHistory: data.leaveHistory || {}, 
                     updatedAt: new Date() 
@@ -54,26 +56,30 @@ async function saveUserDB(guildId, userId, data) {
             { upsert: true }
         );
     } catch (err) {
-        console.error(`Save error ${userId}:`, err.message);
+        console.error(`Save invite error for ${userId}:`, err.message);
     }
 }
 
 export async function getUserInvites(userId, guildId) {
-    if (!guildId) return 0;
+    if (!guildId || !userId) return 0;
     const cacheKey = `${guildId}_${userId}`;
     if (!isCacheLoaded) await preloadCache();
-    if (memoryCache.has(cacheKey)) return memoryCache.get(cacheKey).count || 0;
+    
+    if (memoryCache.has(cacheKey)) {
+        return memoryCache.get(cacheKey).invitedUsers?.length || 0;
+    }
     try {
         const col = await getCollection(COLLECTION_INVITES);
         if (!col) return 0;
         const doc = await col.findOne({ guildId, userId });
         if (doc) {
-            memoryCache.set(cacheKey, { 
-                count: doc.count || 0, 
+            const data = { 
+                count: doc.invitedUsers?.length || 0, 
                 invitedUsers: doc.invitedUsers || [], 
                 leaveHistory: doc.leaveHistory || {} 
-            });
-            return doc.count || 0;
+            };
+            memoryCache.set(cacheKey, data);
+            return data.count;
         }
     } catch (err) {
         console.error(`Fetch invites error ${userId}:`, err.message);
@@ -85,16 +91,19 @@ function getTargetRoles(guild) {
     try {
         const stored = getRoles(guild.id);
         const roles = {};
-        if (stored?.ROLE_2_INVITES) {
-            const r = guild.roles.cache.get(stored.ROLE_2_INVITES);
+        if (stored?.ROLE_SLOT_2 || stored?.ROLE_2_INVITES) {
+            const roleId = stored.ROLE_SLOT_2 || stored.ROLE_2_INVITES;
+            const r = guild.roles.cache.get(roleId);
             if (r) roles.ROLE_2_INVITES = r;
         }
-        if (stored?.ROLE_5_INVITES) {
-            const r = guild.roles.cache.get(stored.ROLE_5_INVITES);
+        if (stored?.ROLE_SLOT_3 || stored?.ROLE_5_INVITES) {
+            const roleId = stored.ROLE_SLOT_3 || stored.ROLE_5_INVITES;
+            const r = guild.roles.cache.get(roleId);
             if (r) roles.ROLE_5_INVITES = r;
         }
-        if (stored?.ROLE_10_INVITES) {
-            const r = guild.roles.cache.get(stored.ROLE_10_INVITES);
+        if (stored?.ROLE_SLOT_4 || stored?.ROLE_10_INVITES) {
+            const roleId = stored.ROLE_SLOT_4 || stored.ROLE_10_INVITES;
+            const r = guild.roles.cache.get(roleId);
             if (r) roles.ROLE_10_INVITES = r;
         }
         return roles;
@@ -225,7 +234,7 @@ export async function handleInviteJoin(member) {
             await joinChannel.send(`📥 <@${member.id}> joined! Invited by <@${inviter.id}> (**${inviterData.count}** valid invites)`).catch(() => {});
         }
 
-        // Automatic Role Assignments
+        // Role Sync & Trigger Dynamic Slot Management
         const targetRoles = getTargetRoles(guild);
         const inviterMember = await guild.members.fetch(inviter.id).catch(() => null);
         if (!inviterMember) return;
@@ -249,6 +258,11 @@ export async function handleInviteJoin(member) {
                 await inviterMember.roles.add(targetRoles.ROLE_10_INVITES).catch(() => {});
                 if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_10_INVITES.name}**!`).catch(() => {});
             }
+        }
+
+        // Trigger Sync Engine to remove Trial role if applicable and open extra slots
+        if (typeof syncUserSlotsAndRoles === 'function') {
+            await syncUserSlotsAndRoles(inviterMember, guild.client).catch(() => {});
         }
 
     } catch (err) { 
@@ -288,7 +302,7 @@ export async function handleInviteLeave(member) {
                 if (doc) {
                     inviterId = doc.userId;
                     inviterData = { 
-                        count: doc.count || 0, 
+                        count: doc.invitedUsers?.length || 0, 
                         invitedUsers: doc.invitedUsers || [], 
                         leaveHistory: doc.leaveHistory || {} 
                     };
@@ -326,6 +340,11 @@ export async function handleInviteLeave(member) {
             if (inviterData.count < 2 && targetRoles.ROLE_2_INVITES && inviterMember.roles.cache.has(targetRoles.ROLE_2_INVITES.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_2_INVITES).catch(() => {});
                 if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_2_INVITES.name}**`).catch(() => {});
+            }
+
+            // Trigger sync engine to update slot visibility
+            if (typeof syncUserSlotsAndRoles === 'function') {
+                await syncUserSlotsAndRoles(inviterMember, guild.client).catch(() => {});
             }
         }
     }
