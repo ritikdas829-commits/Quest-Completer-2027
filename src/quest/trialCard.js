@@ -1,5 +1,5 @@
 /**
- * trialCard.js - Generate and send Trial Key DM Embed Card with Full Dynamic Emoji System
+ * trialCard.js - Generate and send Trial Key DM Embed Card (Cleaned 1 Quest & No Backticks in Button)
  * Location: src/quest/trialCard.js
  */
 
@@ -7,7 +7,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { getEmojis } from './emoji.js';
 
 export async function sendTrialDmCard(user, key, guildName = 'Orbie Support', channelId = '1565058320560169182') {
-    // Dynamic Emoji System integration (guildId ke hisab se ya fallback 'global')
+    // Dynamic Emoji System integration
     const emojis = await getEmojis('global');
 
     // Server ke diye gaye channel ID ke sath direct clickable link
@@ -21,7 +21,7 @@ export async function sendTrialDmCard(user, key, guildName = 'Orbie Support', ch
             `${emojis.tag || '🏷️'} **Key Type**\n` +
             `\`Trial Key\`\n\n` +
             `${emojis.target || '🎯'} **Premium Duration**\n` +
-            `\`3 Quests\`\n\n` +
+            `\`1\`\n\n` +
             `${emojis.hourglass || '⏳'} **Key Expires In**\n` +
             `\`30 Days\`\n\n` +
             `${emojis.key || '🔑'} **Trial Key**\n` +
@@ -31,14 +31,14 @@ export async function sendTrialDmCard(user, key, guildName = 'Orbie Support', ch
             `${emojis.scroll || '📜'} **Important Notes**\n` +
             `• Only you can redeem this key.\n` +
             `• Trial can only be redeemed once.\n` +
-            `• Trial allows solving up to 3 quests.\n` +
+            `• Trial allows solving up to 1 quest.\n` +
             `• Trial users can only link the Discord account that redeemed the trial.\n` +
             `• Keep this key private. Sharing it may result in loss of trial.`
         )
         .setFooter({ text: 'Orbie Security System' })
         .setTimestamp();
 
-    // Copy Key Button with Key Emoji
+    // Copy Key Button (Sirf pure key ka string, koi backticks nahi)
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(`copy_key_${key}`)
