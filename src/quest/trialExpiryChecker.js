@@ -1,5 +1,5 @@
 /**
- * trialExpiryChecker.js - Safely checks and removes expired trial/premium roles without touching lifetime/active users
+ * trialExpiryChecker.js - Bulletproof expiry checker with strict safety filters
  * Location: src/quest/trialExpiryChecker.js
  */
 
@@ -11,7 +11,7 @@ const userTrialSchema = new mongoose.Schema({
     claimedTrial: { type: Boolean, default: false },
     active: { type: Boolean, default: false },
     expiresAt: { type: Number, default: null },
-    durationDays: { type: mongoose.Schema.Types.Mixed, default: 30 }, // 🛡️ Fixed to Mixed type for 'lifetime' support
+    durationDays: { type: mongoose.Schema.Types.Mixed, default: 30 },
     slot: { type: Number, default: 1 }
 });
 
@@ -23,20 +23,26 @@ export function startTrialExpiryChecker(client) {
         try {
             const now = Date.now();
             
-            // 🛑 Safety Filter: Lifetime users ya jinka duration 'lifetime' hai, unhe query se bilkul bahar rakho
-            const expiredUsers = await UserTrial.find({
+            // 🛑 Ultimate Safety Filter: Sirf active users jinpar expiry date hai, aur jo lifetime/unlimited nahi hain
+            const activeUsers = await UserTrial.find({
                 active: true,
-                expiresAt: { $ne: null, $lte: now },
-                durationDays: { $ne: 'lifetime' } // Lifetime keys kabhi expire nahi hongi
+                expiresAt: { $ne: null, $lte: now }
             });
 
-            if (!expiredUsers || expiredUsers.length === 0) return;
+            if (!activeUsers || activeUsers.length === 0) return;
 
-            for (const userDoc of expiredUsers) {
-                const userId = userDoc.userId;
+            for (const userDoc of activeUsers) {
+                const duration = userDoc.durationDays;
+                
+                // 🛡️ Extra Code-Level Guard: Agar duration 'lifetime' ya '-1' hai, toh galti se bhi expire mat karo
+                if (duration === 'lifetime' || duration === -1 || duration === 'unlimited') {
+                    continue;
+                }
 
-                // Double check in case expiresAt was somehow null or invalid
+                // Agar expiresAt abhi ke time se zyada hai, toh skip karo
                 if (!userDoc.expiresAt || userDoc.expiresAt > now) continue;
+
+                const userId = userDoc.userId;
 
                 // Mark user inactive in MongoDB
                 userDoc.active = false;
