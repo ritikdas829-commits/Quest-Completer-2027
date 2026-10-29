@@ -1,5 +1,5 @@
 /**
- * keyActivationHandler.js - Combined Modal Handler, Dynamic Prefix, and Full Emoji System Integration
+ * keyActivationHandler.js - Combined Modal Handler, Dynamic Prefix, and Full Dynamic Emoji System Integration
  * Location: src/handlers/keyActivationHandler.js
  */
 
@@ -92,7 +92,7 @@ export async function handleActivationModalSubmit(interaction) {
 /**
  * 3. Dynamic Prefix Command Support
  */
-export default {
+export const activateCmd = {
     name: 'activate',
     prefix: 'activate',
     description: 'Redeem your premium or trial key',
@@ -123,11 +123,17 @@ export default {
             async (embedObj) => await message.author.send({ embeds: [embedObj] }),
             activePrefix
         );
+    },
+
+    async prefixExecute(message, args, client) {
+        return await this.execute(message, args, client);
     }
 };
 
+export default activateCmd;
+
 /**
- * Core Shared Key Redemption Logic with Custom Emoji System
+ * Core Shared Key Redemption Logic with Full Dynamic Emoji System
  */
 async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJI, replyFn, dmFn, activePrefix = ';') {
     const keyData = await KeyStore.findOne({ keyString: userEnteredKey });
@@ -137,7 +143,7 @@ async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJ
         errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `# ${EMOJI.error || '❌'} Invalid Key\n` +
             `The key you entered does not exist or is incorrect.\n\n` +
-            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+            `### ${EMOJI.list || '📋'} Key Code:\n\`\`\`${userEnteredKey}\`\`\``
         ));
         return await replyFn({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
@@ -147,7 +153,7 @@ async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJ
         errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `# ${EMOJI.error || '❌'} Key Already Redeemed\n` +
             `This key has already been used by someone else.\n\n` +
-            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+            `### ${EMOJI.list || '📋'} Key Code:\n\`\`\`${userEnteredKey}\`\`\``
         ));
         return await replyFn({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
@@ -157,7 +163,7 @@ async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJ
         errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `# ${EMOJI.error || '❌'} Unauthorized Key\n` +
             `This key is locked to another user and cannot be used by you.\n\n` +
-            `### 📋 Key Code:\n\`\`\`${userEnteredKey}\`\`\``
+            `### ${EMOJI.list || '📋'} Key Code:\n\`\`\`${userEnteredKey}\`\`\``
         ));
         return await replyFn({ components: [errCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
@@ -212,12 +218,12 @@ async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJ
             `• **Type:** \`${isTrial ? 'Trial Key' : 'Premium Key'}\`\n` +
             `• **Duration:** ${keyData.durationDays === -1 ? 'Lifetime' : `${keyData.durationDays} Days`}\n` +
             `• **Role Status:** ${roleStatusText}\n\n` +
-            `### 📋 Your Activated Key:\n\`\`\`${userEnteredKey}\`\`\``
+            `### ${EMOJI.list || '📋'} Your Activated Key:\n\`\`\`${userEnteredKey}\`\`\``
         )
     );
     await replyFn({ components: [successCard], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
 
-    // Detailed DM Success Embed with custom emojis
+    // Detailed DM Success Embed with full custom emojis
     try {
         const dmEmbed = new EmbedBuilder()
             .setColor(0x57F287)
@@ -225,12 +231,12 @@ async function processKeyRedemption(userEnteredKey, userId, guild, guildId, EMOJ
             .setDescription('Your key was successfully redeemed.')
             .addFields(
                 { name: `${EMOJI.trial || '🧿'} Tier Type`, value: `\`${isTrial ? 'Trial' : 'Premium'}\``, inline: false },
-                { name: '⏱️ Redeemed At', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false },
-                { name: '📦 Allocation', value: isTrial ? '`3 Quest Credits` / `1 Trial Slot`' : '`Full Access` / `5 Active Slots`', inline: false },
-                { name: '🛡️ Role Granted', value: `\`${roleStatusText}\``, inline: false },
+                { name: `${EMOJI.expire || '⏱️'} Redeemed At`, value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false },
+                { name: `${EMOJI.reward || '📦'} Allocation`, value: isTrial ? '`3 Quest Credits` / `1 Trial Slot`' : '`Full Access` / `5 Active Slots`', inline: false },
+                { name: `${EMOJI.shield || '🛡️'} Role Granted`, value: `\`${roleStatusText}\``, inline: false },
                 { 
-                    name: '🚀 Getting Started', 
-                    value: `You can now start using automations:\n> 🔗 Link account: \`${activePrefix}link\`\n> ⚡ Start quests: \`${activePrefix}questall\``, 
+                    name: `${EMOJI.rocket || '🚀'} Getting Started`, 
+                    value: `You can now start using automations:\n> ${EMOJI.link || '🔗'} Link account: \`${activePrefix}link\`\n> ${EMOJI.online || '⚡'} Start quests: \`${activePrefix}questall\``, 
                     inline: false 
                 }
             );
