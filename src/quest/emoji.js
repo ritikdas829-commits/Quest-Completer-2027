@@ -59,6 +59,13 @@ const DEFAULT_EMOJIS = {
     scroll: "📜",
     notes: "📜",
 
+    // Profile & Presence Emojis (Added for tokensys.js)
+    user: "👤",
+    id: "🆔",
+    slot: "🎰",
+    calendar: "📅",
+    globe: "🌐",
+
     // Security & Extra Utility
     lock: "🔒",
     unlock: "🔓",
