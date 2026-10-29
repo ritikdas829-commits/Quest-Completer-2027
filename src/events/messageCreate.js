@@ -1,5 +1,5 @@
 /**
- * messageCreate.js — Handles Prefix Commands with Space & Trial Bypass Support
+ * messageCreate.js — Handles Prefix Commands with Seamless Space Normalization
  * Location: src/events/messageCreate.js
  */
 
@@ -13,35 +13,33 @@ export default {
     async execute(message, client) {
         if (message.author.bot || !message.guild) return;
 
-        // Get correct prefix dynamically
         const prefix = client.getPrefix ? client.getPrefix(message.guild.id) : (client.prefix || process.env.PREFIX || ';');
-        
         if (!message.content.startsWith(prefix)) return;
 
-        const args = message.content.slice(prefix.length).trim().split(/\s+/);
-        let commandName = args.shift()?.toLowerCase();
+        const rawArgs = message.content.slice(prefix.length).trim().split(/\s+/);
+        const firstArg = rawArgs.shift()?.toLowerCase();
 
-        if (!commandName) return;
+        if (!firstArg) return;
 
-        // 🛑 Check for multi-word or space-separated commands (e.g., 'activate trial' -> commandName = 'activate', args[0] = 'trial')
-        let fullCommandKey = commandName;
+        // Command mapping aur space combination handle karne ke liye
+        let commandName = firstArg;
+        let args = [...rawArgs];
         let isActivateTrial = (commandName === 'activatetrial') || (commandName === 'activate' && args[0]?.toLowerCase() === 'trial');
 
+        // Agar user ne 'activate trial' likha hai, toh use 'activatetrial' maan lo aur trial bypass on rakho
         if (commandName === 'activate' && args[0]?.toLowerCase() === 'trial') {
-            fullCommandKey = 'activatetrial'; // Map it to 'activatetrial' key in client.prefixCommands
-            args.shift(); // Remove 'trial' from args so command handler receives clean arguments
+            commandName = 'activatetrial';
+            args.shift(); // 'trial' argument hata do taaki command handler ko extra arg na mile
         }
 
-        // Fetch command from client.prefixCommands
-        let command = client.prefixCommands.get(fullCommandKey) || client.prefixCommands.get(commandName);
-
-        // Fallback: Check if multi-word combination exists directly (e.g. client.prefixCommands.get('activatetrial'))
-        if (!command && args.length > 0) {
-            const combinedKey = `${commandName}${args[0].toLowerCase()}`;
-            command = client.prefixCommands.get(combinedKey);
+        // Agar command map mein direct nahi mili aur user ne space diya tha (jaise activate trial ya token status)
+        let command = client.prefixCommands.get(commandName);
+        if (!command && rawArgs.length > 0) {
+            const combinedName = `${firstArg}${rawArgs[0].toLowerCase()}`;
+            command = client.prefixCommands.get(combinedName);
             if (command) {
-                if (combinedKey === 'activatetrial') isActivateTrial = true;
-                args.shift();
+                if (combinedName === 'activatetrial') isActivateTrial = true;
+                args = rawArgs.slice(1); // Pehla extra word hata kar baaki args rakh lo
             }
         }
 
