@@ -1,5 +1,5 @@
 /**
- * trialCard.js - Generate and send Trial Key DM Embed Card with Exact Emojis & UI
+ * trialCard.js - Generate and send Trial Key DM Embed Card with Clean Formatting
  * Location: src/quest/trialCard.js
  */
 
@@ -21,7 +21,7 @@ export async function sendTrialDmCard(user, key, guildName = 'SyntheX Developmen
             `⏳ **Key Expires In**\n` +
             `\`30 Days\`\n\n` +
             `🔑 **Trial Key**\n` +
-            `\`\`\`${key}\`\`\`\n\n` +
+            `\`${key}\`\n\n` + // 👈 Yahan triple backticks ki jagah single backtick kar diya hai
             `🎫 **Redeem Instructions**\n` +
             `Go to the redeem panel, **${guildName}** › **${channelName}**, click the **Activate Premium** button, and paste this key.\n\n` +
             `📜 **Important Notes**\n` +
