@@ -1,3 +1,8 @@
+/**
+ * messageCreate.js — Fixed Prefix Handler with Seamless Space & Trial Handling
+ * Location: src/events/messageCreate.js
+ */
+
 import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
 import { ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
@@ -14,10 +19,18 @@ export default {
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
-    const commandName = args.shift().toLowerCase();
+    let commandName = args.shift()?.toLowerCase();
 
-    // 🛑 Allow 'activate trial' command without checking role access
-    const isActivateTrial = commandName === 'activate' && args[0]?.toLowerCase() === 'trial';
+    if (!commandName) return;
+
+    // 🛑 Smart Check: Agar user ne 'activate trial' likha hai (space dekar), toh command ko 'activatetrial' maan lo
+    if (commandName === 'activate' && args[0]?.toLowerCase() === 'trial') {
+      commandName = 'activatetrial';
+      args.shift(); // 'trial' argument ko hata do taaki command handler ko clean args milein
+    }
+
+    // 🛑 Allow 'activatetrial' command without checking role access
+    const isActivateTrial = (commandName === 'activatetrial');
 
     if (!isActivateTrial) {
       const member = message.member;
@@ -40,13 +53,14 @@ export default {
             `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
             `${EMOJI.diamond || '💎'} **Free Orbie Premium Trial!**\n` +
             `> ${EMOJI.star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-            `> ${EMOJI.gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n\n` +
+            `> ${EMOJI.gift || '🎁'} Use the command \`${prefix}activate trial\` or \`${prefix}activatetrial\` to get your trial key at no cost.\n\n` +
             `Join support: https://discord.gg/y5f29e5tQb`
         ));
         return await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }).catch(() => {});
       }
     }
 
+    // Ab client.prefixCommands se sahi command uthayega
     const command = client.prefixCommands.get(commandName);
     if (!command) return;
 
