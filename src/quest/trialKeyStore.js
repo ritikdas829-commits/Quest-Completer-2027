@@ -83,7 +83,7 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
         if (existingUser && existingUser.claimedTrial) {
             return { 
                 success: false, 
-                message: `❌ Aapne apna **One-Time Free Trial** pehle hi claim kar liya hai! Aap dobara trial key generate nahi kar sakte.` 
+                message: `❌ You have already claimed your **One-Time Free Trial**! You cannot generate another trial key.` 
             };
         }
     }
@@ -99,7 +99,7 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
         }
 
         if (adminData.usedKeys >= adminData.maxKeys) {
-            return { success: false, message: `Aapki key generation limit khatam ho chuki hai! (${adminData.usedKeys}/${adminData.maxKeys} keys used)` };
+            return { success: false, message: `Your key generation limit has been reached! (${adminData.usedKeys}/${adminData.maxKeys} keys used)` };
         }
 
         if (requestedDays > 30 || requestedDays <= 0) {
