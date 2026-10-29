@@ -1,5 +1,5 @@
 /**
- * emoji.js — Professional MongoDB Emoji Manager with Clean Defaults
+ * emoji.js — Professional MongoDB Emoji Manager with Clean Defaults & Custom Trial/Card Emojis
  * Location: src/quest/emoji.js
  */
 
@@ -16,11 +16,11 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 🎨 Shuruat se hi saare Normal aur Default Emojis yahan defined hain (Jismein 'done' bhi add kar diya hai)
+// 🎨 Default Emojis including Trial/Premium Card specific icons
 const DEFAULT_EMOJIS = {
     // Status & UI Indicators
     success: "✅",
-    done: "✅", // Quest complete / done hone par yeh emoji use hoga
+    done: "✅",
     error: "❌",
     warn: "⚠️",
     loading: "⚙️",
@@ -40,9 +40,15 @@ const DEFAULT_EMOJIS = {
     arrow: "➡️",
     dot: "•",
 
-    // Cards & Sections Headings
+    // Cards & Sections Headings (Trial/Premium Card Icons)
+    crown: "👑",
+    keyType: "🏷️",
+    duration: "🎯",
+    expire: "⏳",
+    keyIcon: "🔑",
+    ticket: "🎫",
+    notes: "📜",
     task: "📋",
-    expire: "📅",
     stats: "📊",
     reward: "🎁",
 
