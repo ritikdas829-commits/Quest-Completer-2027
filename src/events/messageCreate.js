@@ -8,7 +8,7 @@ export default {
   async execute(message, client) {
     if (message.author.bot || !message.guild) return;
 
-    // Get correct prefix dynamically from client config or env
+    // Get correct prefix dynamically
     const prefix = client.getPrefix ? client.getPrefix(message.guild.id) : (client.prefix || process.env.PREFIX || ';');
     
     if (!message.content.startsWith(prefix)) return;
@@ -25,7 +25,6 @@ export default {
       const roles = getRoles(guildId);
       const EMOJI = await getEmojis(guildId);
 
-      // Check if user has any valid trial, invite role, booster role, or server boost
       const hasValidRole = 
         (roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) ||
         (roles.ROLE_2_INVITES && member.roles.cache.has(roles.ROLE_2_INVITES)) ||
@@ -34,7 +33,6 @@ export default {
         (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) ||
         member.premiumSince;
 
-      // Agar user ke paas koi valid role/status nahi hai, toh Premium Access Required panel bhejo
       if (!hasValidRole) {
         const c = new ContainerBuilder().setAccentColor(0x2B2D31);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -53,11 +51,10 @@ export default {
     if (!command) return;
 
     try {
-      // Prioritize prefixExecute safely without duplicate calls
       if (typeof command.prefixExecute === 'function') {
-        await command.prefixExecute(message, args, client);
+        return await command.prefixExecute(message, args, client);
       } else if (typeof command.execute === 'function' && !command.data) {
-        await command.execute(message, args, client);
+        return await command.execute(message, args, client);
       }
     } catch (err) {
       console.error(`Error executing prefix command ${commandName}:`, err);
