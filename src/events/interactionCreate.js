@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Security, Cooldown, Panel Locks & Activation Modal
+ * interactionCreate.js — Complete Interaction Handler with Security, Cooldown, Panel Locks, Activation Modal & Copy Key Support
  * Location: src/events/interactionCreate.js
  */
 
@@ -10,7 +10,7 @@ import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { buildHelpPanel } from '../commands/help.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } from 'discord.js';
 import { getEmojis } from '../quest/emoji.js';
 import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
@@ -128,10 +128,19 @@ export default {
                 return;
             }
 
-            // 3.5. Orbie Premium & Trial Activation Button Handler (Connected with keyActivationHandler)
+            // 3.5. Orbie Premium & Trial Activation Button Handler
             if (interaction.isButton() && interaction.customId === 'open_activate_modal') {
                 const handled = await handleActivationButton(interaction);
                 if (handled) return;
+            }
+
+            // 3.6. Copy Key Button Handler (Sends raw code in ephemeral message for 1-tap copy)
+            if (interaction.isButton() && interaction.customId.startsWith('copy_key_')) {
+                const keyToCopy = interaction.customId.replace('copy_key_', '');
+                return await interaction.reply({
+                    content: `\`${keyToCopy}\``,
+                    flags: MessageFlags.Ephemeral
+                });
             }
 
             // 4. Premium Slot Buttons Handler
