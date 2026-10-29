@@ -1,5 +1,5 @@
 /**
- * orbiePanel.js - Send the Public Premium Activation Panel & Modal Trigger
+ * orbiePanel.js - Send the Public Premium Activation Panel & Secure Modal Handler
  * Location: src/commands/orbiePanel.js
  */
 
@@ -8,7 +8,29 @@ import {
     ButtonBuilder, ButtonStyle, PermissionFlagsBits, 
     ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags 
 } from 'discord.js';
+import mongoose from 'mongoose';
 import { getEmojis } from '../quest/emoji.js';
+import { getRoles } from '../quest/roleStore.js';
+
+// Mongoose Models reference
+const KeyStore = mongoose.models.KeyStore || mongoose.model('KeyStore', new mongoose.Schema({
+    keyString: String,
+    assignedTo: String,
+    type: String,
+    durationDays: mongoose.Schema.Types.Mixed,
+    slot: Number,
+    redeemed: Boolean,
+    createdAt: Number
+}));
+
+const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', new mongoose.Schema({
+    userId: String,
+    claimedTrial: Boolean,
+    active: Boolean,
+    expiresAt: Number,
+    durationDays: mongoose.Schema.Types.Mixed,
+    slot: Number
+}));
 
 export const orbiePanelCmd = {
     data: new SlashCommandBuilder()
@@ -39,7 +61,6 @@ export const orbiePanelCmd = {
  */
 async function sendPublicPanel(channel, guildId, client) {
     const EMOJI = await getEmojis(guildId || 'global');
-    const prefix = client?.getPrefix ? client.getPrefix(guildId) : (client?.config?.prefix || client?.prefix || ';');
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -94,4 +115,95 @@ export async function handleOrbieButton(interaction) {
     modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
     await interaction.showModal(modal);
     return true;
+}
+
+/**
+ * Secure Modal Submit Handler: Handles Key Verification, Role Checks, and Activation
+ */
+export async function handleOrbieModalSubmit(interaction) {
+    if (!interaction.isModalSubmit() || interaction.customId !== 'orbie_activate_modal') return false;
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const guildId = interaction.guildId;
+    const member = interaction.member;
+    const userId = interaction.user.id;
+    const EMOJI = await getEmojis(guildId);
+    const roles = getRoles(guildId);
+
+    // 🛑 Check 1: Role Pre-check (Agar user ke paas pehle se active role hai)
+    const hasExistingRole = 
+        (roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) ||
+        (roles.ROLE_PREMIUM && member.roles.cache.has(roles.ROLE_PREMIUM)) ||
+        (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST));
+
+    if (hasExistingRole) {
+        return await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Already Active!**\nYou already have an active Trial or Premium role in this server. You cannot redeem another key right now.`
+        });
+    }
+
+    const keyString = interaction.fields.getTextInputValue('key_input').trim();
+
+    // 🛑 Check 2: Key Existence Check
+    const keyDoc = await KeyStore.findOne({ keyString });
+    if (!keyDoc) {
+        return await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThe key you entered does not exist in our database. Please check and try again.`
+        });
+    }
+
+    // 🛑 Check 3: Key Already Redeemed Check
+    if (keyDoc.redeemed) {
+        return await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used and cannot be redeemed again.`
+        });
+    }
+
+    // 🛑 Check 4: Key Sharing / Account Locking Check (Strict Ownership)
+    if (keyDoc.assignedTo && keyDoc.assignedTo !== userId) {
+        return await interaction.editReply({
+            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is strictly locked to another Discord account. You cannot use someone else's key!`
+        });
+    }
+
+    // 🚀 Expiry Calculation
+    const durationDays = keyDoc.durationDays;
+    let expiresAt = null;
+
+    if (durationDays !== 'lifetime' && durationDays !== -1) {
+        const days = parseInt(durationDays) || 30;
+        expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+    } else {
+        expiresAt = null; // Lifetime support
+    }
+
+    // 📝 Mark Key as Redeemed
+    keyDoc.redeemed = true;
+    await keyDoc.save();
+
+    // 📝 Save/Update User Status in Database
+    await UserTrial.findOneAndUpdate(
+        { userId },
+        {
+            $set: {
+                active: true,
+                expiresAt: expiresAt,
+                durationDays: durationDays,
+                slot: keyDoc.slot || 1
+            }
+        },
+        { upsert: true, new: true }
+    );
+
+    // 👑 Assign Role to User
+    const targetRoleId = roles.ROLE_PREMIUM || roles.ROLE_TRIAL;
+    if (targetRoleId) {
+        await member.roles.add(targetRoleId).catch(err => console.error("Failed to add role:", err));
+    }
+
+    // 🎉 Success Response
+    return await interaction.editReply({
+        content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\nYour key has been verified, and **Slot #${keyDoc.slot || 1}** along with your role has been unlocked!`
+    });
 }
