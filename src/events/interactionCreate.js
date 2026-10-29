@@ -5,6 +5,7 @@
 
 import { handleGuideButtons } from '../commands/guide.js';
 import { handleButton as handlePremiumButton, handleModal as handlePremiumModal } from '../commands/premiumLink.js';
+import { handleActivationButton, handleActivationModalSubmit } from '../handlers/keyActivationHandler.js';
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { buildHelpPanel } from '../commands/help.js';
 import { QuestClient } from '../quest/questClient.js';
@@ -127,22 +128,10 @@ export default {
                 return;
             }
 
-            // 3.5. Orbie Premium & Trial Activation Button Handler
+            // 3.5. Orbie Premium & Trial Activation Button Handler (Connected with keyActivationHandler)
             if (interaction.isButton() && interaction.customId === 'open_activate_modal') {
-                const modal = new ModalBuilder()
-                    .setCustomId('orbie_activate_modal_submit')
-                    .setTitle('🔑 Activate Orbie Premium / Trial');
-
-                const keyInput = new TextInputBuilder()
-                    .setCustomId('activation_key_input')
-                    .setLabel('Paste your Key here:')
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('ORBIE-XXXX-XXXX-XXXX')
-                    .setRequired(true);
-
-                modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
-                await interaction.showModal(modal);
-                return;
+                const handled = await handleActivationButton(interaction);
+                if (handled) return;
             }
 
             // 4. Premium Slot Buttons Handler
@@ -222,16 +211,9 @@ export default {
 
             // 8. Modals Handler
             if (interaction.isModalSubmit()) {
-                if (interaction.customId === 'orbie_activate_modal_submit') {
-                    await interaction.deferReply({ flags: 64 });
-                    const key = interaction.fields.getTextInputValue('activation_key_input').trim();
-                    
-                    const successEmbed = new EmbedBuilder()
-                        .setColor(0x57F287)
-                        .setTitle(`${EMOJI.success || '✅'} Key Processing`)
-                        .setDescription(`Aapne key submit kar di hai: \`${key}\`. Verification aur role assignment process ho raha hai!`);
-                    
-                    await interaction.editReply({ embeds: [successEmbed] });
+                // Key Activation Modal Handler
+                if (interaction.customId === 'orbie_activate_modal') {
+                    await handleActivationModalSubmit(interaction, client);
                     return;
                 }
 
