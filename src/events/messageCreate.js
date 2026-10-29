@@ -1,4 +1,6 @@
 import { getEmojis } from '../quest/emoji.js';
+import { getRoles } from '../quest/roleStore.js';
+import { ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
 
 export default {
   name: 'messageCreate',
@@ -13,6 +15,38 @@ export default {
 
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const commandName = args.shift().toLowerCase();
+
+    // 🛑 Allow 'activate trial' command without checking role access
+    const isActivateTrial = commandName === 'activate' && args[0]?.toLowerCase() === 'trial';
+
+    if (!isActivateTrial) {
+      const member = message.member;
+      const guildId = message.guild.id;
+      const roles = getRoles(guildId);
+
+      // Check if user has any valid trial, invite role, booster role, or server boost
+      const hasValidRole = 
+        (roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) ||
+        (roles.ROLE_2_INVITES && member.roles.cache.has(roles.ROLE_2_INVITES)) ||
+        (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES)) ||
+        (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST)) ||
+        (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) ||
+        member.premiumSince;
+
+      // Agar user ke paas koi valid role/status nahi hai, toh Premium Access Required panel bhejo
+      if (!hasValidRole) {
+        const c = new ContainerBuilder().setAccentColor(0x2B2D31);
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `# 💙 Premium Access Required\n\n` +
+            `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
+            `💎 **Free Orbie Premium Trial!**\n` +
+            `> 🌟 You are eligible to claim a free 3-day Orbie Premium trial.\n` +
+            `> 🎁 Use the command \`;activate trial\` to get your trial key at no cost.\n\n` +
+            `Join support: https://discord.gg/y5f29e5tQb`
+        ));
+        return await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }).catch(() => {});
+      }
+    }
 
     const command = client.prefixCommands.get(commandName);
     if (!command) return;
