@@ -35,27 +35,28 @@ export const orbiePanelCmd = {
 };
 
 /**
- * Core function to build and send the public panel
+ * Core function to build and send the public panel with clean emoji integration
  */
 async function sendPublicPanel(channel, guildId, client) {
     const EMOJI = await getEmojis(guildId || 'global');
-    const prefix = client?.config?.prefix || client?.prefix || ';';
+    const prefix = client?.getPrefix ? client.getPrefix(guildId) : (client?.config?.prefix || client?.prefix || ';');
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle(`${EMOJI.premium || '💎'} Orbie Premium & Trial Panel`)
         .setDescription(
-            `Unlock Orbie Premium automation, quest support, and active notifications.\n\n` +
+            `Unlock Orbie Premium automation, video/desktop quest support, and active notifications.\n\n` +
             `${EMOJI.trial || '💎'} **Trial Keys**\n` +
-            `• Claim your free trial key by running \`${prefix}activate trial\`.\n` +
-            `• Limited to one lifetime trial redemption per account.\n\n` +
+            `• Grant Orbie Trial for 3 days.\n` +
+            `• Limited to one lifetime trial redemption per Discord account.\n` +
+            `• Trial accounts can only link their own Discord token (no alts).\n\n` +
             `${EMOJI.crown || '👑'} **Premium Keys**\n` +
-            `• Grant full Orbie Premium access (active slots unlocked).\n` +
-            `• Extend existing subscriptions natively.\n\n` +
-            `${EMOJI.key || '🟡'} **Activation**\n` +
-            `Click the button below to submit your activation key!`
+            `• Grant full Orbie Premium (5 active account slots).\n` +
+            `• Extend existing paid premium periods natively.\n\n` +
+            `${EMOJI.ticket || '🎫'} **Activation**\n` +
+            `Click the button below to activate your key!`
         )
-        .setFooter({ text: 'Orbie Secure Licensing System' });
+        .setFooter({ text: 'Thank you for using Orbie.' });
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
