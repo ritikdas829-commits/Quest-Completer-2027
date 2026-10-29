@@ -1,3 +1,8 @@
+/**
+ * index.js — Cleaned Main Entry Point (Fixed Double Message / Duplicate Event Issue)
+ * Location: index.js
+ */
+
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
 import { readdirSync } from 'fs';
@@ -8,8 +13,7 @@ import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 
 // Trackers & Role Store Imports
-import { cacheGuildInvites, handleInviteJoin, handleInviteLeave } from './handlers/inviteTracker.js';
-import { handleBoostUpdate } from './handlers/boostTracker.js';
+import { cacheGuildInvites } from './handlers/inviteTracker.js';
 import { syncRolesFromDB } from './quest/roleStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -86,7 +90,7 @@ client.getPrefix = function(guildId) {
     return activePrefix;
 };
 
-// ── Dynamic Command Loader (Fixed to Register ALL Commands Correctly) ────────
+// ── Dynamic Command Loader ─────────────────────────────────────────────────
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
@@ -114,7 +118,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Dynamic Event Loader ────────────────────────────────────────────────────
+// ── Dynamic Event Loader (Handles messageCreate, invites, boosts via src/events/) ─
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
@@ -137,19 +141,6 @@ client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
     await cacheGuildInvites(client);
     console.log(`⚡ Guild invites cached successfully.`);
-});
-
-// ── Invite & Boost Event Listeners ─────────────────────────────────────────
-client.on('guildMemberAdd', async (member) => {
-    await handleInviteJoin(member);
-});
-
-client.on('guildMemberRemove', async (member) => {
-    await handleInviteLeave(member);
-});
-
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    await handleBoostUpdate(oldMember, newMember);
 });
 
 client.login(TOKEN);
