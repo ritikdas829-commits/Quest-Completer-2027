@@ -1,5 +1,5 @@
 /**
- * tokensys.js - MongoDB Online Presence & Interactive Control Panel
+ * tokensys.js - MongoDB Online Presence & Interactive Control Panel with Full Dynamic Emojis
  * Location: src/commands/tokensys.js
  */
 
@@ -27,13 +27,13 @@ async function buildTokenDashboard(client, guildId, userId) {
 
     if (!accounts || accounts.length === 0) {
         embed.setColor(0xED4245)
-             .setTitle(`${emojis.warn || '❌'} No Tokens Linked`)
+             .setTitle(`${emojis.error || '❌'} No Tokens Linked`)
              .setDescription('No accounts linked yet. Please use the `?link` command to add a token.');
         return { embeds: [embed], flags: MessageFlags.Ephemeral };
     }
 
     embed.setColor(0x5865F2)
-         .setTitle(`${emojis.list || '📊'} Token Status Dashboard & Control Panel`)
+         .setTitle(`${emojis.stats || '📊'} Token Status Dashboard & Control Panel`)
          .setDescription('Use the buttons below to bring your accounts online/offline or select a slot.');
 
     const menuOptions = [];
@@ -71,9 +71,9 @@ async function buildTokenDashboard(client, guildId, userId) {
     // Control Buttons (Online On / Online Off / Refresh)
     components.push(
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('tokensys_btn_on').setLabel('Online On').setEmoji('🟢').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('tokensys_btn_off').setLabel('Online Off').setEmoji('🔴').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('tokensys_btn_refresh').setLabel('Refresh Panel').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('tokensys_btn_on').setLabel('Online On').setEmoji(emojis.online || '🟢').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('tokensys_btn_off').setLabel('Online Off').setEmoji(emojis.offline || '🔴').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('tokensys_btn_refresh').setLabel('Refresh Panel').setEmoji(emojis.gear || '🔄').setStyle(ButtonStyle.Secondary)
         )
     );
 
@@ -102,7 +102,7 @@ export const onlinestatus = {
 };
 
 // ─────────────────────────────────────────────
-// 2. ONLINEON (Formerly onlineid) — Sets active slot & brings account online
+// 2. ONLINEON — Sets active slot & brings account online
 // ─────────────────────────────────────────────
 export const onlineon = {
     name: 'onlineon',
@@ -125,8 +125,8 @@ export const onlineon = {
         if (!active || !active.token) {
             const errEmbed = new EmbedBuilder()
                 .setColor(0xED4245)
-                .setTitle(`${emojis.warn || '❌'} Slot Empty / Invalid Token`)
-                .setDescription(`Slot **#${slot}** me koi valid token linked nahi hai, ya token **expired/invalid** ho chuka hai.\n\nPehle \`?link\` command ka use karke naya token link karein.`);
+                .setTitle(`${emojis.error || '❌'} Slot Empty / Invalid Token`)
+                .setDescription(`Slot **#${slot}** does not have a valid linked token, or the token is **expired/invalid**.\n\nPlease use the \`?link\` command to link a new token.`);
             return await interaction.editReply({ embeds: [errEmbed] });
         }
 
@@ -139,13 +139,11 @@ export const onlineon = {
             if (!res.ok) {
                 const expiredEmbed = new EmbedBuilder()
                     .setColor(0xED4245)
-                    .setTitle(`${emojis.warn || '❌'} Token Expired or Invalid`)
-                    .setDescription(`Slot **#${slot}** ka token Discord dwara reject kar diya gaya hai (Invalid/Expired Token).\n\nKripya apna token dobara link karein.`);
+                    .setTitle(`${emojis.error || '❌'} Token Expired or Invalid`)
+                    .setDescription(`The token for Slot **#${slot}** was rejected by Discord (Invalid/Expired Token).\n\nPlease link your token again.`);
                 return await interaction.editReply({ embeds: [expiredEmbed] });
             }
-        } catch {
-            // Proceed if fetch fails temporarily, but attempt connection
-        }
+        } catch {}
 
         startUserOnlinePresence(userId, active.token, 'online');
 
@@ -167,7 +165,7 @@ export const onlineon = {
         const emojis = await getEmojis(guildId);
 
         if (!slot || slot < 1 || slot > 5) {
-            return message.reply(`${emojis.warn || '❌'} Sahi slot number chune (1-5). Example: \`?onlineon 1\``);
+            return message.reply({ content: `${emojis.error || '❌'} Please select a valid slot number (1-5). Example: \`;onlineon 1\``, allowedMentions: { repliedUser: false } });
         }
 
         await client.tokenStore.setActiveSlot(guildId, userId, slot);
@@ -176,9 +174,9 @@ export const onlineon = {
         if (!active || !active.token) {
             const errEmbed = new EmbedBuilder()
                 .setColor(0xED4245)
-                .setTitle(`${emojis.warn || '❌'} Slot Empty / Invalid Token`)
-                .setDescription(`Slot **#${slot}** me koi valid token linked nahi hai, ya token **expired/invalid** ho chuka hai.\n\nPehle \`?link\` command ka use karke naya token link karein.`);
-            return await message.reply({ embeds: [errEmbed] });
+                .setTitle(`${emojis.error || '❌'} Slot Empty / Invalid Token`)
+                .setDescription(`Slot **#${slot}** does not have a valid linked token, or the token is **expired/invalid**.\n\nPlease use the \`?link\` command to link a new token.`);
+            return await message.reply({ embeds: [errEmbed], allowedMentions: { repliedUser: false } });
         }
 
         startUserOnlinePresence(userId, active.token, 'online');
@@ -191,11 +189,11 @@ export const onlineon = {
         }
 
         const embed = await buildOnlineProfileEmbed(slot, targetUser, guildId);
-        await message.reply({ embeds: [embed] });
+        await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
     }
 };
 
-// ── Helper: Profile Embed Generator ────────
+// ── Helper: Profile Embed Generator with Full Dynamic Emojis ────────
 async function buildOnlineProfileEmbed(slot, targetUser, guildId) {
     const emojis = await getEmojis(guildId);
     const avatarUrl = targetUser.displayAvatarURL({ dynamic: true, size: 256 });
@@ -207,19 +205,20 @@ async function buildOnlineProfileEmbed(slot, targetUser, guildId) {
         .setDescription(`Successfully activated **Slot #${slot}** and connected to Discord Gateway 24/7.`)
         .setThumbnail(avatarUrl)
         .addFields(
-            { name: '👤 User Name', value: `\`${targetUser.tag || targetUser.username}\``, inline: true },
-            { name: '🆔 User ID', value: `\`${targetUser.id}\``, inline: true },
-            { name: '🎰 Active Slot', value: `\`Slot #${slot}\``, inline: true },
-            { name: '📅 Account Created', value: createdAt, inline: true },
-            { name: '🌐 Connection Status', value: `${emojis.online || '🟢'} **24/7 Gateway Online (Persistent)**`, inline: true }
+            { name: `${emojis.user || '👤'} User Name`, value: `\`${targetUser.tag || targetUser.username}\``, inline: true },
+            { name: `${emojis.id || '🆔'} User ID`, value: `\`${targetUser.id}\``, inline: true },
+            { name: `${emojis.slot || '🎰'} Active Slot`, value: `\`Slot #${slot}\``, inline: true },
+            { name: `${emojis.calendar || '📅'} Account Created`, value: createdAt, inline: true },
+            { name: `${emojis.globe || '🌐'} Connection Status`, value: `${emojis.online || '🟢'} **24/7 Gateway Online (Persistent)**`, inline: true }
         )
-        .setFooter({ text: 'Quest Bot • 24/7 Presence Manager' })
+        .setFooter({ text: 'Orbie Quest Bot • 24/7 Presence Manager' })
         .setTimestamp();
 }
 
 // ─────────────────────────────────────────────
-// 3. ONLINEOFF (Formerly offlineid) — Disconnects online presence
+// 3. ONLINEOFF — Disconnects online presence
 // ─────────────────────────────────────────────
+exports = module.exports; // Compatible export wrapper if needed, below standard ESM:
 export const onlineoff = {
     name: 'onlineoff',
     prefix: 'onlineoff',
@@ -236,7 +235,7 @@ export const onlineoff = {
 
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
-            .setTitle(`${emojis.warn || '🔴'} Account Offline`)
+            .setTitle(`${emojis.offline || '🔴'} Account Offline`)
             .setDescription('Your account online gateway connection has been successfully disconnected.');
 
         await interaction.editReply({ embeds: [embed] });
@@ -250,9 +249,9 @@ export const onlineoff = {
 
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
-            .setTitle(`${emojis.warn || '🔴'} Account Offline`)
+            .setTitle(`${emojis.offline || '🔴'} Account Offline`)
             .setDescription('Your account online gateway connection has been successfully disconnected.');
 
-        await message.reply({ embeds: [embed] });
+        await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
     }
 };
