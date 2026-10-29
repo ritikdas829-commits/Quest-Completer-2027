@@ -1,5 +1,5 @@
 /**
- * trialKeyStore.js - MongoDB Based Key Generation, One-Time Trial & Status Tracking
+ * trialKeyStore.js - MongoDB Based Key Generation, Slots, Lifetime & Status Tracking
  * Location: src/quest/trialKeyStore.js
  */
 
@@ -17,14 +17,16 @@ const userTrialSchema = new mongoose.Schema({
     claimedTrial: { type: Boolean, default: false },
     active: { type: Boolean, default: false },
     expiresAt: { type: Number, default: null },
-    durationDays: { type: Number, default: 30 }
+    durationDays: { type: mongoose.Schema.Types.Mixed, default: 30 }, // Can be number or 'lifetime'
+    slot: { type: Number, default: 1 }
 });
 
 const keySchema = new mongoose.Schema({
     keyString: { type: String, required: true, unique: true },
     assignedTo: { type: String, default: null },
     type: { type: String, default: 'admin_generated' },
-    durationDays: { type: Number, default: 30 },
+    durationDays: { type: mongoose.Schema.Types.Mixed, default: 30 },
+    slot: { type: Number, default: 1 }, // 🎰 Added Slot Support
     redeemed: { type: Boolean, default: false },
     createdAt: { type: Number, default: Date.now }
 });
@@ -57,8 +59,8 @@ export async function getUserTrialStatus(userId) {
         return { hasClaimed: false, active: false, daysRemaining: 0 };
     }
 
-    if (userData.durationDays === -1) {
-        return { hasClaimed: true, active: true, daysRemaining: 'Lifetime / Permanent' };
+    if (userData.durationDays === 'lifetime' || userData.durationDays === -1) {
+        return { hasClaimed: true, active: true, daysRemaining: 'Lifetime / Permanent', slot: userData.slot || 1 };
     }
 
     const now = Date.now();
@@ -66,15 +68,15 @@ export async function getUserTrialStatus(userId) {
     const diffMs = expiresAt - now;
 
     if (diffMs <= 0) {
-        return { hasClaimed: true, active: false, daysRemaining: 0, expired: true };
+        return { hasClaimed: true, active: false, daysRemaining: 0, expired: true, slot: userData.slot || 1 };
     }
 
     const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    return { hasClaimed: true, active: true, daysRemaining };
+    return { hasClaimed: true, active: true, daysRemaining, slot: userData.slot || 1 };
 }
 
-// Generate key with One-Time Trial restriction using MongoDB
-export async function generateKeyByRole(userId, guildOwnerId, targetUserId = null, requestedDays = 30) {
+// Generate key with Slot & Lifetime support using MongoDB
+export async function generateKeyByRole(userId, guildOwnerId, targetUserId = null, requestedDuration = '30d', slot = 1) {
     const isOwner = (userId === guildOwnerId);
 
     // 🛑 Check if target user has already claimed their 1-time trial
@@ -88,8 +90,22 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
         }
     }
 
-    let durationDays = requestedDays;
+    let durationValue = requestedDuration;
     let remainingText = '';
+
+    // Handle Lifetime or Days parsing
+    let parsedDuration = 30;
+    const lowerDuration = String(requestedDuration).toLowerCase();
+    
+    if (lowerDuration.includes('life') || lowerDuration === '-1') {
+        durationValue = 'lifetime';
+        parsedDuration = -1;
+    } else {
+        // Extract numbers from string like "30d" -> 30
+        const matchedDays = parseInt(String(requestedDuration).replace(/\D/g, ''));
+        parsedDuration = !isNaN(matchedDays) ? matchedDays : 30;
+        durationValue = `${parsedDuration} Days`;
+    }
 
     if (!isOwner) {
         let adminData = await AdminLimit.findOne({ adminId: userId });
@@ -102,15 +118,14 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
             return { success: false, message: `Your key generation limit has been reached! (${adminData.usedKeys}/${adminData.maxKeys} keys used)` };
         }
 
-        if (requestedDays > 30 || requestedDays <= 0) {
-            durationDays = 30;
+        if (parsedDuration > 30 && parsedDuration !== -1) {
+            parsedDuration = 30; // Admins max limit cap
         }
 
         adminData.usedKeys += 1;
         await adminData.save();
         remainingText = `${adminData.maxKeys - adminData.usedKeys} left`;
     } else {
-        durationDays = requestedDays;
         remainingText = 'Unlimited (Owner)';
     }
 
@@ -119,7 +134,8 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
         keyString: key,
         assignedTo: targetUserId,
         type: isOwner ? 'owner_custom' : 'admin_generated',
-        durationDays: durationDays,
+        durationDays: parsedDuration,
+        slot: slot || 1, // 🎰 Save slot correctly
         redeemed: false,
         createdAt: Date.now()
     });
@@ -128,7 +144,7 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
     if (targetUserId && targetUserId === userId) {
         await UserTrial.findOneAndUpdate(
             { userId },
-            { $set: { claimedTrial: true } },
+            { $set: { claimedTrial: true, slot: slot || 1 } },
             { upsert: true, new: true }
         );
     }
@@ -136,6 +152,8 @@ export async function generateKeyByRole(userId, guildOwnerId, targetUserId = nul
     return { 
         success: true, 
         key, 
+        duration: durationValue,
+        slot,
         remaining: remainingText 
     };
 }
