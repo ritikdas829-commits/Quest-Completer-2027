@@ -46,7 +46,7 @@ async function buildLinkPrompt(prefix, guildId = 'global') {
     const c = new ContainerBuilder().setAccentColor(0xFEE75C);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ${EMOJI.link || '🔗'} Token Required\nYou need to link your Discord token in a slot before using quest commands.\n\nUse \`${prefix}link\` to open your 5-slot account panel and link a token.`,
+            `# ${EMOJI.quest_link || '🔗'} Token Required\nYou need to link your Discord token in a slot before using quest commands.\n\nUse \`${prefix}link\` to open your 5-slot account panel and link a token.`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -57,10 +57,10 @@ async function buildNoQuestsCard(guildId = 'global') {
     const c = new ContainerBuilder().setAccentColor(0x4F545C);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ${EMOJI.search || '🔍'} No Quests Available\n\n` +
-            `${EMOJI.list || '📑'} There are no active, uncompleted quests on your active slot account right now.\n\n` +
-            `${EMOJI.gear || '⚙️'} New quests drop periodically — check back later!\n\n` +
-            `-# ${EMOJI.bell || '🔔'} Use \`${PREFIX}autoquest\` to auto-complete quests when they drop`
+            `# ${EMOJI.quest_search || '🔍'} No Quests Available\n\n` +
+            `${EMOJI.quest_list || '📑'} There are no active, uncompleted quests on your active slot account right now.\n\n` +
+            `${EMOJI.quest_gear || '⚙️'} New quests drop periodically — check back later!\n\n` +
+            `-# ${EMOJI.quest_bell || '🔔'} Use \`${PREFIX}autoquest\` to auto-complete quests when they drop`
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -71,7 +71,7 @@ async function buildExpiredTokenCard(prefix, guildId = 'global') {
     const c = new ContainerBuilder().setAccentColor(0xED4245);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ${EMOJI.error || '❌'} Token Expired\nYour saved token on the active slot was rejected by Discord — it has likely expired.\n\n**Your active slot token has been removed.** Re-link using \`${prefix}link\`.`,
+            `# ${EMOJI.quest_error || '❌'} Token Expired\nYour saved token on the active slot was rejected by Discord — it has likely expired.\n\n**Your active slot token has been removed.** Re-link using \`${prefix}link\`.`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -85,8 +85,8 @@ async function buildErrorCard(err, prefix, guildId = 'global') {
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             is401
-                ? `# ${EMOJI.error || '❌'} Invalid or Expired Token\nRe-link your token using \`${prefix}link\`.`
-                : `# ${EMOJI.error || '❌'} Error\n${msg.slice(0, 800)}`,
+                ? `# ${EMOJI.quest_error || '❌'} Invalid or Expired Token\nRe-link your token using \`${prefix}link\`.`
+                : `# ${EMOJI.quest_error || '❌'} Error\n${msg.slice(0, 800)}`,
         ),
     );
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
@@ -99,15 +99,15 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     const thumbUrl = getThumbUrl(cfg, quest.id);
 
     const TASK_META = {
-        PLAY_ON_DESKTOP:       { icon: EMOJI.desktop || '🖥️', label: 'Play on Desktop' },
-        WATCH_VIDEO:           { icon: EMOJI.video || '🎬', label: 'Watch Video' },
-        STREAM_ON_DESKTOP:     { icon: EMOJI.stream || '📺', label: 'Stream on Desktop' },
-        PLAY_ACTIVITY:         { icon: EMOJI.activity || '🎮', label: 'Play Activity' },
-        WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.mobile || '📱', label: 'Watch Video on Mobile' },
+        PLAY_ON_DESKTOP:       { icon: EMOJI.quest_desktop || '🖥️', label: 'Play on Desktop' },
+        WATCH_VIDEO:           { icon: EMOJI.quest_video || '🎬', label: 'Watch Video' },
+        STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
+        PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
+        WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
     };
 
     const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
-        const meta = TASK_META[type] ?? { icon: EMOJI.gear || '⚙️', label: type };
+        const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type };
         let dur = '';
         if (type === 'PLAY_ON_DESKTOP' || type === 'STREAM_ON_DESKTOP') {
             dur = `  •  **${Math.ceil(task.target / 60)} min**`;
@@ -115,12 +115,12 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
             const s = task.target;
             dur = s >= 60 ? `  •  **${Math.ceil(s / 60)} min**` : `  •  **${s}s**`;
         }
-        return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? `  ${EMOJI.success || '✅'}` : ''}`;
+        return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? `  ${EMOJI.quest_success || '✅'}` : ''}`;
     });
 
     const rewardLines = (cfg.rewards_config?.rewards ?? []).map((r) => {
         const rName = r.messages?.name || 'Exclusive Reward';
-        if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.orbs || '✨'}`;
+        if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.quest_orbs || '✨'}`;
         if (r.quantity) return `**${r.quantity}d Nitro**`;
         return `**${rName}**`;
     });
@@ -134,9 +134,9 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     const progressBar = '`' + '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks) + '`' + `  **${currentPercent}%**`;
 
     const PHASE = {
-        starting: { color: 0x5865F2, title: `${EMOJI.loading || '⚙️'}  Solving Quest...`,  bar: progressBar + '  —  *Working on it...*' },
-        done:     { color: 0x57F287, title: `${EMOJI.success || '✅'}  Quest Complete!`,    bar: '`██████████`  **100%**' },
-        failed:   { color: 0xED4245, title: `${EMOJI.error || '❌'}  Quest Failed`,       bar: '' },
+        starting: { color: 0x5865F2, title: `${EMOJI.quest_loading || '⚙️'}  Solving Quest...`,  bar: progressBar + '  —  *Working on it...*' },
+        done:     { color: 0x57F287, title: `${EMOJI.quest_success || '✅'}  Quest Complete!`,    bar: '`██████████`  **100%**' },
+        failed:   { color: 0xED4245, title: `${EMOJI.quest_error || '❌'}  Quest Failed`,       bar: '' },
     };
 
     const p = PHASE[phase];
@@ -145,7 +145,7 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
         : p.bar;
 
     const footerNote = phase === 'done' && claimed > 0
-        ? `-# ${EMOJI.gift || '🎁'} ${claimed} reward(s) claimed`
+        ? `-# ${EMOJI.quest_gift || '🎁'} ${claimed} reward(s) claimed`
         : phase === 'starting'
         ? `-# Quest Bot  •  Please wait...`
         : phase === 'failed'
@@ -167,10 +167,10 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `${EMOJI.task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
-            `${EMOJI.expire || '📅'} **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
-            `${EMOJI.stats || '📊'} **Progress**\n${progressText}\n\n` +
-            `${EMOJI.reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
+            `${EMOJI.quest_task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
+            `${EMOJI.quest_expire || '📅'} **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
+            `${EMOJI.quest_stats || '📊'} **Progress**\n${progressText}\n\n` +
+            `${EMOJI.quest_reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
         ),
     );
 
@@ -232,7 +232,7 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix, client) {
         if (completed.length === 0) {
             const EMOJI = await getEmojis(guildId);
             const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.warn || '⚠️'} No Quests Auto-Completed\nAll quests require manual completion via the Discord desktop or mobile app.`));
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.quest_warn || '⚠️'} No Quests Auto-Completed\nAll quests require manual completion via the Discord desktop or mobile app.`));
             await send({ components: [c], flags: MessageFlags.IsComponentsV2 });
             return false;
         }
@@ -258,7 +258,7 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix, client) {
                 const targetUser = await client.users.fetch(userId);
                 const questNames = completed.map(q => q.config?.messages?.quest_name || 'Discord Quest').join(', ');
                 await targetUser.send(
-                    `${EMOJI.success || '🎉'} **All Quests Completed Successfully!**\n\n` +
+                    `${EMOJI.quest_success || '🎉'} **All Quests Completed Successfully!**\n\n` +
                     `📌 **Completed Quests:** ${questNames}\n` +
                     `✨ **Total Rewards Claimed:** ${claimed}\n` +
                     `🔗 **Status:** 100% Completed via \`${prefix}questall\``
@@ -296,11 +296,11 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
 
         const EMOJI = await getEmojis(guildId);
         const TASK_META = {
-            PLAY_ON_DESKTOP:       { icon: EMOJI.desktop || '🖥️', label: 'Play on Desktop' },
-            WATCH_VIDEO:           { icon: EMOJI.video || '🎬', label: 'Watch Video' },
-            STREAM_ON_DESKTOP:     { icon: EMOJI.stream || '📺', label: 'Stream on Desktop' },
-            PLAY_ACTIVITY:         { icon: EMOJI.activity || '🎮', label: 'Play Activity' },
-            WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.mobile || '📱', label: 'Watch Video on Mobile' },
+            PLAY_ON_DESKTOP:       { icon: EMOJI.quest_desktop || '🖥️', label: 'Play on Desktop' },
+            WATCH_VIDEO:           { icon: EMOJI.quest_video || '🎬', label: 'Watch Video' },
+            STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
+            PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
+            WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
         };
 
         for (const q of all.slice(0, 10)) {
@@ -310,13 +310,13 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             const expiresEpoch = Math.floor(new Date(cfg.expires_at).getTime() / 1000);
             const daysLeft = Math.max(0, Math.ceil((new Date(cfg.expires_at).getTime() - Date.now()) / 86400000));
 
-            const st = q.isCompleted() ? { color: 0x57F287, icon: EMOJI.success || '✅', label: 'Completed' }
-                : q.isExpired()        ? { color: 0xED4245, icon: EMOJI.error || '🔴', label: 'Expired' }
-                : q.isEnrolledQuest()  ? { color: 0xFEE75C, icon: EMOJI.loading || '⏳', label: 'In Progress' }
-                :                        { color: 0x5865F2, icon: EMOJI.dot || '🔵', label: 'Available' };
+            const st = q.isCompleted() ? { color: 0x57F287, icon: EMOJI.quest_success || '✅', label: 'Completed' }
+                : q.isExpired()        ? { color: 0xED4245, icon: EMOJI.quest_error || '🔴', label: 'Expired' }
+                : q.isEnrolledQuest()  ? { color: 0xFEE75C, icon: EMOJI.quest_loading || '⏳', label: 'In Progress' }
+                :                        { color: 0x5865F2, icon: EMOJI.quest_dot || '🔵', label: 'Available' };
 
             const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
-                const meta = TASK_META[type] ?? { icon: EMOJI.gear || '⚙️', label: type };
+                const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type };
                 let dur = '';
                 if (type === 'PLAY_ON_DESKTOP' || type === 'STREAM_ON_DESKTOP') dur = `  •  **${Math.ceil(task.target / 60)} min**`;
                 else if (type === 'WATCH_VIDEO' || type === 'WATCH_VIDEO_ON_MOBILE') {
@@ -328,7 +328,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
 
             const rewardLines = (cfg.rewards_config?.rewards ?? []).map((r) => {
                 const rName = r.messages?.name || 'Exclusive Reward';
-                if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.orbs || '✨'}`;
+                if (r.orb_quantity) return `**${r.orb_quantity} Orbs** ${EMOJI.quest_orbs || '✨'}`;
                 if (r.quantity) return `**${r.quantity}d Nitro**`;
                 return `**${rName}**`;
             });
@@ -346,9 +346,9 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
             c.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `${EMOJI.stats || '📊'} **Status:** ${st.label}   ${EMOJI.expire || '📅'} **Expires:** <t:${expiresEpoch}:R> *(${daysLeft}d)*\n\n` +
-                    `${EMOJI.task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown*'}\n\n` +
-                    `${EMOJI.reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
+                    `${EMOJI.quest_stats || '📊'} **Status:** ${st.label}   ${EMOJI.quest_expire || '📅'} **Expires:** <t:${expiresEpoch}:R> *(${daysLeft}d)*\n\n` +
+                    `${EMOJI.quest_task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown*'}\n\n` +
+                    `${EMOJI.quest_reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
                 ),
             );
             await send({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -370,7 +370,7 @@ async function runTokenCheck(guildId, userId, tokenStore, replyFn, prefix) {
     const EMOJI = await getEmojis(guildId);
     if (!token) {
         const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.warn || '⚠️'} No Active Slot Token\nYou don't have an active token set in your slots. Use \`${prefix}link\` to configure your slots.`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.quest_warn || '⚠️'} No Active Slot Token\nYou don't have an active token set in your slots. Use \`${prefix}link\` to configure your slots.`));
         await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
         return;
     }
@@ -389,8 +389,8 @@ async function runTokenCheck(guildId, userId, tokenStore, replyFn, prefix) {
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             valid
-                ? `# ${EMOJI.success || '✅'} Token is Valid\nActive slot linked as **"${accountName}"**.\n\nYour active token is working correctly.`
-                : `# ${EMOJI.error || '❌'} Token Invalid or Expired\nYour active slot token was rejected by Discord.\nUse \`${prefix}link\` to manage and update your slots.`,
+                ? `# ${EMOJI.quest_success || '✅'} Token is Valid\nActive slot linked as **"${accountName}"**.\n\nYour active token is working correctly.`
+                : `# ${EMOJI.quest_error || '❌'} Token Invalid or Expired\nYour active slot token was rejected by Discord.\nUse \`${prefix}link\` to manage and update your slots.`,
         ),
     );
     await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -484,7 +484,7 @@ export async function runAutoquestForUser(userId, quest, tokenStore, discordClie
             const c = new ContainerBuilder().setAccentColor(0x57F287);
             c.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${EMOJI.robot || '🤖'} Auto-Quest Complete!\n**${live.config.messages.quest_name}** has been completed automatically on your active slot.\n${claimed > 0 ? `${EMOJI.reward || '🎁'} **${claimed}** reward(s) claimed.\n` : ''}\nUse \`${PREFIX}autoquest\` to disable.`,
+                    `# ${EMOJI.quest_robot || '🤖'} Auto-Quest Complete!\n**${live.config.messages.quest_name}** has been completed automatically on your active slot.\n${claimed > 0 ? `${EMOJI.quest_reward || '🎁'} **${claimed}** reward(s) claimed.\n` : ''}\nUse \`${PREFIX}autoquest\` to disable.`,
                 ),
             );
             await dm.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
@@ -501,7 +501,7 @@ export async function runAutoquestForUser(userId, quest, tokenStore, discordClie
                 const dm = await user.createDM();
                 const EMOJI = await getEmojis(guildId);
                 const c = new ContainerBuilder().setAccentColor(0xED4245);
-                c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.warn || '🤖'} Auto-Quest Paused\nYour active slot token expired. Run \`${PREFIX}link\` to re-configure slots.`));
+                c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.quest_warn || '🤖'} Auto-Quest Paused\nYour active slot token expired. Run \`${PREFIX}link\` to re-configure slots.`));
                 await dm.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
             } catch {}
         }
