@@ -17,6 +17,7 @@ import {
     TextInputStyle,
 } from 'discord.js';
 import { getProgressiveSlots } from './slotSystem.js';
+import { getEmojis } from './emoji.js';
 
 const DEFAULT_PREFIX = process.env.PREFIX || ';';
 
@@ -31,6 +32,7 @@ export function buildLinkModal(slotNumber = 1) {
 export async function buildSlotPanel(member, inviteStore, tokenStore) {
     const guildId = member.guild?.id;
     const userId = member.id || member.user?.id;
+    const EMOJI = await getEmojis(guildId || 'global');
     
     // Fetch slots and stats safely from slotSystem
     const slotData = await getProgressiveSlots(member);
@@ -60,7 +62,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
         const linked = accounts.find(a => a.slot === s.slot);
 
         if (linked) {
-            const status = linked.isActive ? 'Active ✅' : 'Not Active';
+            const status = linked.isActive ? `Active ${EMOJI.slot_success || '✅'}` : 'Not Active';
             const linkedAtStr = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString() : 'N/A';
             
             c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -83,7 +85,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                     `### #${s.slot} Account Configuration - ${s.label}\n` +
                     `• Not Linked (${s.label})\n` +
                     `• Status: Not Active\n` +
-                    `• Requirement: ${s.need || 'Free'} - ✅ Unlocked\n` +
+                    `• Requirement: ${s.need || 'Free'} - ${EMOJI.slot_success || '✅'} Unlocked\n` +
                     `• Your Progress: ${invites} invites, ${boosts} boosts\n` +
                     `• ${s.reason}`
                 ));
@@ -92,7 +94,7 @@ export async function buildSlotPanel(member, inviteStore, tokenStore) {
                 ));
             } else {
                 c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${s.slot} Account Configuration - ${s.label} 🔒\n` +
+                    `### #${s.slot} Account Configuration - ${s.label} ${EMOJI.slot_lock || '🔒'}\n` +
                     `• Locked\n` +
                     `• Status: Locked\n` +
                     `• Requirement: ${s.need || 'N/A'}\n` +
@@ -119,6 +121,7 @@ export async function handleButton(interaction, client) {
     const guildId = interaction.guild.id; 
     const ownerId = interaction.user.id; 
     const member = interaction.member;
+    const EMOJI = await getEmojis(guildId);
 
     if (interaction.customId.startsWith('link_slot_') && interaction.customId.endsWith('_btn')) {
         const slotNum = parseInt(interaction.customId.split('_')[2]);
@@ -126,7 +129,7 @@ export async function handleButton(interaction, client) {
         const slotData = prog.slots.find(s => s.slot === slotNum);
         if (!slotData?.can) {
             const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔒 Slot #${slotNum} Locked\n**Need:** ${slotData?.need}\n${slotData?.reason}`));
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.slot_lock || '🔒'} Slot #${slotNum} Locked\n**Need:** ${slotData?.need}\n${slotData?.reason}`));
             return await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
         }
         return await interaction.showModal(buildLinkModal(slotNum));
@@ -151,7 +154,7 @@ export async function handleButton(interaction, client) {
         const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
         const c = new ContainerBuilder().setAccentColor(0xFEE75C);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🔒 Slot #${slotNum} Locked\n**${slotData?.reason}**\nNeed: ${slotData?.need}`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.slot_lock || '🔒'} Slot #${slotNum} Locked\n**${slotData?.reason}**\nNeed: ${slotData?.need}`));
         return await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 }
@@ -160,6 +163,9 @@ export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
     const slot = parseInt(interaction.customId.split('_')[3]);
     const token = interaction.fields.getTextInputValue('token_input').trim();
+    const guildId = interaction.guild.id;
+    const EMOJI = await getEmojis(guildId);
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
         const prog = await getProgressiveSlots(interaction.member);
@@ -186,7 +192,7 @@ export async function handleModal(interaction, client) {
         await interaction.editReply(panel);
     } catch (e) {
         const c = new ContainerBuilder().setAccentColor(0xED4245);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ Failed to Link\n${e.message}`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.slot_error || '❌'} Failed to Link\n${e.message}`));
         await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     }
 }
