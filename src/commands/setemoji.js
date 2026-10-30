@@ -3,40 +3,42 @@
  * Location: src/commands/setemoji.js
  */
 
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getEmojis, saveEmoji, EMOJI_CATEGORIES } from '../quest/emoji.js';
 
 export default {
     name: 'setemoji',
-    prefix: 'setemoji',
+    prefix: ['setemoji', 'emoji'],
     description: 'Manage and update independent custom UI emojis for your quest bot',
     data: new SlashCommandBuilder()
         .setName('setemoji')
         .setDescription('Manage and update independent custom UI emojis')
         .addStringOption(o => 
             o.setName('key')
-             .setDescription('The independent emoji key you want to change (e.g., panel_premium, quest_link)')
+             .setDescription('The independent emoji key you want to change (e.g., invite_join, panel_premium)')
              .setRequired(false)
         )
         .addStringOption(o => 
             o.setName('emoji')
-             .setDescription('The new emoji (custom or standard emoji)')
+             .setDescription('The new emoji (custom discord emoji or standard emoji)')
              .setRequired(false)
         ),
 
-    async execute(interaction, client) {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    async execute(interaction) {
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true }).catch(() => {});
+        }
         const guildId = interaction.guild?.id || 'global';
-        const key = interaction.options.getString('key')?.toLowerCase();
-        const newEmoji = interaction.options.getString('emoji');
+        const key = interaction.options.getString('key')?.toLowerCase().trim();
+        const newEmoji = interaction.options.getString('emoji')?.trim();
 
         await handleEmojiLogic(interaction, guildId, key, newEmoji, true);
     },
 
-    async prefixExecute(message, args, client) {
+    async prefixExecute(message, args) {
         const guildId = message.guild?.id || 'global';
-        const key = args[0]?.toLowerCase();
-        const newEmoji = args[1];
+        const key = args[0]?.toLowerCase().trim();
+        const newEmoji = args[1]?.trim();
 
         await handleEmojiLogic(message, guildId, key, newEmoji, false);
     }
@@ -52,7 +54,7 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
             .setTitle('🎨 Independent Quest UI Emojis Manager')
-            .setDescription('Here are all the available independent emoji keys organized by their UI categories:\n');
+            .setDescription('Here are all available independent emoji keys organized by their UI categories:\n');
 
         for (const [categoryName, keysList] of Object.entries(EMOJI_CATEGORIES)) {
             const fieldContent = keysList
@@ -69,8 +71,8 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
         embed.setFooter({ text: 'Usage: /setemoji <key> <emoji> OR ?setemoji <key> <emoji>' });
 
         return isInteraction 
-            ? await target.editReply({ embeds: [embed] }) 
-            : await target.reply({ embeds: [embed] });
+            ? await target.editReply({ embeds: [embed] }).catch(() => {}) 
+            : await target.reply({ embeds: [embed] }).catch(() => {});
     }
 
     // 2. Check if the provided key is valid
@@ -81,8 +83,8 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
             .setDescription(`The independent key **"${key}"** does not exist.\n\nUse \`/setemoji\` without arguments to view all available category keys.`);
 
         return isInteraction 
-            ? await target.editReply({ embeds: [errEmbed] }) 
-            : await target.reply({ embeds: [errEmbed] });
+            ? await target.editReply({ embeds: [errEmbed] }).catch(() => {}) 
+            : await target.reply({ embeds: [errEmbed] }).catch(() => {});
     }
 
     // 3. Agar key di hai par naya emoji nahi diya
@@ -93,8 +95,8 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
             .setDescription(`Current emoji for **${key}** is: **${emojis[key]}**\n\nTo update it, provide the new emoji.\n*Example:* \`?setemoji ${key} 🟢\` or use the slash command.`);
 
         return isInteraction 
-            ? await target.editReply({ embeds: [infoEmbed] }) 
-            : await target.reply({ embeds: [infoEmbed] });
+            ? await target.editReply({ embeds: [infoEmbed] }).catch(() => {}) 
+            : await target.reply({ embeds: [infoEmbed] }).catch(() => {});
     }
 
     // 4. Save the new emoji to MongoDB & Update Cache
@@ -114,6 +116,6 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
     }
 
     return isInteraction 
-        ? await target.editReply({ embeds: [resultEmbed] }) 
-        : await target.reply({ embeds: [resultEmbed] });
+        ? await target.editReply({ embeds: [resultEmbed] }).catch(() => {}) 
+        : await target.reply({ embeds: [resultEmbed] }).catch(() => {});
 }
