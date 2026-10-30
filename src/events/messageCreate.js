@@ -1,5 +1,5 @@
 /**
- * messageCreate.js — Fully Fixed Dynamic Prefix & Emoji System Integration with Anti-Duplicate Guard
+ * messageCreate.js — Dynamic Prefix & Emoji System with Anti-Duplicate Guard
  * Location: src/events/messageCreate.js
  */
 
@@ -7,7 +7,7 @@ import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
 import { EmbedBuilder } from 'discord.js';
 
-// Anti-double trigger guard map to prevent multiple instances from replying twice
+// Anti-double trigger guard map
 const processedMessages = new Set();
 
 export default {
@@ -29,14 +29,15 @@ export default {
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const commandName = args.shift().toLowerCase();
 
-    // Check if command exists first to prevent unnecessary checks/double triggers
+    // Check if command exists first
     const command = client.prefixCommands.get(commandName);
     if (!command) return;
 
-    // 🛑 Allow 'activate trial' command without checking role access
+    // 🛑 Allow 'activate trial' and 'autoquest' without double checking role access here
     const isActivateTrial = commandName === 'activate' && args[0]?.toLowerCase() === 'trial';
+    const isAutoquest = commandName === 'autoquest';
 
-    if (!isActivateTrial) {
+    if (!isActivateTrial && !isAutoquest) {
       const member = message.member;
       const guildId = message.guild.id;
       const roles = getRoles(guildId);
