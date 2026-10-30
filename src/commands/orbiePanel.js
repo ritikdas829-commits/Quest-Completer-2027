@@ -131,7 +131,49 @@ export async function handleOrbieModalSubmit(interaction) {
     const EMOJI = await getEmojis(guildId);
     const roles = getRoles(guildId);
 
-    // 🛑 Check 1: Role Pre-check (Agar user ke paas pehle se active role hai)
+    const keyString = interaction.fields.getTextInputValue('key_input').trim();
+
+    // 🛑 Check 1: Key Existence Check
+    const keyDoc = await KeyStore.findOne({ keyString });
+    if (!keyDoc) {
+        return await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThe key you entered does not exist in our database. Please check and try again.`
+        });
+    }
+
+    // 🛑 Check 2: Key Sharing / Account Locking Check (Strict Ownership BEFORE redeem check)
+    if (keyDoc.assignedTo && keyDoc.assignedTo !== userId) {
+        return await interaction.editReply({
+            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is strictly locked to another Discord account. You cannot use someone else's key!`
+        });
+    }
+
+    // 🛑 Check 3: Key Already Redeemed Check (With self-recovery / role restore support)
+    if (keyDoc.redeemed) {
+        if (keyDoc.assignedTo === userId) {
+            const targetRoleId = roles.ROLE_PREMIUM || roles.ROLE_TRIAL;
+            if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
+                await member.roles.add(targetRoleId).catch(err => console.error("Failed to restore role:", err));
+            }
+
+            // Ensure database active status remains true for this user
+            await UserTrial.findOneAndUpdate(
+                { userId },
+                { $set: { active: true } },
+                { upsert: true, new: true }
+            );
+
+            return await interaction.editReply({
+                content: `${EMOJI.success || '✅'} **Role Restored Successfully!**\nYour subscription is still active, and your role has been successfully given back to you!`
+            });
+        }
+
+        return await interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used by someone else.`
+        });
+    }
+
+    // 🛑 Check 4: Role Pre-check (If user already has an active conflicting role)
     const hasExistingRole = 
         (roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) ||
         (roles.ROLE_PREMIUM && member.roles.cache.has(roles.ROLE_PREMIUM)) ||
@@ -143,54 +185,22 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    const keyString = interaction.fields.getTextInputValue('key_input').trim();
-
-    // 🛑 Check 2: Key Existence Check
-    const keyDoc = await KeyStore.findOne({ keyString });
-    if (!keyDoc) {
-        return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThe key you entered does not exist in our database. Please check and try again.`
-        });
-    }
-
-    // 🛑 Check 3: Key Already Redeemed Check (With self-recovery / role restore support)
-    if (keyDoc.redeemed) {
-        // Agar key pehle se redeemed hai, par woh usi user ki hai toh role wapas de do
-        if (keyDoc.assignedTo === userId) {
-            const targetRoleId = roles.ROLE_PREMIUM || roles.ROLE_TRIAL;
-            if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
-                await member.roles.add(targetRoleId).catch(err => console.error("Failed to restore role:", err));
-            }
-            return await interaction.editReply({
-                content: `${EMOJI.success || '✅'} **Role Restored Successfully!**\nYour subscription is still active, so your role has been successfully given back to you!`
-            });
-        }
-
-        return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used by someone else.`
-        });
-    }
-
-    // 🛑 Check 4: Key Sharing / Account Locking Check (Strict Ownership)
-    if (keyDoc.assignedTo && keyDoc.assignedTo !== userId) {
-        return await interaction.editReply({
-            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is strictly locked to another Discord account. You cannot use someone else's key!`
-        });
-    }
-
-    // 🚀 Expiry Calculation
+    // 🚀 Exact Expiry Calculation
     const durationDays = keyDoc.durationDays;
     let expiresAt = null;
 
-    if (durationDays !== 'lifetime' && durationDays !== -1) {
+    const isLifetime = durationDays === 'lifetime' || durationDays === -1 || durationDays === 'unlimited';
+
+    if (!isLifetime) {
         const days = parseInt(durationDays) || 30;
         expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
     } else {
         expiresAt = null; // Lifetime support
     }
 
-    // 📝 Mark Key as Redeemed
+    // 📝 Mark Key as Redeemed and LOCK it to this User ID permanently
     keyDoc.redeemed = true;
+    keyDoc.assignedTo = userId;
     await keyDoc.save();
 
     // 📝 Save/Update User Status in Database
@@ -198,6 +208,7 @@ export async function handleOrbieModalSubmit(interaction) {
         { userId },
         {
             $set: {
+                claimedTrial: true,
                 active: true,
                 expiresAt: expiresAt,
                 durationDays: durationDays,
@@ -213,8 +224,11 @@ export async function handleOrbieModalSubmit(interaction) {
         await member.roles.add(targetRoleId).catch(err => console.error("Failed to add role:", err));
     }
 
-    // 🎉 Success Response
+    // 🎉 Success Response with Expiry Timestamp
+    const expiryDisplay = expiresAt ? `<t:${Math.floor(expiresAt / 1000)}:R>` : 'Never (Lifetime)';
     return await interaction.editReply({
-        content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\nYour key has been verified, and **Slot #${keyDoc.slot || 1}** along with your role has been unlocked!`
+        content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\n` +
+                 `Your key has been verified, and **Slot #${keyDoc.slot || 1}** along with your role has been unlocked!\n` +
+                 `⏳ **Expires:** ${expiryDisplay}`
     });
 }
