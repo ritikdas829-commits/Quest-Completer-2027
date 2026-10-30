@@ -55,11 +55,14 @@ function decrypt(stored, key) {
 
 export class TokenStore {
     constructor(secret) {
-        if (!secret) {
+        const activeSecret = secret || process.env.TOKEN_ENCRYPTION_SECRET || process.env.DISCORD_TOKEN;
+        
+        if (!activeSecret) {
             console.warn("⚠️ TokenStore secret not set - Use TOKEN_ENCRYPTION_SECRET env");
-            secret = process.env.TOKEN_ENCRYPTION_SECRET || process.env.DISCORD_TOKEN || 'default-secret-change-me';
         }
-        this.key = deriveKey(secret);
+        
+        const finalSecret = activeSecret || 'default-secret-change-me';
+        this.key = deriveKey(finalSecret);
         this.cache = new Map();
         this.loadIntoCache();
     }
