@@ -183,7 +183,7 @@ export const setLimitCmd = {
     }
 };
 
-// 📊 NEW: Check any user's Trial/Premium status command
+// 📊 Check any user's Trial/Premium status command
 export const checkTrialCmd = {
     data: new SlashCommandBuilder()
         .setName('checktrial')
@@ -213,17 +213,17 @@ export const checkTrialCmd = {
 
         const expiryDisplay = userDoc.expiresAt ? `<t:${Math.floor(userDoc.expiresAt / 1000)}:F> (<t:${Math.floor(userDoc.expiresAt / 1000)}:R>)` : 'Never (Lifetime)';
         const typeText = userDoc.type ? userDoc.type.toUpperCase() : 'TRIAL/BASE';
-        const statusText = userDoc.active ? '🟢 **Active**' : '🔴 **Expired / Inactive**';
+        const statusText = userDoc.active ? `${EMOJI.key_status || '🟢'} **Active**` : `${EMOJI.key_error || '🔴'} **Expired / Inactive**`;
 
         card.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-                `# 📊 User Status: ${targetUser.tag}\n\n` +
-                `• **User ID:** \`${userId}\`\n` +
-                `• **Status:** ${statusText}\n` +
-                `• **Subscription Type:** \`${typeText}\`\n` +
-                `• **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
-                `• **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
-                `• **Expiry Time:** ${expiryDisplay}`
+                `# ${EMOJI.key_chart || '📊'} User Status: ${targetUser.tag}\n\n` +
+                `• ${EMOJI.key_id || '🆔'} **User ID:** \`${userId}\`\n` +
+                `• ${EMOJI.key_status || '🟢'} **Status:** ${statusText}\n` +
+                `• ${EMOJI.key_type || '🏷️'} **Subscription Type:** \`${typeText}\`\n` +
+                `• ${EMOJI.key_success || '✅'} **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
+                `• ${EMOJI.key_slot || '🎰'} **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
+                `• ${EMOJI.key_expiry || '⏳'} **Expiry Time:** ${expiryDisplay}`
             )
         );
 
@@ -255,17 +255,17 @@ export const checkTrialCmd = {
 
         const expiryDisplay = userDoc.expiresAt ? `<t:${Math.floor(userDoc.expiresAt / 1000)}:F> (<t:${Math.floor(userDoc.expiresAt / 1000)}:R>)` : 'Never (Lifetime)';
         const typeText = userDoc.type ? userDoc.type.toUpperCase() : 'TRIAL/BASE';
-        const statusText = userDoc.active ? '🟢 **Active**' : '🔴 **Expired / Inactive**';
+        const statusText = userDoc.active ? `${EMOJI.key_status || '🟢'} **Active**` : `${EMOJI.key_error || '🔴'} **Expired / Inactive**`;
 
         card.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-                `# 📊 User Status: ${targetUser.tag}\n\n` +
-                `• **User ID:** \`${userId}\`\n` +
-                `• **Status:** ${statusText}\n` +
-                `• **Subscription Type:** \`${typeText}\`\n` +
-                `• **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
-                `• **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
-                `• **Expiry Time:** ${expiryDisplay}`
+                `# ${EMOJI.key_chart || '📊'} User Status: ${targetUser.tag}\n\n` +
+                `• ${EMOJI.key_id || '🆔'} **User ID:** \`${userId}\`\n` +
+                `• ${EMOJI.key_status || '🟢'} **Status:** ${statusText}\n` +
+                `• ${EMOJI.key_type || '🏷️'} **Subscription Type:** \`${typeText}\`\n` +
+                `• ${EMOJI.key_success || '✅'} **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
+                `• ${EMOJI.key_slot || '🎰'} **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
+                `• ${EMOJI.key_expiry || '⏳'} **Expiry Time:** ${expiryDisplay}`
             )
         );
 
