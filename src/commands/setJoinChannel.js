@@ -5,6 +5,7 @@
 
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { getCollection } from '../utils/mongo.js';
+import { getEmojis } from '../quest/emoji.js';
 
 export const setJoinChannelCmd = {
     data: new SlashCommandBuilder()
@@ -21,19 +22,20 @@ export const setJoinChannelCmd = {
     prefix: ['setjoin', 'setjoinchannel'],
 
     async execute(interaction) {
+        const guildId = interaction.guild.id;
+        const EMOJI = await getEmojis(guildId);
         const channel = interaction.options.getChannel('channel');
-        // Fixed collection name to match inviteTracker.js ('guildSettings')
         const col = await getCollection('guildSettings');
 
-        if (!col) return interaction.reply({ content: '❌ Database error!', ephemeral: true });
+        if (!col) return interaction.reply({ content: `${EMOJI.sys_error || '❌'} Database error!`, ephemeral: true });
 
         await col.updateOne(
-            { guildId: interaction.guild.id },
+            { guildId },
             { $set: { joinChannelId: channel.id, updatedAt: new Date() } },
             { upsert: true }
         );
 
-        await interaction.reply({ content: `✅ Successfully set join channel to <#${channel.id}>!`, ephemeral: true });
+        await interaction.reply({ content: `${EMOJI.sys_success || '✅'} Successfully set join channel to <#${channel.id}>!`, ephemeral: true });
     },
 
     async prefixExecute(message, args) {
@@ -41,21 +43,23 @@ export const setJoinChannelCmd = {
             return message.reply('❌ You need `Manage Guild` permissions to use this command.');
         }
 
+        const guildId = message.guild.id;
+        const EMOJI = await getEmojis(guildId);
         const channel = message.mentions.channels.first();
+        
         if (!channel) {
-            return message.reply('Usage: `?setjoin #channel`');
+            return message.reply(`${EMOJI.sys_error || '❌'} Usage: \`;setjoin #channel\``);
         }
 
-        // Fixed collection name to match inviteTracker.js ('guildSettings')
         const col = await getCollection('guildSettings');
-        if (!col) return message.reply('❌ Database error!');
+        if (!col) return message.reply(`${EMOJI.sys_error || '❌'} Database error!`);
 
         await col.updateOne(
-            { guildId: message.guild.id },
+            { guildId },
             { $set: { joinChannelId: channel.id, updatedAt: new Date() } },
             { upsert: true }
         );
 
-        await message.reply(`✅ Successfully set join channel to <#${channel.id}>!`);
+        await message.reply(`${EMOJI.sys_success || '✅'} Successfully set join channel to <#${channel.id}>!`);
     }
 };
