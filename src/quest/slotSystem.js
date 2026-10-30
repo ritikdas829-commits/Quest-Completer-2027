@@ -1,5 +1,5 @@
 /**
- * slotSystem.js - Strict Trial Only Slot #1 & Dynamic Role Progression
+ * slotSystem.js - Strict Trial Only Slot #1 & Dynamic Role Progression (Fixed)
  * Location: src/quest/slotSystem.js
  */
 
@@ -107,7 +107,7 @@ export async function getProgressiveSlots(member) {
             createdTimestamp: member.user.createdTimestamp
         };
 
-        // Dynamic Role Checks
+        // Dynamic Slot Role Checks (Invites / Boosts based)
         const hasRole2 = invites >= 2 || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
         const hasRole5 = invites >= 5 || (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3));
         const hasRole10 = invites >= 10 || (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4));
@@ -116,16 +116,29 @@ export async function getProgressiveSlots(member) {
 
         const hasHigherTier = hasRole2 || hasRole5 || hasRole10 || hasBoost1 || hasBoost2;
 
-        // 🔄 AUTO-STRIP TRIAL ROLE IF HIGHER TIER ACQUIRED
-        if (hasHigherTier && roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) {
-            try {
-                await member.roles.remove(roles.ROLE_TRIAL);
-            } catch (e) {
-                console.error("Failed to strip trial role:", e.message);
+        // 🛡️ FIXED: NEVER touch key-based Trial role here. 
+        // Only manage/strip slot-based roles if requirements are no longer met.
+        try {
+            if (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2) && invites < 2) {
+                await member.roles.remove(roles.ROLE_SLOT_2).catch(() => {});
             }
+            if (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3) && invites < 5) {
+                await member.roles.remove(roles.ROLE_SLOT_3).catch(() => {});
+            }
+            if (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4) && invites < 10) {
+                await member.roles.remove(roles.ROLE_SLOT_4).catch(() => {});
+            }
+            if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST) && boosts < 1 && invites < 15) {
+                await member.roles.remove(roles.ROLE_1_BOOST).catch(() => {});
+            }
+            if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST) && boosts < 2) {
+                await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
+            }
+        } catch (e) {
+            console.error("Failed to manage slot roles:", e.message);
         }
 
-        // Check if user has active trial AND no higher roles
+        // Check if user has active trial AND no higher slot roles
         const isTrialActive = userData && userData.active && (userData.expiresAt === null || userData.expiresAt > Date.now()) && !hasHigherTier;
 
         // 🛑 RULE 1: STRICTLY TRIAL USER - ONLY 1 SLOT SHOW
@@ -204,6 +217,7 @@ export async function getProgressiveSlots(member) {
             invites, 
             boosts, 
             slotsToShow: slots.length, 
+            isTrial/false,
             isTrialActive: false,
             alreadyClaimed: userData?.claimedTrial || false,
             userProfile
