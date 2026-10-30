@@ -1,21 +1,21 @@
 /**
- * setemoji.js — UI Custom Emoji Manager with MongoDB Support
+ * setemoji.js — Independent UI Custom Emoji Manager with Categories & MongoDB Support
  * Location: src/commands/setemoji.js
  */
 
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
-import { getEmojis, saveEmoji } from '../quest/emoji.js';
+import { getEmojis, saveEmoji, EMOJI_CATEGORIES } from '../quest/emoji.js';
 
 export default {
     name: 'setemoji',
     prefix: 'setemoji',
-    description: 'Manage and update custom UI emojis for your quest bot',
+    description: 'Manage and update independent custom UI emojis for your quest bot',
     data: new SlashCommandBuilder()
         .setName('setemoji')
-        .setDescription('Manage and update custom UI emojis')
+        .setDescription('Manage and update independent custom UI emojis')
         .addStringOption(o => 
             o.setName('key')
-             .setDescription('The emoji key you want to change (e.g., success, token, quest)')
+             .setDescription('The independent emoji key you want to change (e.g., panel_premium, quest_link)')
              .setRequired(false)
         )
         .addStringOption(o => 
@@ -47,15 +47,26 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
     // Fetch all current emojis from MongoDB/Cache
     const emojis = await getEmojis(guildId);
 
-    // 1. Agar koi key nahi di, toh saare available keys ki list dikhao
+    // 1. Agar koi key nahi di, toh categories ke hisab se saari keys ki list embed fields mein dikhao
     if (!key) {
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle('🎨 Quest UI Emojis Manager')
-            .setDescription('Here are all the available emoji keys and their current values:\n\n' +
-                Object.entries(emojis).map(([k, v]) => `• **${k}** : ${v}`).join('\n')
-            )
-            .setFooter({ text: 'Usage: /setemoji <key> <emoji> OR ?setemoji <key> <emoji>' });
+            .setTitle('🎨 Independent Quest UI Emojis Manager')
+            .setDescription('Here are all the available independent emoji keys organized by their UI categories:\n');
+
+        for (const [categoryName, keysList] of Object.entries(EMOJI_CATEGORIES)) {
+            const fieldContent = keysList
+                .map(k => `• \`${k}\` : ${emojis[k] || '⭐'}`)
+                .join('\n');
+            
+            embed.addFields({
+                name: categoryName,
+                value: fieldContent || 'No emojis in this category.',
+                inline: false
+            });
+        }
+
+        embed.setFooter({ text: 'Usage: /setemoji <key> <emoji> OR ?setemoji <key> <emoji>' });
 
         return isInteraction 
             ? await target.editReply({ embeds: [embed] }) 
@@ -67,7 +78,7 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
         const errEmbed = new EmbedBuilder()
             .setColor(0xED4245)
             .setTitle('❌ Invalid Emoji Key')
-            .setDescription(`The key **"${key}"** does not exist.\n\n**Available Keys:**\n\`${Object.keys(emojis).join(', ')}\``);
+            .setDescription(`The independent key **"${key}"** does not exist.\n\nUse \`/setemoji\` without arguments to view all available category keys.`);
 
         return isInteraction 
             ? await target.editReply({ embeds: [errEmbed] }) 
@@ -93,13 +104,13 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
     if (success) {
         resultEmbed
             .setColor(0x57F287)
-            .setTitle('✅ Emoji Updated Successfully!')
+            .setTitle('✅ Independent Emoji Updated Successfully!')
             .setDescription(`Successfully changed **${key}** emoji to ${newEmoji}`);
     } else {
         resultEmbed
             .setColor(0xED4245)
             .setTitle('❌ Database Error')
-            .setDescription(`Failed to update emoji **${key}** in the database.`);
+            .setDescription(`Failed to update independent emoji **${key}** in the database.`);
     }
 
     return isInteraction 
