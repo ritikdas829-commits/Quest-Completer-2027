@@ -141,16 +141,18 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    // 🛑 Check 2: Key Sharing / Account Locking Check (Strict Ownership BEFORE redeem check)
-    if (keyDoc.assignedTo && keyDoc.assignedTo !== userId) {
+    // 🛑 Check 2: Key Sharing / Account Locking Check (Strict Ownership with String Comparison)
+    if (keyDoc.assignedTo && String(keyDoc.assignedTo) !== String(userId)) {
         return await interaction.editReply({
             content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is strictly locked to another Discord account. You cannot use someone else's key!`
         });
     }
 
-    // 🛑 Check 3: Key Already Redeemed Check (With self-recovery / role restore support)
+    // 🛑 Check 3: Key Already Redeemed Check (Foolproof Self-Recovery & Role Restoration)
     if (keyDoc.redeemed) {
-        if (keyDoc.assignedTo === userId) {
+        const userTrialDoc = await UserTrial.findOne({ userId, active: true });
+
+        if (String(keyDoc.assignedTo) === String(userId) || userTrialDoc) {
             const targetRoleId = roles.ROLE_PREMIUM || roles.ROLE_TRIAL;
             if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
                 await member.roles.add(targetRoleId).catch(err => console.error("Failed to restore role:", err));
@@ -162,6 +164,12 @@ export async function handleOrbieModalSubmit(interaction) {
                 { $set: { active: true } },
                 { upsert: true, new: true }
             );
+
+            // Ensure key mapping is firmly bound to this user
+            if (!keyDoc.assignedTo) {
+                keyDoc.assignedTo = userId;
+                await keyDoc.save();
+            }
 
             return await interaction.editReply({
                 content: `${EMOJI.success || '✅'} **Role Restored Successfully!**\nYour subscription is still active, and your role has been successfully given back to you!`
