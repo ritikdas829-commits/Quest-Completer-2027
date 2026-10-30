@@ -8,7 +8,7 @@ import { QuestManager } from '../quest/questManager.js';
 
 export default {
     name: 'claim',
-    prefix: ['claim', 'quests'],
+    prefix: 'claim', // Fixed: String format so the command loader registers it properly
     description: 'Real-time interactive quest reward claim hub',
     data: new SlashCommandBuilder()
         .setName('claim')
@@ -109,7 +109,7 @@ async function handleClaimHub(target, client, isInteraction) {
         .setTitle('🎁 Interactive Reward Claim Hub')
         .setDescription(`Found **${claimableQuests.length}** claimable quest(s).\nSelect a specific quest from the dropdown or click **Claim All 🚀** to claim everything at once.`);
 
-    // Dropdown options for specific quests
+    // Dropdown options strictly for claimable quests
     const selectOptions = claimableQuests.length > 0 
         ? claimableQuests.slice(0, 25).map(q => ({
             label: (q.config?.messages?.quest_name || q.id).substring(0, 100),
