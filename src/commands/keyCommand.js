@@ -1,11 +1,23 @@
 /**
- * keyCommand.js - Key Generation with Slot Selector, Lifetime/Duration, Auto-DM & Security
+ * keyCommand.js - Key Generation, Admin Limits & User Trial Status Check
  * Location: src/commands/keyCommand.js
  */
 
 import { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { generateKeyByRole, setAdminKeyLimit } from '../quest/trialKeyStore.js';
 import { getEmojis } from '../quest/emoji.js';
+import mongoose from 'mongoose';
+
+// UserTrial Model reference
+const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', new mongoose.Schema({
+    userId: String,
+    claimedTrial: Boolean,
+    active: Boolean,
+    expiresAt: Number,
+    durationDays: mongoose.Schema.Types.Mixed,
+    slot: Number,
+    type: String
+}));
 
 export const adminCreateKeyCmd = {
     data: new SlashCommandBuilder()
@@ -75,7 +87,6 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
     const EMOJI = await getEmojis(guildId || 'global');
     const targetUserId = targetUser ? targetUser.id : null;
     
-    // Pass duration/slot to key store generator
     const result = await generateKeyByRole(userId, guildOwnerId, targetUserId, duration, slot);
 
     if (!result.success) {
@@ -84,10 +95,8 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
         return await replyFn({ components: [errCard], flags: MessageFlags.Ephemeral });
     }
 
-    // Find panel channel dynamically in guild if possible (e.g., named 'orbie-panel' or similar)
     const panelChannel = guild?.channels.cache.find(c => c.name.includes('panel') || c.name.includes('orbie')) || '#orbie-panel';
 
-    // 📬 Auto-DM to the target user with slot, duration, and key details
     if (targetUser) {
         try {
             const dmCard = new ContainerBuilder().setAccentColor(0x57F287);
@@ -113,7 +122,6 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
         }
     }
 
-    // Response to Admin/Owner
     const c = new ContainerBuilder().setAccentColor(0x57F287);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -172,5 +180,95 @@ export const setLimitCmd = {
         const c = new ContainerBuilder().setAccentColor(0x57F287);
         c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
         await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
+    }
+};
+
+// 📊 NEW: Check any user's Trial/Premium status command
+export const checkTrialCmd = {
+    data: new SlashCommandBuilder()
+        .setName('checktrial')
+        .setDescription('Check active status, trial claim, slot & expiry of any user (Admin Only)')
+        .addUserOption(o => o.setName('user').setDescription('Target user to check').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    prefix: 'checktrial',
+
+    async execute(interaction) {
+        const EMOJI = await getEmojis(interaction.guildId);
+        const targetUser = interaction.options.getUser('user');
+        const userId = targetUser.id;
+
+        const userDoc = await UserTrial.findOne({ userId });
+
+        const card = new ContainerBuilder().setAccentColor(userDoc?.active ? 0x57F287 : 0xED4245);
+
+        if (!userDoc) {
+            card.addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `# ${EMOJI.error || '❌'} No Record Found\n` +
+                    `User <@${userId}> has **never** claimed a trial or redeemed any key.`
+                )
+            );
+            return await interaction.reply({ components: [card], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+        }
+
+        const expiryDisplay = userDoc.expiresAt ? `<t:${Math.floor(userDoc.expiresAt / 1000)}:F> (<t:${Math.floor(userDoc.expiresAt / 1000)}:R>)` : 'Never (Lifetime)';
+        const typeText = userDoc.type ? userDoc.type.toUpperCase() : 'TRIAL/BASE';
+        const statusText = userDoc.active ? '🟢 **Active**' : '🔴 **Expired / Inactive**';
+
+        card.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                `# 📊 User Status: ${targetUser.tag}\n\n` +
+                `• **User ID:** \`${userId}\`\n` +
+                `• **Status:** ${statusText}\n` +
+                `• **Subscription Type:** \`${typeText}\`\n` +
+                `• **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
+                `• **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
+                `• **Expiry Time:** ${expiryDisplay}`
+            )
+        );
+
+        await interaction.reply({ components: [card], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
+    },
+
+    async prefixExecute(message, args) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        const EMOJI = await getEmojis(message.guild.id);
+        const targetUser = message.mentions.users.first();
+
+        if (!targetUser) {
+            return await message.reply({ content: `${EMOJI.error || '❌'} Please mention a user: \`;checktrial @user\``, allowedMentions: { repliedUser: false } });
+        }
+
+        const userId = targetUser.id;
+        const userDoc = await UserTrial.findOne({ userId });
+        const card = new ContainerBuilder().setAccentColor(userDoc?.active ? 0x57F287 : 0xED4245);
+
+        if (!userDoc) {
+            card.addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                    `# ${EMOJI.error || '❌'} No Record Found\n` +
+                    `User <@${userId}> has **never** claimed a trial or redeemed any key.`
+                )
+            );
+            return await message.reply({ components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
+        }
+
+        const expiryDisplay = userDoc.expiresAt ? `<t:${Math.floor(userDoc.expiresAt / 1000)}:F> (<t:${Math.floor(userDoc.expiresAt / 1000)}:R>)` : 'Never (Lifetime)';
+        const typeText = userDoc.type ? userDoc.type.toUpperCase() : 'TRIAL/BASE';
+        const statusText = userDoc.active ? '🟢 **Active**' : '🔴 **Expired / Inactive**';
+
+        card.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+                `# 📊 User Status: ${targetUser.tag}\n\n` +
+                `• **User ID:** \`${userId}\`\n` +
+                `• **Status:** ${statusText}\n` +
+                `• **Subscription Type:** \`${typeText}\`\n` +
+                `• **Claimed Trial?** ${userDoc.claimedTrial ? '✅ Yes' : '❌ No'}\n` +
+                `• **Unlocked Slot:** Slot #${userDoc.slot || 1}\n` +
+                `• **Expiry Time:** ${expiryDisplay}`
+            )
+        );
+
+        await message.reply({ components: [card], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
     }
 };
