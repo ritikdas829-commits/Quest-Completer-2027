@@ -1,6 +1,5 @@
 /**
- * orbiePanel.js - Send the Public Premium Activation Panel & Secure Modal Handler
- * Location: src/commands/orbiePanel.js
+ * orbiePanel.js - Orbie Premium & Trial Activation Panel
  */
 
 import { 
@@ -12,11 +11,11 @@ import mongoose from 'mongoose';
 import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
 
-// Mongoose Models reference
+// Models
 const KeyStore = mongoose.models.KeyStore || mongoose.model('KeyStore', new mongoose.Schema({
     keyString: String,
     assignedTo: String,
-    type: String, // 'premium' ya 'trial'
+    type: String, // 'premium' | 'trial'
     durationDays: mongoose.Schema.Types.Mixed,
     slot: Number,
     redeemed: Boolean,
@@ -29,27 +28,28 @@ const UserTrial = mongoose.models.UserTrial || mongoose.model('UserTrial', new m
     active: Boolean,
     expiresAt: Number,
     durationDays: mongoose.Schema.Types.Mixed,
-    slot: Number
+    slot: Number,
+    type: String
 }));
 
 export const orbiePanelCmd = {
     data: new SlashCommandBuilder()
         .setName('orbiepanel')
-        .setDescription('Send the Orbie Premium & Trial Activation Panel to the channel')
+        .setDescription('Send the Orbie Premium & Trial Activation Panel')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     prefix: 'orbiepanel',
 
     async execute(interaction) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await sendPublicPanel(interaction.channel, interaction.guildId, interaction.client);
-        await interaction.editReply({ content: '✅ Orbie panel has been successfully sent to this channel!' });
+        await interaction.editReply({ content: '✅ Orbie panel sent successfully!' });
     },
 
     async prefixExecute(message, args, client) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply({ content: '❌ You do not have administrator permissions.', allowedMentions: { repliedUser: false } });
+            return message.reply({ content: '❌ You need Administrator permission.', allowedMentions: { repliedUser: false } });
         }
-        try { await message.delete(); } catch (err) {}
+        try { await message.delete(); } catch {}
         await sendPublicPanel(message.channel, message.guildId, client);
     }
 };
@@ -63,11 +63,11 @@ async function sendPublicPanel(channel, guildId, client) {
         .setDescription(
             `Unlock Orbie Premium automation, video/desktop quest support, and active notifications.\n\n` +
             `${EMOJI.trial || '💎'} **Trial Keys**\n` +
-            `• Grant Orbie Trial for 3 days.\n` +
-            `• Limited to one lifetime trial redemption per Discord account.\n\n` +
+            `• 3 days Orbie Trial\n` +
+            `• One lifetime trial per Discord account\n\n` +
             `${EMOJI.crown || '👑'} **Premium Keys**\n` +
-            `• Grant full Orbie Premium (5 active account slots).\n` +
-            `• Extend existing paid premium periods natively.\n\n` +
+            `• Full Orbie Premium (5 account slots)\n` +
+            `• Extends existing premium\n\n` +
             `${EMOJI.ticket || '🎫'} **Activation**\n` +
             `Click the button below to activate your key!`
         )
@@ -118,75 +118,79 @@ export async function handleOrbieModalSubmit(interaction) {
 
     const keyString = interaction.fields.getTextInputValue('key_input').trim();
 
-    // 🛑 Check 1: Key Existence Check
+    // 1. Key exists?
     const keyDoc = await KeyStore.findOne({ keyString });
     if (!keyDoc) {
-        return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThe key you entered does not exist in our database. Please check and try again.`
+        return interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThis key does not exist.`
         });
     }
 
-    // Determine target role based on key type (Grok Point #2)
+    // Determine key type safely (Gemini + Grok mix)
     const isPremiumKey = keyDoc.type === 'premium' || (!keyDoc.type && keyDoc.slot > 1);
     const targetRoleId = isPremiumKey ? roles.ROLE_PREMIUM : roles.ROLE_TRIAL;
-    const conflictingRoleId = isPremiumKey ? roles.ROLE_TRIAL : null; // If upgrading from trial to premium
+    const conflictingRoleId = isPremiumKey ? roles.ROLE_TRIAL : null;
 
-    // 🛑 Check 2: Key Ownership Check
+    // 2. Key locked to someone else?
     if (keyDoc.assignedTo && String(keyDoc.assignedTo) !== String(userId)) {
-        return await interaction.editReply({
-            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is strictly locked to another Discord account. You cannot use someone else's key!`
+        return interaction.editReply({
+            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is locked to another account.`
         });
     }
 
-    // 🛑 Check 3: Already Redeemed & Self-Recovery Check
+    // 3. Already redeemed → self recovery
     if (keyDoc.redeemed) {
-        const userTrialDoc = await UserTrial.findOne({ userId, active: true });
+        const userDoc = await UserTrial.findOne({ userId, active: true });
 
-        if (String(keyDoc.assignedTo) === String(userId) || userTrialDoc) {
-            if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
-                try {
+        if (String(keyDoc.assignedTo) === String(userId) || userDoc) {
+            try {
+                if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
                     await member.roles.add(targetRoleId);
-                    // Remove trial role if upgrading to premium
-                    if (conflictingRoleId && member.roles.cache.has(conflictingRoleId)) {
-                        await member.roles.remove(conflictingRoleId).catch(() => {});
-                    }
-                } catch (err) {
-                    console.error(`[Orbie] Role restore failed for ${userId}:`, err);
                 }
+                if (conflictingRoleId && member.roles.cache.has(conflictingRoleId)) {
+                    await member.roles.remove(conflictingRoleId);
+                }
+            } catch (err) {
+                console.error(`[Orbie] Role restore failed for ${userId}:`, err);
             }
 
             await UserTrial.findOneAndUpdate(
                 { userId },
                 { $set: { active: true } },
-                { upsert: true, new: true }
+                { upsert: true }
             );
 
-            return await interaction.editReply({
-                content: `${EMOJI.success || '✅'} **Role Restored Successfully!**\nYour subscription is active, and your role has been given back to you!`
+            if (!keyDoc.assignedTo) {
+                keyDoc.assignedTo = userId;
+                await keyDoc.save();
+            }
+
+            return interaction.editReply({
+                content: `${EMOJI.success || '✅'} **Role Restored!**\nYour subscription is still active.`
             });
         }
 
-        return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Key Already Redeemed!**\nThis key has already been used by someone else.`
+        return interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Key Already Used!**\nThis key was already redeemed by someone else.`
         });
     }
 
-    // 🛑 Check 4: Already Active Check (With Upgrade Support - Grok Point #4)
+    // 4. Already active check (with upgrade support)
     const hasPremiumRole = roles.ROLE_PREMIUM && member.roles.cache.has(roles.ROLE_PREMIUM);
     const hasTrialRole = roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL);
 
     if (isPremiumKey && hasPremiumRole) {
-        return await interaction.editReply({
+        return interaction.editReply({
             content: `${EMOJI.error || '❌'} **Already Premium!**\nYou already have an active Premium role.`
         });
     }
     if (!isPremiumKey && (hasTrialRole || hasPremiumRole)) {
-        return await interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Already Active!**\nYou already have an active Trial or Premium role.`
+        return interaction.editReply({
+            content: `${EMOJI.error || '❌'} **Already Active!**\nYou already have Trial or Premium.`
         });
     }
 
-    // 🚀 Expiry Calculation
+    // 5. Calculate expiry
     const durationDays = keyDoc.durationDays;
     let expiresAt = null;
     const isLifetime = durationDays === 'lifetime' || durationDays === -1 || durationDays === 'unlimited';
@@ -196,42 +200,49 @@ export async function handleOrbieModalSubmit(interaction) {
         expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
     }
 
-    // 📝 Mark Key as Redeemed
-    keyDoc.redeemed = true;
-    keyDoc.assignedTo = userId;
-    await keyDoc.save();
+    // 6. Full activation (with proper error handling)
+    try {
+        keyDoc.redeemed = true;
+        keyDoc.assignedTo = userId;
+        await keyDoc.save();
 
-    // 📝 Update User Database
-    await UserTrial.findOneAndUpdate(
-        { userId },
-        {
-            $set: {
-                claimedTrial: true,
-                active: true,
-                expiresAt: expiresAt,
-                durationDays: durationDays,
-                slot: keyDoc.slot || 1
-            }
-        },
-        { upsert: true, new: true }
-    );
+        await UserTrial.findOneAndUpdate(
+            { userId },
+            {
+                $set: {
+                    claimedTrial: true,
+                    active: true,
+                    expiresAt,
+                    durationDays,
+                    slot: keyDoc.slot || 1,
+                    type: isPremiumKey ? 'premium' : 'trial'
+                }
+            },
+            { upsert: true }
+        );
 
-    // 👑 Assign Role (and cleanup old trial role if upgrading)
-    if (targetRoleId) {
-        try {
+        // Assign role + remove old trial role if upgrading
+        if (targetRoleId) {
             await member.roles.add(targetRoleId);
-            if (isPremiumKey && conflictingRoleId && member.roles.cache.has(conflictingRoleId)) {
-                await member.roles.remove(conflictingRoleId).catch(() => {});
-            }
-        } catch (err) {
-            console.error(`[Orbie] Role assign failed for ${userId}:`, err);
         }
-    }
+        if (isPremiumKey && conflictingRoleId && member.roles.cache.has(conflictingRoleId)) {
+            await member.roles.remove(conflictingRoleId).catch(() => {});
+        }
 
-    const expiryDisplay = expiresAt ? `<t:${Math.floor(expiresAt / 1000)}:R>` : 'Never (Lifetime)';
-    return await interaction.editReply({
-        content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\n` +
-                 `Your key has been verified, and **Slot #${keyDoc.slot || 1}** along with your role has been unlocked!\n` +
-                 `⏳ **Expires:** ${expiryDisplay}`
-    });
+        const expiryDisplay = expiresAt ? `<t:${Math.floor(expiresAt / 1000)}:R>` : 'Never (Lifetime)';
+        const keyTypeText = isPremiumKey ? 'Premium' : 'Trial';
+
+        return interaction.editReply({
+            content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\n` +
+                     `**Type:** ${keyTypeText}\n` +
+                     `**Slot:** #${keyDoc.slot || 1}\n` +
+                     `⏳ **Expires:** ${expiryDisplay}`
+        });
+
+    } catch (err) {
+        console.error('[Orbie] Activation error:', err);
+        return interaction.editReply({
+            content: `${EMOJI.error || '❌'} Something went wrong while activating. Please try again or contact admin.`
+        });
+    }
 }
