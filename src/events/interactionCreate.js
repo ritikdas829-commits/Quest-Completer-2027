@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Security, Cooldown, Panel Locks, Activation Modal & Copy Key Support
+ * interactionCreate.js — Complete Interaction Handler with Independent Emojis
  * Location: src/events/interactionCreate.js
  */
 
@@ -27,7 +27,7 @@ export function setPanelOwner(messageId, userId) {
 
 // Helper: Build Token Dashboard Panel for Button Interactions
 async function buildTokenDashboardContent(client, guildId, userId) {
-    const emojis = await getEmojis(guildId);
+    const EMOJI = await getEmojis(guildId);
     const accounts = await client.tokenStore.getAllSlots(guildId, userId);
     const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
     
@@ -36,19 +36,19 @@ async function buildTokenDashboardContent(client, guildId, userId) {
 
     if (!accounts || accounts.length === 0) {
         embed.setColor(0xED4245)
-             .setTitle(`${emojis.warn || '❌'} No Tokens Linked`)
+             .setTitle(`${EMOJI.event_warn || '❌'} No Tokens Linked`)
              .setDescription('No accounts linked yet. Please use the `?link` command to add a token.');
         return { embeds: [embed], components: [], flags: 64 };
     }
 
     embed.setColor(0x5865F2)
-         .setTitle(`${emojis.list || '📊'} Token Status Dashboard & Control Panel`)
+         .setTitle(`${EMOJI.event_list || '📊'} Token Status Dashboard & Control Panel`)
          .setDescription('Use the buttons below to bring your accounts online/offline or select a slot.');
 
     const menuOptions = [];
     for (const acc of accounts) {
         const isActive = activeSlot?.slot === acc.slot;
-        const statusIcon = isActive ? (emojis.online || '🟢') : (emojis.dot || '⚪');
+        const statusIcon = isActive ? (EMOJI.event_online || '🟢') : (EMOJI.event_dot || '⚪');
         
         embed.addFields({
             name: `Slot #${acc.slot} — ${acc.username || 'Linked Account'}`,
@@ -100,7 +100,7 @@ export default {
             const cooldown = checkActivityCooldown(userId);
             if (cooldown.active) {
                 return interaction.reply({
-                    content: `### ${EMOJI.error || '❌'} Security Cooldown Active\n` +
+                    content: `### ${EMOJI.event_error || '❌'} Security Cooldown Active\n` +
                              `\`\`\`prolog\n` +
                              `[SECURITY] Account temporarily locked due to activity safety.\n` +
                              `[STATUS] Cooldown remaining: ~${cooldown.remaining} hours.\n` +
@@ -115,7 +115,7 @@ export default {
                 const ownerId = panelOwners.get(interaction.message.id);
                 if (userId !== ownerId) {
                     return interaction.reply({
-                        content: `### ${EMOJI.error || '❌'} Unauthorized Access\n` +
+                        content: `### ${EMOJI.event_error || '❌'} Unauthorized Access\n` +
                                  `> This control panel does not belong to you! Please execute your own command to interact with quests.`,
                         flags: 64
                     }).catch(() => {});
@@ -155,7 +155,7 @@ export default {
 
             // 5. Link Prompt Button
             if (interaction.isButton() && interaction.customId === 'link_prompt') {
-                await interaction.reply({ content: `${EMOJI.link || '🔗'} Please use the link command or manage slots via premium panel.`, flags: 64 }).catch(() => {});
+                await interaction.reply({ content: `${EMOJI.event_link || '🔗'} Please use the link command or manage slots via premium panel.`, flags: 64 }).catch(() => {});
                 return;
             }
 
@@ -191,13 +191,13 @@ export default {
                 const active = await client.tokenStore.getActiveSlot(guildId, userId);
                 
                 if (!active || !active.token) {
-                    await interaction.followUp({ content: `${EMOJI.error || '❌'} No active slot selected or token is missing!`, flags: 64 });
+                    await interaction.followUp({ content: `${EMOJI.event_error || '❌'} No active slot selected or token is missing!`, flags: 64 });
                     return;
                 }
 
                 startUserOnlinePresence(userId, active.token, 'online');
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
-                await interaction.followUp({ content: `${EMOJI.success || '🟢'} **Slot #${active.slot}** is now brought online 24/7!`, flags: 64 });
+                await interaction.followUp({ content: `${EMOJI.event_online || '🟢'} **Slot #${active.slot}** is now brought online 24/7!`, flags: 64 });
                 await interaction.editReply(updatedPanel);
                 return;
             }
@@ -206,7 +206,7 @@ export default {
                 await interaction.deferUpdate();
                 stopUserOnlinePresence(userId);
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
-                await interaction.followUp({ content: `${EMOJI.warn || '🔴'} Account online gateway connection disconnected.`, flags: 64 });
+                await interaction.followUp({ content: `${EMOJI.event_warn || '🔴'} Account online gateway connection disconnected.`, flags: 64 });
                 await interaction.editReply(updatedPanel);
                 return;
             }
@@ -240,7 +240,7 @@ export default {
                         if (!res.ok) {
                             const errorEmbed = new EmbedBuilder()
                                 .setColor(0xED4245)
-                                .setTitle(`${EMOJI.error || '❌'} Invalid Token`)
+                                .setTitle(`${EMOJI.event_error || '❌'} Invalid Token`)
                                 .setDescription('The token you provided was rejected by Discord. Please check and try again.');
                             return await interaction.editReply({ embeds: [errorEmbed] });
                         }
@@ -249,7 +249,7 @@ export default {
                     } catch (err) {
                         const errorEmbed = new EmbedBuilder()
                             .setColor(0xED4245)
-                            .setTitle(`${EMOJI.error || '❌'} Connection Error`)
+                            .setTitle(`${EMOJI.event_error || '❌'} Connection Error`)
                             .setDescription('Failed to validate token with Discord API.');
                         return await interaction.editReply({ embeds: [errorEmbed] });
                     }
@@ -267,7 +267,7 @@ export default {
 
                     const successEmbed = new EmbedBuilder()
                         .setColor(0x57F287)
-                        .setTitle(`${EMOJI.success || '✅'} Successfully Linked!`)
+                        .setTitle(`${EMOJI.event_success || '✅'} Successfully Linked!`)
                         .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
 
                     await interaction.editReply({ embeds: [successEmbed] });
@@ -305,7 +305,7 @@ export default {
                 } catch {}
 
                 const timeString = new Date().toLocaleTimeString();
-                const loadingLogs = `${EMOJI.loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
+                const loadingLogs = `${EMOJI.event_loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
 
                 const panel = await buildQuestSolverPanel(client, guildId, userId, currentQuestId, loadingLogs);
                 const replyMsg = await interaction.editReply(panel);
@@ -338,7 +338,7 @@ export default {
                 const token = active ? (active.token || await tokenStore.get(guildId, userId, active.slot)) : null;
 
                 if (!active || !token) {
-                    await interaction.followUp({ content: `${EMOJI.error || '❌'} No active token slot found! Use \`/link\` first.`, flags: 64 });
+                    await interaction.followUp({ content: `${EMOJI.event_error || '❌'} No active token slot found! Use \`/link\` first.`, flags: 64 });
                     return;
                 }
 
@@ -349,7 +349,7 @@ export default {
                 try {
                     manager = await qc.fetchQuests();
                 } catch (err) {
-                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Fetch Error: ${err.message}`);
+                    const errorPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.event_error || '❌'} Fetch Error: ${err.message}`);
                     const errorMsg = await interaction.editReply(errorPanel);
                     if (errorMsg?.id) setPanelOwner(errorMsg.id, userId);
                     return;
@@ -357,7 +357,7 @@ export default {
 
                 const quest = manager.get(questId);
                 if (!quest) {
-                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.error || '❌'} Quest ID ${questId} not found or expired.`);
+                    const missingPanel = await buildQuestSolverPanel(client, guildId, userId, questId, `${EMOJI.event_error || '❌'} Quest ID ${questId} not found or expired.`);
                     const missingMsg = await interaction.editReply(missingPanel);
                     if (missingMsg?.id) setPanelOwner(missingMsg.id, userId);
                     return;
@@ -366,7 +366,7 @@ export default {
                 const questName = quest.config?.messages?.quest_name || quest.config?.application?.name || 'Discord Quest';
 
                 if (quest.isCompleted()) {
-                    const claimLog = `${EMOJI.gift || '🎁'} Claiming reward for quest: ${questName}...`;
+                    const claimLog = `${EMOJI.event_gift || '🎁'} Claiming reward for quest: ${questName}...`;
                     const claimPanel = await buildQuestSolverPanel(client, guildId, userId, questId, claimLog);
                     const claimMsg = await interaction.editReply(claimPanel);
                     if (claimMsg?.id) setPanelOwner(claimMsg.id, userId);
@@ -376,8 +376,8 @@ export default {
                     }, quest.id);
 
                     const resultLog = claimedCount > 0
-                        ? `${EMOJI.success || '🎉'} Quest completed & reward claimed successfully!`
-                        : `${EMOJI.warn || '⚠️'} Quest completed, reward already claimed or pending verification.`;
+                        ? `${EMOJI.event_success || '🎉'} Quest completed & reward claimed successfully!`
+                        : `${EMOJI.event_warn || '⚠️'} Quest completed, reward already claimed or pending verification.`;
 
                     const finalPanel = await buildQuestSolverPanel(client, guildId, userId, questId, resultLog);
                     const finalMsg = await interaction.editReply(finalPanel);
@@ -410,8 +410,8 @@ export default {
                     }
 
                     const doneLog = success
-                        ? `${EMOJI.success || '🎉'} Quest completed successfully!`
-                        : `${EMOJI.warn || '⚠️'} Quest runner finished. Claiming rewards...`;
+                        ? `${EMOJI.event_success || '🎉'} Quest completed successfully!`
+                        : `${EMOJI.event_warn || '⚠️'} Quest runner finished. Claiming rewards...`;
 
                     runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${doneLog}`;
                     
@@ -428,10 +428,10 @@ export default {
                         const specificQuestLink = `https://discord.com/quests/${questId}`;
                         try {
                             const targetUser = await client.users.fetch(userId);
-                            await targetUser.send(`${EMOJI.success || '🎉'} **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
+                            await targetUser.send(`${EMOJI.event_success || '🎉'} **Quest Completed Successfully!**\n\n📌 **Quest Name:** ${questName}\n🆔 **Quest ID:** \`${questId}\`\n✨ **Status:** 100% Completed\n🔗 **View Quest:** ${specificQuestLink}`);
                         } catch {
                             await interaction.followUp({
-                                content: `<@${userId}> ${EMOJI.success || '🎉'} **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
+                                content: `<@${userId}> ${EMOJI.event_success || '🎉'} **Quest Completed!**\n📌 **Quest Name:** ${questName}\n🔗 ${specificQuestLink}`,
                                 allowedMentions: { users: [userId] }
                             }).catch(() => {});
                         }
@@ -497,7 +497,7 @@ export default {
         } catch (err) {
             console.error('❌ Interaction Error:', err);
             const EMOJI = await getEmojis(interaction.guildId || 'global');
-            const msg = { content: `${EMOJI.error || '❌'} Something went wrong.`, flags: 64 };
+            const msg = { content: `${EMOJI.event_error || '❌'} Something went wrong.`, flags: 64 };
             if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
                 await interaction.reply(msg).catch(() => {});
             } else if (interaction.isRepliable() && interaction.deferred) {
