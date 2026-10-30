@@ -1,5 +1,6 @@
 /**
- * orbiePanel.js - Orbie Premium & Trial Activation Panel (Final Fixed)
+ * orbiePanel.js - Orbie Premium & Trial Activation Panel (Independent Emojis)
+ * Location: src/commands/orbiePanel.js (or wherever your panel file is located)
  */
 
 import { 
@@ -55,25 +56,25 @@ export const orbiePanelCmd = {
 };
 
 async function sendPublicPanel(channel, guildId, client) {
+    // Independent panel emojis fetch ho rahe hain
     const EMOJI = await getEmojis(guildId || 'global');
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle(`${EMOJI.premium || '💎'} Orbie Premium & Trial Panel`)
+        .setTitle(`${EMOJI.panel_premium || '💎'} Orbie Premium & Trial Panel`)
         .setDescription(
             `Unlock Orbie Premium automation, video/desktop quest support, and active notifications.\n\n` +
-            `${EMOJI.trial || '💎'} **Trial Keys**\n` +
+            `${EMOJI.panel_trial || '💎'} **Trial Keys**\n` +
             `• 3 days Orbie Trial\n` +
             `• One lifetime trial per Discord account\n\n` +
-            `${EMOJI.crown || '👑'} **Premium Keys**\n` +
+            `${EMOJI.panel_crown || '👑'} **Premium Keys**\n` +
             `• Full Orbie Premium (5 account slots)\n` +
             `• Extends existing premium\n\n` +
-            `${EMOJI.ticket || '🎫'} **Activation**\n` +
+            `${EMOJI.panel_ticket || '🎫'} **Activation**\n` +
             `Click the button below to activate your key!`
         )
         .setFooter({ text: 'Thank you for using Orbie.' });
 
-    // FIXED: Direct unicode emoji to prevent button crash
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('open_activate_modal')
@@ -123,7 +124,7 @@ export async function handleOrbieModalSubmit(interaction) {
     const keyDoc = await KeyStore.findOne({ keyString });
     if (!keyDoc) {
         return interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Invalid Key!**\nThis key does not exist.`
+            content: `${EMOJI.panel_error || '❌'} **Invalid Key!**\nThis key does not exist.`
         });
     }
 
@@ -135,7 +136,7 @@ export async function handleOrbieModalSubmit(interaction) {
     // 2. Key locked to someone else?
     if (keyDoc.assignedTo && String(keyDoc.assignedTo) !== String(userId)) {
         return interaction.editReply({
-            content: `${EMOJI.shield || '🔒'} **Key Sharing Restricted!**\nThis key is locked to another account.`
+            content: `${EMOJI.panel_shield || '🔒'} **Key Sharing Restricted!**\nThis key is locked to another account.`
         });
     }
 
@@ -167,12 +168,12 @@ export async function handleOrbieModalSubmit(interaction) {
             }
 
             return interaction.editReply({
-                content: `${EMOJI.success || '✅'} **Role Restored!**\nYour subscription is still active.`
+                content: `${EMOJI.panel_success || '✅'} **Role Restored!**\nYour subscription is still active.`
             });
         }
 
         return interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Key Already Used!**\nThis key was already redeemed by someone else.`
+            content: `${EMOJI.panel_error || '❌'} **Key Already Used!**\nThis key was already redeemed by someone else.`
         });
     }
 
@@ -185,12 +186,12 @@ export async function handleOrbieModalSubmit(interaction) {
     if (!isPremiumKey) {
         if (existingTrial?.claimedTrial && existingTrial?.type === 'trial') {
             return interaction.editReply({
-                content: `${EMOJI.error || '❌'} **Trial Already Claimed!**\nYou can only claim trial once per lifetime.`
+                content: `${EMOJI.panel_error || '❌'} **Trial Already Claimed!**\nYou can only claim trial once per lifetime.`
             });
         }
         if (hasPremiumRole) {
             return interaction.editReply({
-                content: `${EMOJI.error || '❌'} **Already Premium!**\nYou already have Premium, no need for trial.`
+                content: `${EMOJI.panel_error || '❌'} **Already Premium!**\nYou already have Premium, no need for trial.`
             });
         }
     }
@@ -245,7 +246,7 @@ export async function handleOrbieModalSubmit(interaction) {
         const keyTypeText = isPremiumKey ? 'Premium' : 'Trial';
 
         return interaction.editReply({
-            content: `${EMOJI.success || '✅'} **Key Activated Successfully!**\n` +
+            content: `${EMOJI.panel_success || '✅'} **Key Activated Successfully!**\n` +
                      `**Type:** ${keyTypeText}\n` +
                      `**Slot:** #${keyDoc.slot || 1}\n` +
                      `⏳ **Expires:** ${expiryDisplay}`
@@ -254,7 +255,7 @@ export async function handleOrbieModalSubmit(interaction) {
     } catch (err) {
         console.error('[Orbie] Activation error:', err);
         return interaction.editReply({
-            content: `${EMOJI.error || '❌'} Something went wrong while activating. Please try again or contact admin.`
+            content: `${EMOJI.panel_error || '❌'} Something went wrong while activating. Please try again or contact admin.`
         });
     }
 }
