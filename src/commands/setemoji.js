@@ -83,39 +83,58 @@ async function handleEmojiLogic(target, guildId, key, newEmoji, isInteraction) {
 
         if (!response) return;
 
-        // Collector for Dropdown interaction (60 seconds timeout)
+        // Collector for Dropdown interaction (120 seconds timeout to prevent "didn't respond in time")
         const collector = response.createMessageComponentCollector({
             componentType: ComponentType.StringSelect,
-            time: 60000
+            time: 120000
         });
 
         collector.on('collect', async i => {
-            if (i.user.id !== (target.user?.id || target.author?.id)) {
-                return await i.reply({ content: 'This menu is not for you!', ephemeral: true }).catch(() => {});
+            try {
+                if (i.user.id !== (target.user?.id || target.author?.id)) {
+                    return await i.reply({ content: 'This menu is not for you!', ephemeral: true }).catch(() => {});
+                }
+
+                // Turant interaction acknowledge karne ke liye deferUpdate use kiya
+                if (!i.deferred && !i.replied) {
+                    await i.deferUpdate().catch(() => {});
+                }
+
+                const selectedCategory = i.values[0];
+                const updatedEmbed = createCategoryEmbed(selectedCategory, emojis);
+
+                // Update dropdown default option state safely
+                const newSelectMenu = new StringSelectMenuBuilder()
+                    .setCustomId('emoji_category_select')
+                    .setPlaceholder('Select an emoji category...')
+                    .addOptions(
+                        categories.map((cat) => ({
+                            label: cat,
+                            value: cat,
+                            description: `View emojis in ${cat}`,
+                            default: cat === selectedCategory
+                        }))
+                    );
+
+                const updatedRow = new ActionRowBuilder().addComponents(newSelectMenu);
+
+                await i.editReply({ embeds: [updatedEmbed], components: [updatedRow] }).catch(() => {});
+            } catch (err) {
+                console.error('[Emoji Collector Error]:', err);
             }
-
-            const selectedCategory = i.values[0];
-            const updatedEmbed = createCategoryEmbed(selectedCategory, emojis);
-
-            // Update dropdown default option state
-            selectMenu.components[0].options.forEach(opt => {
-                opt.default = opt.value === selectedCategory;
-            });
-
-            const updatedRow = new ActionRowBuilder().addComponents(selectMenu);
-
-            await i.update({ embeds: [updatedEmbed], components: [updatedRow] }).catch(() => {});
         });
 
         collector.on('end', async () => {
-            const disabledMenu = new StringSelectMenuBuilder()
-                .setCustomId('emoji_category_select')
-                .setPlaceholder('Menu expired')
-                .addOptions([{ label: 'Expired', value: 'expired', description: 'This menu has expired.' }])
-                .setDisabled(true);
+            try {
+                const disabledMenu = new StringSelectMenuBuilder()
+                    .setCustomId('emoji_category_select')
+                    .setPlaceholder('Menu expired')
+                    .addOptions([{ label: 'Expired', value: 'expired', description: 'This menu has expired.' }])
+                    .setDisabled(true);
 
-            const disabledRow = new ActionRowBuilder().addComponents(disabledMenu);
-            await response.edit({ components: [disabledRow] }).catch(() => {});
+                const disabledRow = new ActionRowBuilder().addComponents(disabledMenu);
+                await response.edit({ components: [disabledRow] }).catch(() => {});
+            } catch {}
         });
 
         return;
