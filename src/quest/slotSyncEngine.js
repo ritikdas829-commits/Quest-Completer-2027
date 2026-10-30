@@ -1,5 +1,5 @@
 /**
- * slotSyncEngine.js - Automated Slot & Role Synchronization Engine
+ * slotSyncEngine.js - Automated Slot & Role Synchronization Engine (Safe)
  * Location: src/quest/slotSyncEngine.js
  */
 
@@ -29,19 +29,7 @@ export async function syncUserSlotsAndRoles(member, client) {
         const hasSlot5 = invites >= 15 || boosts >= 1;
         const hasSlot6 = boosts >= 2;
 
-        const hasAnyProgressiveTier = hasSlot2 || hasSlot3 || hasSlot4 || hasSlot5 || hasSlot6;
-
-        // 2. AUTO-REMOVE TRIAL ROLE if higher progressive tier achieved
-        if (hasAnyProgressiveTier && roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL)) {
-            try {
-                await member.roles.remove(roles.ROLE_TRIAL);
-                console.log(`🧹 Auto-removed Trial Role from ${member.user.tag} (Unlocked progressive tier).`);
-            } catch (err) {
-                console.error(`Failed to remove Trial Role for ${member.user.tag}:`, err.message);
-            }
-        }
-
-        // 3. AUTO-ASSIGN PROGRESSIVE ROLES based on invites/boosts
+        // 2. AUTO-ASSIGN PROGRESSIVE ROLES based on invites/boosts (Without touching Trial role)
         if (hasSlot2 && roles.ROLE_SLOT_2 && !member.roles.cache.has(roles.ROLE_SLOT_2)) {
             await member.roles.add(roles.ROLE_SLOT_2).catch(() => {});
         }
