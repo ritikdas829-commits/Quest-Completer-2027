@@ -1,5 +1,5 @@
 /**
- * emoji.js — Professional MongoDB Emoji Manager with Categories & Crash Prevention
+ * emoji.js — Independent UI & File-specific Emoji Manager with Safe Validation
  * Location: src/quest/emoji.js
  */
 
@@ -16,87 +16,54 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 📂 Categorized Emojis Structure (Single Source of Truth)
+// 📂 Independent Categories per UI/File
 export const EMOJI_CATEGORIES = {
-    "🟢 Status & System Emojis": ['success', 'done', 'error', 'warn', 'loading', 'online', 'offline'],
-    "🎨 Panel & Action Emojis": ['link', 'search', 'list', 'links', 'premium', 'diamond', 'qdiamond', 'orbs', 'star', 'crown', 'trial', 'mail', 'announce', 's_admin', 'gift', 'arrow', 'dot'],
-    "🏷️ Trial & Card Emojis": ['keyType', 'tag', 'duration', 'target', 'expire', 'hourglass', 'key', 'keyIcon', 'keyButton', 'ticket', 'scroll', 'notes'],
-    "👤 Profile & Slot Emojis": ['user', 'id', 'slot', 'calendar', 'globe'],
-    "🛠️ Utilities & Devices Emojis": ['rocket', 'lightning', 'bell', 'pin', 'sparkles', 'lock', 'unlock', 'shield', 'task', 'stats', 'reward', 'desktop', 'mobile', 'apple', 'video', 'stream', 'activity', 'gear', 'robot']
+    "🟢 System & Status": [
+        'sys_success', 'sys_error', 'sys_warn', 'sys_loading', 'sys_online', 'sys_offline'
+    ],
+    "🎨 Orbie Panel UI": [
+        'panel_link', 'panel_premium', 'panel_orbs', 'panel_star', 'panel_crown', 'panel_gift', 'panel_button'
+    ],
+    "👤 Profile & User UI": [
+        'profile_user', 'profile_id', 'profile_slot', 'profile_calendar', 'profile_globe'
+    ],
+    "🔑 Key & Admin UI": [
+        'admin_key', 'admin_duration', 'admin_target', 'admin_expire', 'admin_shield', 'admin_ticket'
+    ]
 };
 
 const DEFAULT_EMOJIS = {
-    // Basic States
-    success: "✅",
-    done: "✅",
-    error: "❌",
-    warn: "⚠️",
-    loading: "⚙️",
-    online: "🟢",
-    offline: "🔴",
-    link: "🔗",
-    search: "🔍",
-    list: "📋",
-    links: "🔗",
-    
-    // Premium & Panel Emojis
-    premium: "💎",
-    diamond: "💎",
-    qdiamond: "💎",
-    orbs: "✨",
-    star: "🌟",
-    crown: "👑",
-    trial: "💎",
-    mail: "📬",
-    announce: "📢",
-    s_admin: "🛠️",
-    gift: "🎁",
-    arrow: "➡️",
-    dot: "•",
+    // System & Status
+    sys_success: "✅",
+    sys_error: "❌",
+    sys_warn: "⚠️",
+    sys_loading: "⚙️",
+    sys_online: "🟢",
+    sys_offline: "🔴",
 
-    // Trial & Card Section Emojis
-    keyType: "🏷️",
-    tag: "🏷️",
-    duration: "🎯",
-    target: "🎯",
-    expire: "⏳",
-    hourglass: "⏳",
-    key: "🔑",
-    keyIcon: "🔑",
-    keyButton: "🔑",
-    ticket: "🎫",
-    scroll: "📜",
-    notes: "📜",
+    // Orbie Panel UI
+    panel_link: "🔗",
+    panel_premium: "💎",
+    panel_orbs: "✨",
+    panel_star: "🌟",
+    panel_crown: "👑",
+    panel_gift: "🎁",
+    panel_button: "⭐",
 
-    // Profile & Presence Emojis
-    user: "👤",
-    id: "🆔",
-    slot: "🎰",
-    calendar: "📅",
-    globe: "🌐",
+    // Profile & User UI
+    profile_user: "👤",
+    profile_id: "🆔",
+    profile_slot: "🎰",
+    profile_calendar: "📅",
+    profile_globe: "🌐",
 
-    // Extra Actions & Utilities
-    rocket: "🚀",
-    lightning: "⚡",
-    bell: "🔔",
-    pin: "📌",
-    sparkles: "✨",
-
-    // Security & Extra Utility
-    lock: "🔒",
-    unlock: "🔓",
-    shield: "🛡️",
-    task: "📋",
-    stats: "📊",
-    reward: "🎁",
-    desktop: "🖥️",
-    mobile: "📱",
-    apple: "🍎", 
-    video: "🎬",
-    stream: "📺",
-    activity: "🎮",
-    gear: "⚙️",
-    robot: "🤖"
+    // Key & Admin UI
+    admin_key: "🔑",
+    admin_duration: "🎯",
+    admin_target: "🎯",
+    admin_expire: "⏳",
+    admin_shield: "🛡️",
+    admin_ticket: "🎫"
 };
 
 /**
@@ -136,7 +103,7 @@ export class EmojiStore {
                 const cacheKey = this.makeCacheKey(doc.guildId, doc.key);
                 this.cache.set(cacheKey, sanitizeEmoji(doc.value));
             }
-            console.log(`🎨 Loaded ${docs.length} custom emoji(s) into memory cache safely.`);
+            console.log(`🎨 Loaded ${docs.length} independent emoji(s) into memory cache safely.`);
         } catch (err) {
             console.error('❌ Error loading emojis into cache:', err.message);
         }
@@ -177,7 +144,7 @@ export class EmojiStore {
                 { upsert: true, new: true }
             );
 
-            console.log(`✅ Emoji saved safely [${guildId}] ${key} -> ${safeValue}`);
+            console.log(`✅ Independent Emoji saved safely [${guildId}] ${key} -> ${safeValue}`);
             return true;
         } catch (e) {
             console.error(`❌ Error saving emoji [${guildId}] ${key}:`, e.message);
