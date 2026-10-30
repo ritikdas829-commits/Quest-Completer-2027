@@ -1,11 +1,10 @@
 /**
- * autoquest.js — Autoquest Command Handler
+ * autoquest.js — Autoquest Command Handler (Fixed Double-Response)
  * Location: src/commands/autoquest.js
  */
 
-import { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { enableAutoquest, disableAutoquest, isAutoquestEnabled, canUseAutoquest } from '../quest/autoquestStore.js';
-import { PREFIX } from '../utils/config.js';
 
 async function getActiveToken(guildId, userId, tokenStore) { 
     const active = await tokenStore.getActiveSlot(guildId, userId); 
@@ -14,39 +13,48 @@ async function getActiveToken(guildId, userId, tokenStore) {
 }
 
 async function runAutoquestToggle(guildId, userId, member, tokenStore, replyFn, prefix) {
-    // Booster / Invite Check
+    // 1. Booster / Invite Check
     const check = await canUseAutoquest(member); 
     if (!check.allowed) { 
         const lock = check.lock; 
-        const c = new ContainerBuilder().setAccentColor(0xFEE75C); 
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${lock.title}\n\n${lock.desc}`)); 
-        await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }); 
-        return; 
+        const embed = new EmbedBuilder()
+            .setColor(0xFEE75C)
+            .setTitle(lock.title)
+            .setDescription(lock.desc);
+        
+        return await replyFn({ embeds: [embed] }); 
     }
 
-    // Toggle Off
+    // 2. Toggle Off
     if (isAutoquestEnabled(userId)) { 
         disableAutoquest(userId); 
-        const c = new ContainerBuilder().setAccentColor(0xFEE75C); 
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Disabled`)); 
-        await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 }); 
-        return; 
+        const embed = new EmbedBuilder()
+            .setColor(0xFEE75C)
+            .setTitle('🤖 Auto-Quest Disabled')
+            .setDescription('Auto-quest background processing has been turned off for your account.');
+        
+        return await replyFn({ embeds: [embed] }); 
     }
 
-    // Check Active Slot Token
+    // 3. Check Active Slot Token
     const token = await getActiveToken(guildId, userId, tokenStore); 
     if (!token) { 
-        const c = new ContainerBuilder().setAccentColor(0xED4245); 
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ❌ No Token\nUse \`${prefix}link\``)); 
-        await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 }); 
-        return; 
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('❌ No Token Found')
+            .setDescription(`Please link your account token first using \`${prefix}link\``);
+        
+        return await replyFn({ embeds: [embed] }); 
     }
 
-    // Toggle On
+    // 4. Toggle On
     enableAutoquest(userId); 
-    const c = new ContainerBuilder().setAccentColor(0x57F287); 
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🤖 Auto-Quest Enabled!\nEvery new quest will be auto-completed for you!`)); 
-    await replyFn({ components: [c], flags: MessageFlags.IsComponentsV2 });
+    const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('🤖 Auto-Quest Enabled!')
+        .setDescription('Every new quest will be automatically completed for you in the background!');
+
+    return await replyFn({ embeds: [embed] });
 }
 
 export const autoquestCmd = {
@@ -56,11 +64,15 @@ export const autoquestCmd = {
     prefix: 'autoquest',
 
     async execute(i, client) { 
-        await i.deferReply({ flags: 64 }); 
-        await runAutoquestToggle(i.guild.id, i.user.id, i.member, client.tokenStore, (o) => i.editReply(o), PREFIX); 
+        await i.deferReply({ ephemeral: true }); 
+        const prefix = client.getPrefix ? client.getPrefix(i.guild.id) : ';';
+        await runAutoquestToggle(i.guild.id, i.user.id, i.member, client.tokenStore, (o) => i.editReply(o), prefix); 
     },
 
-    async prefixExecute(m, _, client) { 
-        await runAutoquestToggle(m.guild.id, m.author.id, m.member, client.tokenStore, (o) => m.reply(o), PREFIX); 
+    async prefixExecute(m, args, client) { 
+        const prefix = client.getPrefix ? client.getPrefix(m.guild.id) : ';';
+        await runAutoquestToggle(m.guild.id, m.author.id, m.member, client.tokenStore, (o) => m.reply(o), prefix); 
     }
 };
+
+export default autoquestCmd;
