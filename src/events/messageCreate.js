@@ -1,11 +1,11 @@
 /**
- * messageCreate.js — Dynamic Prefix & Independent Emoji System Integration
+ * messageCreate.js — Fully Fixed Dynamic Prefix & Emoji System Integration
  * Location: src/events/messageCreate.js
  */
 
 import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
-import { ContainerBuilder, TextDisplayBuilder, MessageFlags } from 'discord.js';
+import { EmbedBuilder } from 'discord.js';
 
 export default {
   name: 'messageCreate',
@@ -20,6 +20,10 @@ export default {
 
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const commandName = args.shift().toLowerCase();
+
+    // Check if command exists first to prevent unnecessary checks/double triggers
+    const command = client.prefixCommands.get(commandName);
+    if (!command) return;
 
     // 🛑 Allow 'activate trial' command without checking role access
     const isActivateTrial = commandName === 'activate' && args[0]?.toLowerCase() === 'trial';
@@ -39,21 +43,19 @@ export default {
         member.premiumSince;
 
       if (!hasValidRole) {
-        const c = new ContainerBuilder().setAccentColor(0x2B2D31);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `# ${EMOJI.msg_premium || '💙'} Premium Access Required\n\n` +
-            `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
-            `${EMOJI.msg_diamond || '💎'} **Free Orbie Premium Trial!**\n` +
-            `> ${EMOJI.msg_star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-            `> ${EMOJI.msg_gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n\n` +
-            `Join support: https://discord.gg/y5f29e5tQb`
-        ));
-        return await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }).catch(() => {});
+        const embed = new EmbedBuilder()
+            .setColor(0x2B2D31)
+            .setTitle(`${EMOJI.msg_premium || '💙'} Premium Access Required`)
+            .setDescription(
+                `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
+                `${EMOJI.msg_diamond || '💎'} **Free Orbie Premium Trial!**\n` +
+                `> ${EMOJI.msg_star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
+                `> ${EMOJI.msg_gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n\n` +
+                `Join support: https://discord.gg/y5f29e5tQb`
+            );
+        return await message.reply({ embeds: [embed] }).catch(() => {});
       }
     }
-
-    const command = client.prefixCommands.get(commandName);
-    if (!command) return;
 
     try {
       if (typeof command.prefixExecute === 'function') {
@@ -64,7 +66,7 @@ export default {
     } catch (err) {
       console.error(`Error executing prefix command ${commandName}:`, err);
       const EMOJI = await getEmojis(message.guildId || 'global');
-      await message.reply(`${EMOJI.msg_error || '❌'} Something went wrong.`).catch(() => {});
+      await message.reply(`${EMOJI.msg_error || '❌'} Something went wrong while executing this command.`).catch(() => {});
     }
   },
 };
