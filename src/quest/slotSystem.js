@@ -99,7 +99,6 @@ export async function getProgressiveSlots(member) {
 
         const { invites, boosts } = await getCounts(member);
 
-        // Profile details for rendering in UI
         const userProfile = {
             id: member.user.id,
             username: member.user.username,
@@ -107,7 +106,7 @@ export async function getProgressiveSlots(member) {
             createdTimestamp: member.user.createdTimestamp
         };
 
-        // Dynamic Slot Role Checks (Invites / Boosts based)
+        // Dynamic Slot Role Checks
         const hasRole2 = invites >= 2 || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
         const hasRole5 = invites >= 5 || (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3));
         const hasRole10 = invites >= 10 || (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4));
@@ -116,8 +115,7 @@ export async function getProgressiveSlots(member) {
 
         const hasHigherTier = hasRole2 || hasRole5 || hasRole10 || hasBoost1 || hasBoost2;
 
-        // 🛡️ FIXED: NEVER touch key-based Trial role here. 
-        // Only manage/strip slot-based roles if requirements are no longer met.
+        // Only manage slot-based roles (never touch key-based Trial/Premium)
         try {
             if (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2) && invites < 2) {
                 await member.roles.remove(roles.ROLE_SLOT_2).catch(() => {});
@@ -141,7 +139,7 @@ export async function getProgressiveSlots(member) {
         // Check if user has active trial AND no higher slot roles
         const isTrialActive = userData && userData.active && (userData.expiresAt === null || userData.expiresAt > Date.now()) && !hasHigherTier;
 
-        // 🛑 RULE 1: STRICTLY TRIAL USER - ONLY 1 SLOT SHOW
+        // RULE 1: STRICTLY TRIAL USER - ONLY 1 SLOT SHOW
         if (isTrialActive) {
             return {
                 slots: [{
@@ -162,7 +160,7 @@ export async function getProgressiveSlots(member) {
             };
         }
 
-        // 🚀 RULE 2: NON-TRIAL / UPGRADED PROGRESSIVE SLOTS
+        // RULE 2: NON-TRIAL / UPGRADED PROGRESSIVE SLOTS
         let unlockedCount = 0;
         if (hasRole2) unlockedCount = 2;
         if (hasRole5) unlockedCount = 3;
@@ -172,7 +170,6 @@ export async function getProgressiveSlots(member) {
 
         const slots = [];
 
-        // Always push Slot #1 as Free Slot
         slots.push({
             slot: 1,
             label: 'Free Slot',
@@ -181,7 +178,6 @@ export async function getProgressiveSlots(member) {
             reason: 'Base free slot available for everyone.'
         });
 
-        // Dynamic unlocking logic based on Invites & Boosts
         if (unlockedCount >= 2) {
             slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: true, need: '2 Invites', reason: 'Unlocked via 2 Invites Role' });
         } else {
@@ -217,7 +213,6 @@ export async function getProgressiveSlots(member) {
             invites, 
             boosts, 
             slotsToShow: slots.length, 
-            isTrial/false,
             isTrialActive: false,
             alreadyClaimed: userData?.claimedTrial || false,
             userProfile
@@ -234,4 +229,4 @@ export async function getProgressiveSlots(member) {
             userProfile: null
         };
     }
-}
+    }
