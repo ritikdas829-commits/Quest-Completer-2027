@@ -185,7 +185,7 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    // 🚀 Exact Expiry Calculation
+    // 🚀 Exact Expiry Calculation in Milliseconds
     const durationDays = keyDoc.durationDays;
     let expiresAt = null;
 
@@ -193,7 +193,7 @@ export async function handleOrbieModalSubmit(interaction) {
 
     if (!isLifetime) {
         const days = parseInt(durationDays) || 30;
-        expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+        expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000); // Milliseconds future timestamp
     } else {
         expiresAt = null; // Lifetime support
     }
