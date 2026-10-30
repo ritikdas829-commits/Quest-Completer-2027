@@ -5,6 +5,7 @@
 
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { getCollection } from '../utils/mongo.js';
+import { getEmojis } from '../quest/emoji.js';
 
 export const setLeaveChannelCmd = {
     data: new SlashCommandBuilder()
@@ -21,19 +22,20 @@ export const setLeaveChannelCmd = {
     prefix: ['setleave', 'setleavechannel'],
 
     async execute(interaction) {
+        const guildId = interaction.guild.id;
+        const EMOJI = await getEmojis(guildId);
         const channel = interaction.options.getChannel('channel');
-        // Fixed collection name to match guildSettings
         const col = await getCollection('guildSettings');
 
-        if (!col) return interaction.reply({ content: '❌ Database error!', ephemeral: true });
+        if (!col) return interaction.reply({ content: `${EMOJI.sys_error || '❌'} Database error!`, ephemeral: true });
 
         await col.updateOne(
-            { guildId: interaction.guild.id },
+            { guildId },
             { $set: { leaveChannelId: channel.id, updatedAt: new Date() } },
             { upsert: true }
         );
 
-        await interaction.reply({ content: `✅ Successfully set leave channel to <#${channel.id}>!`, ephemeral: true });
+        await interaction.reply({ content: `${EMOJI.sys_success || '✅'} Successfully set leave channel to <#${channel.id}>!`, ephemeral: true });
     },
 
     async prefixExecute(message, args) {
@@ -41,21 +43,23 @@ export const setLeaveChannelCmd = {
             return message.reply('❌ You need `Manage Guild` permissions to use this command.');
         }
 
+        const guildId = message.guild.id;
+        const EMOJI = await getEmojis(guildId);
         const channel = message.mentions.channels.first();
+        
         if (!channel) {
-            return message.reply('Usage: `?setleave #channel`');
+            return message.reply(`${EMOJI.sys_error || '❌'} Usage: \`;setleave #channel\``);
         }
 
-        // Fixed collection name to match guildSettings
         const col = await getCollection('guildSettings');
-        if (!col) return message.reply('❌ Database error!');
+        if (!col) return message.reply(`${EMOJI.sys_error || '❌'} Database error!`);
 
         await col.updateOne(
-            { guildId: message.guild.id },
+            { guildId },
             { $set: { leaveChannelId: channel.id, updatedAt: new Date() } },
             { upsert: true }
         );
 
-        await message.reply(`✅ Successfully set leave channel to <#${channel.id}>!`);
+        await message.reply(`${EMOJI.sys_success || '✅'} Successfully set leave channel to <#${channel.id}>!`);
     }
 };
