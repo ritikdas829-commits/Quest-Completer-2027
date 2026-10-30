@@ -1,5 +1,5 @@
 /**
- * messageCreate.js — Fully Fixed Dynamic Prefix & Emoji System Integration
+ * messageCreate.js — Fully Fixed Dynamic Prefix & Emoji System Integration with Anti-Duplicate Guard
  * Location: src/events/messageCreate.js
  */
 
@@ -7,11 +7,19 @@ import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
 import { EmbedBuilder } from 'discord.js';
 
+// Anti-double trigger guard map to prevent multiple instances from replying twice
+const processedMessages = new Set();
+
 export default {
   name: 'messageCreate',
   once: false,
   async execute(message, client) {
     if (message.author.bot || !message.guild) return;
+
+    // Prevent handling the same message ID twice within 3 seconds
+    if (processedMessages.has(message.id)) return;
+    processedMessages.add(message.id);
+    setTimeout(() => processedMessages.delete(message.id), 3000);
 
     // Get correct prefix dynamically
     const prefix = client.getPrefix ? client.getPrefix(message.guild.id) : (client.prefix || process.env.PREFIX || ';');
