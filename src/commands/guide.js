@@ -1,5 +1,5 @@
 /**
- * guideCmd.js - Script and token extraction help menu with dynamic emojis
+ * guide.js - Script and token extraction help menu with independent crash-proof emojis
  * Location: src/commands/guide.js
  */
 
@@ -24,11 +24,15 @@ const ANDROID_TOKEN_SCRIPT = `javascript:(function(){try{let f=document.createEl
 
 const IOS_TOKEN_SCRIPT = `javascript:(function(){try{var i=document.createElement('iframe');document.body.appendChild(i);var t=JSON.parse(i.contentWindow.localStorage.token.replace(/^"(.*)"$/, '$1'));navigator.clipboard.writeText(t).then(function(){var d=document.createElement('div');d.innerHTML='<strong>Token Copied</strong><br>Your token has been copied to clipboard';Object.assign(d.style,{position:'fixed',top:'10px',left:'10px',background:'#d4edda',color:'#155724',padding:'10px',border:'1px solid #c3e6cb',borderRadius:'5px',zIndex:99999,fontFamily:'sans-serif'});document.body.appendChild(d);setTimeout(()=>d.remove(),3000);});}catch(e){alert('Failed to copy token: '+e);}})();`;
 
-export const deviceButtonsRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('btn_ios').setLabel('iOS').setEmoji('🍎').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('btn_android').setLabel('Phone').setEmoji('📱').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('btn_pc').setLabel('Computer').setEmoji('💻').setStyle(ButtonStyle.Secondary),
-);
+// Dynamic button row generator function to safely inject database/default emojis
+export async function getDeviceButtonsRow(guildId) {
+    const EMOJI = await getEmojis(guildId || 'global');
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_ios').setLabel('iOS').setEmoji(EMOJI.guide_ios || '🍎').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_android').setLabel('Phone').setEmoji(EMOJI.guide_phone || '📱').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_pc').setLabel('Computer').setEmoji(EMOJI.guide_pc || '💻').setStyle(ButtonStyle.Secondary),
+    );
+}
 
 async function buildScriptHelpCard(guildId) {
     const EMOJI = await getEmojis(guildId || 'global');
@@ -36,7 +40,7 @@ async function buildScriptHelpCard(guildId) {
         .setColor(0x2B2D31)
         .setDescription(
             `✨ **Support Server:** [Join Support Server](${SUPPORT_SERVER_LINK}) for feedback and bot support\n\n` +
-            `# ${EMOJI.ticket || '🎫'} Script Help\n\n` +
+            `# ${EMOJI.guide_ticket || '🎫'} Script Help\n\n` +
             `Use the guide below to get your Discord token for quest completion.\n\n` +
             `Choose the device you want to use to get your token. After you click one of the buttons below, I will send you the complete steps and script.`
         );
@@ -48,12 +52,16 @@ export const guideCmd = {
         .setDescription('Show script and token extraction help menu'),
     prefix: 'guide',
     async prefixExecute(message, _args, _client) {
-        const embed = await buildScriptHelpCard(message.guildId);
-        await message.reply({ embeds: [embed], components: [deviceButtonsRow] });
+        const guildId = message.guildId;
+        const embed = await buildScriptHelpCard(guildId);
+        const buttonsRow = await getDeviceButtonsRow(guildId);
+        await message.reply({ embeds: [embed], components: [buttonsRow] });
     },
     async execute(interaction, _client) {
-        const embed = await buildScriptHelpCard(interaction.guildId);
-        await interaction.reply({ embeds: [embed], components: [deviceButtonsRow], flags: MessageFlags.Ephemeral });
+        const guildId = interaction.guildId;
+        const embed = await buildScriptHelpCard(guildId);
+        const buttonsRow = await getDeviceButtonsRow(guildId);
+        await interaction.reply({ embeds: [embed], components: [buttonsRow], flags: MessageFlags.Ephemeral });
     }
 };
 
