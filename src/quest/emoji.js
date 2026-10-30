@@ -60,6 +60,9 @@ export const EMOJI_CATEGORIES = {
     ],
     "💬 Message Handler UI": [
         'msg_premium', 'msg_diamond', 'msg_star', 'msg_gift', 'msg_error'
+    ],
+    "📥 Invite Tracker UI": [
+        'invite_join', 'invite_wait', 'invite_warn', 'invite_success', 'invite_leave', 'invite_lock'
     ]
 };
 
@@ -186,7 +189,15 @@ const DEFAULT_EMOJIS = {
     msg_diamond: "💎",
     msg_star: "🌟",
     msg_gift: "🎁",
-    msg_error: "❌"
+    msg_error: "❌",
+
+    // Invite Tracker UI
+    invite_join: "📥",
+    invite_wait: "⏳",
+    invite_warn: "⚠️",
+    invite_success: "🎉",
+    invite_leave: "📤",
+    invite_lock: "🔒"
 };
 
 /**
