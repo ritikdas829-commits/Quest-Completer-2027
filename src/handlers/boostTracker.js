@@ -1,10 +1,9 @@
 /**
- * boostTracker.js - Precise Boost Role Management with Dynamic Emojis & Strict Verification
+ * boostTracker.js - Precise Boost Role Management without interfering with trial/premium expiry
  * Location: src/handlers/boostTracker.js
  */
 
 import { getRoles } from '../quest/roleStore.js';
-import { syncUserSlotsAndRoles } from '../quest/slotSyncEngine.js';
 import { getEmojis } from '../quest/emoji.js';
 
 function getBoostRoles(guild) {
@@ -32,18 +31,15 @@ function getBoostCount(member) {
     try {
         if (!member) return 0;
 
-        // Agar user ka server boost active nahi hai
         const isBoosting = Boolean(member.premiumSince);
         if (!isBoosting) return 0;
 
         const roles = getRoles(member.guild?.id);
         
-        // Agar user ke paas explicitly 2 boost role assigned hai ya multiple boosts hain
         if (roles?.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST)) {
             return 2;
         }
 
-        // Standard single server booster
         return 1;
     } catch {
         return 0;
@@ -64,15 +60,13 @@ export async function handleBoostAdd(member) {
         const boosts = getBoostCount(member);
         const EMOJI = await getEmojis(guild.id || 'global');
 
-        // 🟢 Agar user boosting nahi hai abhi (false positive check)
         if (!member.premiumSince || boosts === 0) {
             await handleBoostRemove(member);
             return;
         }
 
-        // 🟢 Exactly 1 Boost Case
+        // 1 Boost Case
         if (boosts === 1 && boostRoles.ROLE_1_BOOST) {
-            // Agar galti se 2 boost role hai toh use hata do
             if (boostRoles.ROLE_2_BOOST && member.roles.cache.has(boostRoles.ROLE_2_BOOST.id)) {
                 await member.roles.remove(boostRoles.ROLE_2_BOOST).catch(() => {});
             }
@@ -83,18 +77,12 @@ export async function handleBoostAdd(member) {
             }
         }
 
-        // 👑 2 or More Boosts Case
+        // 2 or More Boosts Case
         if (boosts >= 2 && boostRoles.ROLE_2_BOOST) {
-            // ROLE_1_BOOST hata sakte hain ya rakh sakte hain depend karta hai hierarchy par, yahan ROLE_2_BOOST prioritize hoga
             if (!member.roles.cache.has(boostRoles.ROLE_2_BOOST.id)) {
                 await member.roles.add(boostRoles.ROLE_2_BOOST).catch(() => {});
                 await sendSafeDM(member, `${EMOJI.crown || '👑'} Double booster detected! **${boostRoles.ROLE_2_BOOST.name}** unlocked - Full Access!`);
             }
-        }
-
-        // Trigger slot & role sync engine
-        if (typeof syncUserSlotsAndRoles === 'function') {
-            await syncUserSlotsAndRoles(member, guild.client).catch(() => {});
         }
 
     } catch (err) {
@@ -109,7 +97,6 @@ export async function handleBoostRemove(member) {
         const boostRoles = getBoostRoles(guild);
         const EMOJI = await getEmojis(guild.id || 'global');
 
-        // Strictly check agar user ab boost nahi kar raha hai
         const isStillBoosting = Boolean(member.premiumSince);
 
         if (!isStillBoosting) {
@@ -126,7 +113,6 @@ export async function handleBoostRemove(member) {
                 await sendSafeDM(member, `${EMOJI.lock || '🔒'} Your boost expired on **${guild.name}**. Boost roles have been automatically removed.`);
             }
         } else {
-            // Agar user ke paas 1 boost hai lekin 2 boost role galti se laga hua hai toh downgrade karo
             const boosts = getBoostCount(member);
             if (boosts === 1 && boostRoles.ROLE_2_BOOST && member.roles.cache.has(boostRoles.ROLE_2_BOOST.id)) {
                 await member.roles.remove(boostRoles.ROLE_2_BOOST).catch(() => {});
@@ -134,11 +120,6 @@ export async function handleBoostRemove(member) {
                     await member.roles.add(boostRoles.ROLE_1_BOOST).catch(() => {});
                 }
             }
-        }
-
-        // Trigger slot sync engine to re-lock slots if required
-        if (typeof syncUserSlotsAndRoles === 'function') {
-            await syncUserSlotsAndRoles(member, guild.client).catch(() => {});
         }
 
     } catch (err) {
