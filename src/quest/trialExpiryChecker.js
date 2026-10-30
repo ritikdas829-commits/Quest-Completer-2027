@@ -1,5 +1,5 @@
 /**
- * trialExpiryChecker.js - Bulletproof expiry checker with strict unit normalization & safety filters
+ * trialExpiryChecker.js - Bulletproof expiry checker (Safe - Only removes Trial role)
  * Location: src/quest/trialExpiryChecker.js
  */
 
@@ -63,29 +63,23 @@ export function startTrialExpiryChecker(client) {
 
                         const configuredRoles = await getRolesAsync(guildId);
                         const trialRoleId = configuredRoles.ROLE_TRIAL;
-                        const premiumRoleId = configuredRoles.ROLE_PREMIUM || configuredRoles.ROLE_2_BOOST;
 
-                        // Remove Trial Role if present
+                        // 🔒 SAFE: Only remove Trial Role. NEVER touch Boost or Premium roles here!
                         if (trialRoleId && member.roles.cache.has(trialRoleId)) {
                             await member.roles.remove(trialRoleId).catch(() => {});
-                        }
-
-                        // Remove Premium Role if present
-                        if (premiumRoleId && member.roles.cache.has(premiumRoleId)) {
-                            await member.roles.remove(premiumRoleId).catch(() => {});
                         }
 
                         // Notify user in DM about expiration
                         try {
                             const targetUser = await client.users.fetch(userId);
                             await targetUser.send(
-                                `⏳ **Your Trial / Premium Access Has Expired!**\n\n` +
-                                `Your active duration has ended, and your trial role has been automatically removed from the server. ` +
-                                `You can redeem a new key or purchase premium to regain full access.`
+                                `⏳ **Your Trial Access Has Expired!**\n\n` +
+                                `Your 30-day free trial duration has ended, and the trial role has been automatically removed from the server. ` +
+                                `You can redeem a new key or boost the server to regain full access.`
                             );
                         } catch {}
 
-                        console.log(`[Expiry Handler] Successfully removed expired roles for user ID: ${userId}`);
+                        console.log(`[Expiry Handler] Successfully removed expired trial role for user ID: ${userId}`);
                     } catch (err) {
                         console.error(`[Expiry Handler Error] Guild ${guildId}:`, err.message);
                     }
