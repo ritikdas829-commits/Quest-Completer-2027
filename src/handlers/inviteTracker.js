@@ -1,12 +1,11 @@
 /**
- * inviteTracker.js - Robust Multi-Server Invite Tracker (Fixed)
+ * inviteTracker.js - Robust Multi-Server Invite Tracker (Decoupled & Safe)
  * Location: src/handlers/inviteTracker.js
  * Strict Rules: Account Age >= 7 Days, Rejoin Window >= 14 Days
  */
 
 import { getCollection, getDatabase } from '../utils/mongo.js';
 import { getRoles } from '../quest/roleStore.js';
-import { syncUserSlotsAndRoles } from '../quest/slotSyncEngine.js';
 
 const COLLECTION_INVITES = 'invites_data';
 
@@ -234,7 +233,7 @@ export async function handleInviteJoin(member) {
             await joinChannel.send(`📥 <@${member.id}> joined! Invited by <@${inviter.id}> (**${inviterData.count}** valid invites)`).catch(() => {});
         }
 
-        // Role Sync & Trigger Dynamic Slot Management
+        // Role Sync for Invite Thresholds (2, 5, 10 invites)
         const targetRoles = getTargetRoles(guild);
         const inviterMember = await guild.members.fetch(inviter.id).catch(() => null);
         if (!inviterMember) return;
@@ -258,11 +257,6 @@ export async function handleInviteJoin(member) {
                 await inviterMember.roles.add(targetRoles.ROLE_10_INVITES).catch(() => {});
                 if (joinChannel) await joinChannel.send(`🎉 <@${inviter.id}> unlocked **${targetRoles.ROLE_10_INVITES.name}**!`).catch(() => {});
             }
-        }
-
-        // Trigger Sync Engine to remove Trial role if applicable and open extra slots
-        if (typeof syncUserSlotsAndRoles === 'function') {
-            await syncUserSlotsAndRoles(inviterMember, guild.client).catch(() => {});
         }
 
     } catch (err) { 
@@ -340,11 +334,6 @@ export async function handleInviteLeave(member) {
             if (inviterData.count < 2 && targetRoles.ROLE_2_INVITES && inviterMember.roles.cache.has(targetRoles.ROLE_2_INVITES.id)) {
                 await inviterMember.roles.remove(targetRoles.ROLE_2_INVITES).catch(() => {});
                 if (leaveChannel) await leaveChannel.send(`🔒 <@${inviterId}> lost **${targetRoles.ROLE_2_INVITES.name}**`).catch(() => {});
-            }
-
-            // Trigger sync engine to update slot visibility
-            if (typeof syncUserSlotsAndRoles === 'function') {
-                await syncUserSlotsAndRoles(inviterMember, guild.client).catch(() => {});
             }
         }
     }
