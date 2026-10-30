@@ -1,5 +1,5 @@
 /**
- * help.js — Interactive Components V2 Help Command (Cleaned & Updated)
+ * help.js — Cool & Modern Interactive Components V2 Help Command
  * Location: src/commands/help.js
  */
 
@@ -30,7 +30,7 @@ function getClientPrefix(client, guildId) {
 export default {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('See all available commands and system guide via interactive menu'),
+        .setDescription('Open the ultimate cool interactive command guide dashboard'),
     prefix: 'help',
 
     async execute(interaction, client) {
@@ -54,12 +54,14 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
     
     const c = new ContainerBuilder().setAccentColor(0x5865F2);
 
-    // ── Header ────────────────────────────────________________──────────────
+    // ── Cool Header ────────────────────────────────────────────────────────
     c.addSectionComponents(
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${emojis.s_admin || '🤖'} Quest Bot — Command Guide\n-# Hey **${user.username}**, explore all available commands using the menu below.`,
+                    `# ${emojis.help_bot || '🤖'} Quest Bot Command Central\n` +
+                    `> *Welcome to the next-gen quest automation control center.*\n` +
+                    `-# Hey **${user.username}**, select a module from the menu below to explore commands.`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(botAvatar)),
@@ -67,76 +69,94 @@ export async function buildHelpPanel(user, client, guildId, category = 'main') {
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Dynamic Content Based on Category Selection ──────────────────────────
+    // ── Dynamic Cool Content Based on Category Selection ───────────────────
     let contentText = '';
 
     if (category === 'presence') {
-        contentText = `🟢 **24/7 Online Presence System**\n\n` +
-            `• \`/onlineon\`  \`${prefix}onlineon\` — Set active slot and keep account **24/7 online continuously** via WebSocket gateway 🟢.\n\n` +
-            `• \`/onlineoff\`  \`${prefix}onlineoff\` — Disconnect active account gateway presence, turning status offline 🔴.\n\n` +
-            `• \`/onlinestatus\`  \`${prefix}onlinestatus\` — View all linked slots along with status, user details, and control panel buttons.`;
+        contentText = `### ${emojis.help_presence || '🟢'} 24/7 Online Presence System\n` +
+            `Keep your account active and online around the clock securely via WebSocket gateway.\n\n` +
+            `• \`/onlineon\`  \`${prefix}onlineon\`\n` +
+            `  └ *Bring your active account slot 24/7 online continuously 🟢.*\n\n` +
+            `• \`/onlineoff\`  \`${prefix}onlineoff\`\n` +
+            `  └ *Disconnect gateway presence and turn status offline 🔴.*\n\n` +
+            `• \`/onlinestatus\`  \`${prefix}onlinestatus\`\n` +
+            `  └ *Inspect linked slots, status metrics, and control panel buttons.*`;
     } else if (category === 'quest') {
-        contentText = `🔗 **Quest & Token Management**\n\n` +
-            `• \`/link\`  \`${prefix}link\` — Link your Discord user token securely via modal popup.\n\n` +
-            `• \`/unlink\`  \`${prefix}unlink\` — Remove your saved token from a specific slot.\n\n` +
-            `• \`/quest\`  \`${prefix}quest\` — Pick and complete a specific Discord quest with live progress tracking.\n\n` +
-            `• \`/questall\`  \`${prefix}questall\` — Complete all available quests at once automatically.\n\n` +
-            `• \`/questlist\`  \`${prefix}questlist\` — View all your active quests and completion status.\n\n` +
-            `• \`/autoquest\`  \`${prefix}autoquest\` — Auto-complete new quests as soon as they drop.\n\n` +
-            `• \`/tokencheck\`  \`${prefix}tokencheck\` — Check if your active token is still valid and not expired.`;
+        contentText = `### ${emojis.help_quest || '⚔️'} Quest & Token Management\n` +
+            `Automate your Discord quests and manage multi-slot token securely.\n\n` +
+            `• \`/link\`  \`${prefix}link\`\n` +
+            `  └ *Open 5-slot account panel & link your token securely via modal.*\n\n` +
+            `• \`/unlink\`  \`${prefix}unlink\`\n` +
+            `  └ *Remove saved token from a designated account slot.*\n\n` +
+            `• \`/quest\`  \`${prefix}quest\`\n` +
+            `  └ *Pick & complete specific quests with live percentage tracking.*\n\n` +
+            `• \`/questall\` / \`/q\`  \`${prefix}questall\`\n` +
+            `  └ *Automatically solve and claim all available quests instantly.*\n\n` +
+            `• \`/questlist\`  \`${prefix}questlist\`\n` +
+            `  └ *Browse all active quests and their live status cards.*\n\n` +
+            `• \`/autoquest\`  \`${prefix}autoquest\`\n` +
+            `  └ *Toggle auto-pilot quest completion as soon as they drop.*\n\n` +
+            `• \`/tokencheck\`  \`${prefix}tokencheck\`\n` +
+            `  └ *Validate if your active account token is healthy & working.*`;
     } else if (category === 'utility') {
-        contentText = `🛠️ **Utility & Guide**\n\n` +
-            `• \`/guide\`  \`${prefix}guide\` — View quick setup instructions for PC, Android, and iOS devices.\n\n` +
-            `• \`/ping\`  \`${prefix}ping\` — Check bot latency and response time.\n\n` +
-            `• \`/help\`  \`${prefix}help\` — Open this interactive command guide dashboard.`;
+        contentText = `### ${emojis.help_utility || '🛠️'} Utility & Quick Guides\n` +
+            `Essential tools and step-by-step token extraction guides.\n\n` +
+            `• \`/guide\`  \`${prefix}guide\`\n` +
+            `  └ *View interactive token extraction scripts for PC, Android, and iOS.*\n\n` +
+            `• \`/ping\`  \`${prefix}ping\`\n` +
+            `  └ *Check bot gateway latency and response speeds.*\n\n` +
+            `• \`/help\`  \`${prefix}help\`\n` +
+            `  └ *Launch this sleek interactive help command hub.*`;
     } else {
-        // Main Overview Page
-        contentText = `📋 **Welcome to Quest Bot Help Center!**\n\n` +
-            `Use the **dropdown menu below** to explore specific command categories:\n\n` +
-            `🟢 **24/7 Presence System** — Gateway online/offline controls (\`?onlinestatus\`).\n` +
-            `🔗 **Quest Management** — \`?quest\`, \`?questall\`, \`?questlist\`, \`?autoquest\`, \`?link\`, \`?unlink\`, \`?tokencheck\`.\n` +
-            `🛠️ **Utility & Guides** — Setup guides and system tools.`;
+        // Main Overview Page with Cool Cards Style
+        contentText = `### ${emojis.help_success || '✨'} Welcome to the Help Dashboard\n` +
+            `Your centralized hub for managing automation, tokens, and system utilities.\n\n` +
+            `> **How to navigate:**\n` +
+            `> Use the **interactive dropdown menu** below to switch between categories instantly.\n\n` +
+            `🟢 **24/7 Presence System** — Gateway online/offline management.\n` +
+            `⚔️ **Quest Management** — \`?quest\`, \`?questall\`, \`?questlist\`, \`?link\`, \`?autoquest\`.\n` +
+            `🛠️ **Utility & Guides** — Extraction scripts and performance checks.`;
     }
 
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(contentText));
 
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    // ── Interactive Dropdown Menu (Cleaned: Slots category removed) ──────────
+    // ── Sleek Interactive Dropdown Menu ────────────────────────────────────
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('help_category_select')
-        .setPlaceholder('📂 Select a category to view command details...')
+        .setPlaceholder('📂 Click here to switch command categories...')
         .addOptions(
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_main')
-                .setLabel('Main Overview')
-                .setDescription('Return to the main help home page')
+                .setLabel('Main Overview Hub')
+                .setDescription('Return to the main dashboard home page')
                 .setDefault(category === 'main'),
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_presence')
                 .setLabel('24/7 Online Presence')
-                .setDescription('View gateway online/offline commands')
+                .setDescription('Gateway online/offline controls & status')
                 .setDefault(category === 'presence'),
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_quest')
                 .setLabel('Quest & Token Management')
-                .setDescription('View quest, questall, questlist, autoquest, link')
+                .setDescription('Quest runners, link panels & auto-pilot')
                 .setDefault(category === 'quest'),
             new StringSelectMenuOptionBuilder()
                 .setValue('help_cat_utility')
                 .setLabel('Utility & Guides')
-                .setDescription('View setup guides and ping tool')
+                .setDescription('Setup guides, scripts & ping latency')
                 .setDefault(category === 'utility')
         );
 
     c.addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
 
-    // ── Footer ───────────────────────────────────────────────────────────────
+    // ── Modern Footer ──────────────────────────────────────────────────────
     c.addSectionComponents(
         new SectionBuilder()
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `-# ${emojis.online || '🌐'} Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${prefix}\``,
+                    `-# ${emojis.help_globe || '🌐'} Serving **${client.guilds.cache.size}** server(s)  ·  Prefix: \`${prefix}\`  ·  Secure Automation`,
                 ),
             )
             .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatar)),
