@@ -1,5 +1,5 @@
 /**
- * orbiePanel.js - Orbie Premium & Trial Activation Panel
+ * orbiePanel.js - Orbie Premium & Trial Activation Panel (Final Fixed)
  */
 
 import { 
@@ -73,12 +73,13 @@ async function sendPublicPanel(channel, guildId, client) {
         )
         .setFooter({ text: 'Thank you for using Orbie.' });
 
+    // FIXED: Direct unicode emoji to prevent button crash
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('open_activate_modal')
             .setLabel('Activate Premium')
             .setStyle(ButtonStyle.Success)
-            .setEmoji(EMOJI.success || '✅')
+            .setEmoji('✅')
     );
 
     await channel.send({ embeds: [embed], components: [row] });
@@ -126,7 +127,7 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    // Determine key type safely (Gemini + Grok mix)
+    // Determine key type safely
     const isPremiumKey = keyDoc.type === 'premium' || (!keyDoc.type && keyDoc.slot > 1);
     const targetRoleId = isPremiumKey ? roles.ROLE_PREMIUM : roles.ROLE_TRIAL;
     const conflictingRoleId = isPremiumKey ? roles.ROLE_TRIAL : null;
@@ -175,29 +176,40 @@ export async function handleOrbieModalSubmit(interaction) {
         });
     }
 
-    // 4. Already active check (with upgrade support)
+    // 4. Already active check (FIXED - Allow Premium Extend & One-time Trial Limit)
     const hasPremiumRole = roles.ROLE_PREMIUM && member.roles.cache.has(roles.ROLE_PREMIUM);
     const hasTrialRole = roles.ROLE_TRIAL && member.roles.cache.has(roles.ROLE_TRIAL);
+    const existingTrial = await UserTrial.findOne({ userId });
 
+    // Trial: Sirf ek baar lifetime
+    if (!isPremiumKey) {
+        if (existingTrial?.claimedTrial && existingTrial?.type === 'trial') {
+            return interaction.editReply({
+                content: `${EMOJI.error || '❌'} **Trial Already Claimed!**\nYou can only claim trial once per lifetime.`
+            });
+        }
+        if (hasPremiumRole) {
+            return interaction.editReply({
+                content: `${EMOJI.error || '❌'} **Already Premium!**\nYou already have Premium, no need for trial.`
+            });
+        }
+    }
+
+    // Premium: Agar already premium hai toh EXTEND hoga, block nahi
+    let isExtend = false;
     if (isPremiumKey && hasPremiumRole) {
-        return interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Already Premium!**\nYou already have an active Premium role.`
-        });
-    }
-    if (!isPremiumKey && (hasTrialRole || hasPremiumRole)) {
-        return interaction.editReply({
-            content: `${EMOJI.error || '❌'} **Already Active!**\nYou already have Trial or Premium.`
-        });
+        isExtend = true; 
     }
 
-    // 5. Calculate expiry
+    // 5. Calculate expiry (FIXED - Extend Logic & Lifetime check)
     const durationDays = keyDoc.durationDays;
     let expiresAt = null;
-    const isLifetime = durationDays === 'lifetime' || durationDays === -1 || durationDays === 'unlimited';
+    const isLifetime = durationDays === 'lifetime' || durationDays === -1 || durationDays === 'unlimited' || durationDays === 'Lifetime';
 
     if (!isLifetime) {
-        const days = parseInt(durationDays) || 30;
-        expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+        const days = parseInt(String(durationDays).replace(/[^0-9]/g, '')) || 30;
+        const baseTime = (isExtend && existingTrial?.expiresAt) ? existingTrial.expiresAt : Date.now();
+        expiresAt = baseTime + (days * 24 * 60 * 60 * 1000);
     }
 
     // 6. Full activation (with proper error handling)
