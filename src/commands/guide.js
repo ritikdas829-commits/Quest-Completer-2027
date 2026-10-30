@@ -1,3 +1,8 @@
+/**
+ * guideCmd.js - Script and token extraction help menu with dynamic emojis
+ * Location: src/commands/guide.js
+ */
+
 import {
     SlashCommandBuilder,
     ActionRowBuilder,
@@ -6,6 +11,7 @@ import {
     EmbedBuilder,
     MessageFlags,
 } from 'discord.js';
+import { getEmojis } from '../quest/emoji.js';
 
 const SUPPORT_SERVER_LINK = 'https://discord.gg/eeRPSAyUBv';
 
@@ -24,12 +30,13 @@ export const deviceButtonsRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('btn_pc').setLabel('Computer').setEmoji('💻').setStyle(ButtonStyle.Secondary),
 );
 
-function buildScriptHelpCard() {
+async function buildScriptHelpCard(guildId) {
+    const EMOJI = await getEmojis(guildId || 'global');
     return new EmbedBuilder()
         .setColor(0x2B2D31)
         .setDescription(
             `✨ **Support Server:** [Join Support Server](${SUPPORT_SERVER_LINK}) for feedback and bot support\n\n` +
-            `# 💙 Script Help\n\n` +
+            `# ${EMOJI.ticket || '🎫'} Script Help\n\n` +
             `Use the guide below to get your Discord token for quest completion.\n\n` +
             `Choose the device you want to use to get your token. After you click one of the buttons below, I will send you the complete steps and script.`
         );
@@ -41,10 +48,12 @@ export const guideCmd = {
         .setDescription('Show script and token extraction help menu'),
     prefix: 'guide',
     async prefixExecute(message, _args, _client) {
-        await message.reply({ embeds: [buildScriptHelpCard()], components: [deviceButtonsRow] });
+        const embed = await buildScriptHelpCard(message.guildId);
+        await message.reply({ embeds: [embed], components: [deviceButtonsRow] });
     },
     async execute(interaction, _client) {
-        await interaction.reply({ embeds: [buildScriptHelpCard()], components: [deviceButtonsRow], flags: MessageFlags.Ephemeral });
+        const embed = await buildScriptHelpCard(interaction.guildId);
+        await interaction.reply({ embeds: [embed], components: [deviceButtonsRow], flags: MessageFlags.Ephemeral });
     }
 };
 
