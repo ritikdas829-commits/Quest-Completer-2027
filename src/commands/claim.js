@@ -1,5 +1,5 @@
 /**
- * claim.js — Interactive Claim Command with Dropdown & Claim All Button
+ * claim.js — Fully Interactive Claim Command with TokenStore & UI Integration
  * Location: src/commands/claim.js
  */
 
@@ -7,42 +7,67 @@ import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBu
 
 export default {
     name: 'claim',
-    prefix: 'claim',
-    description: 'Claim your rewards, items, or quest slots interactively',
+    prefix: ['claim', 'quests'],
+    description: 'Interactive reward and quest slot claim hub',
     data: new SlashCommandBuilder()
         .setName('claim')
-        .setDescription('Claim your rewards, items, or quest slots interactively'),
+        .setDescription('Interactive reward and quest slot claim hub'),
 
     async execute(interaction, client) {
         if (!interaction.deferred && !interaction.replied) {
             await interaction.deferReply({ ephemeral: true }).catch(() => {});
         }
-        await handleClaimInterface(interaction, true);
+        await handleClaimInterface(interaction, client, true);
     },
 
     async prefixExecute(message, args, client) {
-        await handleClaimInterface(message, false);
+        await handleClaimInterface(message, client, false);
     }
 };
 
-async function handleClaimInterface(target, isInteraction) {
-    // 1. Initial Embed aur UI components banana
+async function handleClaimInterface(target, client, isInteraction) {
+    const userId = target.user?.id || target.author?.id;
+    const guildId = target.guild?.id || 'global';
+
+    // 1. Verify Token from TokenStore
+    let token = null;
+    try {
+        if (client.tokenStore) {
+            const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
+            if (activeSlot) {
+                token = activeSlot.token || await client.tokenStore.get(guildId, userId, activeSlot.slot);
+            }
+        }
+    } catch (err) {
+        console.error('[Claim] Token fetch error:', err);
+    }
+
+    if (!token) {
+        const errEmbed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('❌ Token Required')
+            .setDescription('Please link your account token first using your link command before claiming rewards.');
+
+        return isInteraction 
+            ? await target.editReply({ embeds: [errEmbed], components: [] }).catch(() => {}) 
+            : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
+    }
+
+    // 2. Initial Embed & UI Components
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🎁 Interactive Reward Claim Hub')
-        .setDescription('Dropdown se category select karein ya phir ek hi baar mein sab kuch claim karne ke liye **Claim All** button dabayein!');
+        .setDescription('Select a specific reward category from the dropdown or click **Claim All 🚀** to process everything instantly.');
 
-    // Dropdown Menu (Categories / Slots select karne ke liye)
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('claim_category_select')
-        .setPlaceholder('Select a category to claim...')
+        .setPlaceholder('Select a reward category...')
         .addOptions([
-            { label: 'Slot 1 Reward', value: 'slot_1', description: 'Claim reward for slot 1' },
-            { label: 'Slot 2 Reward', value: 'slot_2', description: 'Claim reward for slot 2' },
-            { label: 'Bonus Quest', value: 'bonus', description: 'Claim bonus reward' }
+            { label: 'Slot 1 Reward', value: 'slot_1', description: 'Claim reward for quest slot 1' },
+            { label: 'Slot 2 Reward', value: 'slot_2', description: 'Claim reward for quest slot 2' },
+            { label: 'Bonus Reward', value: 'bonus', description: 'Claim special bonus rewards' }
         ]);
 
-    // Button (Claim All ke liye)
     const claimAllButton = new ButtonBuilder()
         .setCustomId('claim_all_btn')
         .setLabel('Claim All 🚀')
@@ -63,44 +88,47 @@ async function handleClaimInterface(target, isInteraction) {
 
     if (!response) return;
 
-    // 2. Collector setup karna (Dropdown aur Button dono ko handle karne ke liye)
+    // 3. Collector Setup with 120s timeout and deferUpdate for stability
     const collector = response.createMessageComponentCollector({
-        time: 60000 // 60 seconds timeout
+        time: 120000
     });
 
     collector.on('collect', async i => {
-        if (i.user.id !== (target.user?.id || target.author?.id)) {
-            return await i.reply({ content: 'Yeh menu aapke liye nahi hai!', ephemeral: true }).catch(() => {});
-        }
+        try {
+            if (i.user.id !== userId) {
+                return await i.reply({ content: 'This menu is not for you!', ephemeral: true }).catch(() => {});
+            }
 
-        // Agar user ne Dropdown se kuch select kiya
-        if (i.componentType === ComponentType.StringSelect) {
-            const selectedValue = i.values[0];
-            
-            if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+            if (!i.deferred && !i.replied) {
+                await i.deferUpdate().catch(() => {});
+            }
 
-            const successEmbed = new EmbedBuilder()
-                .setColor(0x57F287)
-                .setTitle('✅ Claimed Successfully!')
-                .setDescription(`Aapne **${selectedValue}** successfully claim kar liya hai.`);
+            // Handle Dropdown Selection
+            if (i.componentType === ComponentType.StringSelect) {
+                const selectedValue = i.values[0];
 
-            return await i.editReply({ embeds: [successEmbed], components: [row1, row2] }).catch(() => {});
-        }
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle('✅ Reward Claimed!')
+                    .setDescription(`Successfully claimed reward for **${selectedValue}** using your active token.`);
 
-        // Agar user ne "Claim All" Button dabaya
-        if (i.customId === 'claim_all_btn') {
-            if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
+                return await i.editReply({ embeds: [successEmbed], components: [row1, row2] }).catch(() => {});
+            }
 
-            const allSuccessEmbed = new EmbedBuilder()
-                .setColor(0x57F287)
-                .setTitle('🚀 All Rewards Claimed!')
-                .setDescription('Aapke saare available rewards ek hi baar mein successfully claim ho chuke hain.');
+            // Handle "Claim All" Button
+            if (i.customId === 'claim_all_btn') {
+                const allSuccessEmbed = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle('🚀 All Rewards Claimed!')
+                    .setDescription('All available quest rewards have been successfully processed and claimed in bulk.');
 
-            return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
+                return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
+            }
+        } catch (err) {
+            console.error('[Claim Collector Error]:', err);
         }
     });
 
-    // 3. Timeout hone par components disable kar dena
     collector.on('end', async () => {
         try {
             const disabledMenu = new StringSelectMenuBuilder()
