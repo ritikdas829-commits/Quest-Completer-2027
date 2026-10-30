@@ -1,5 +1,5 @@
 /**
- * keyCommand.js - Key Generation, Admin Limits & User Trial Status Check
+ * keyCommand.js - Key Generation, Admin Limits & User Trial Status Check (Independent Emojis)
  * Location: src/commands/keyCommand.js
  */
 
@@ -71,7 +71,7 @@ export const adminCreateKeyCmd = {
         if (!targetUser || !slot || slot < 1 || slot > 5) {
             const EMOJI = await getEmojis(guildId);
             return await message.reply({ 
-                content: `${EMOJI.error || '❌'} Correct usage: \`;createkey @user [slot 1-5] [duration]\` (Example: \`;createkey @user 1 30d\`)`, 
+                content: `${EMOJI.key_error || '❌'} Correct usage: \`;createkey @user [slot 1-5] [duration]\` (Example: \`;createkey @user 1 30d\`)`, 
                 allowedMentions: { repliedUser: false } 
             });
         }
@@ -91,7 +91,7 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
 
     if (!result.success) {
         const errCard = new ContainerBuilder().setAccentColor(0xED4245);
-        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.error || '❌'} Permission / Limit Error\n${result.message}`));
+        errCard.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.key_error || '❌'} Permission / Limit Error\n${result.message}`));
         return await replyFn({ components: [errCard], flags: MessageFlags.Ephemeral });
     }
 
@@ -102,15 +102,15 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
             const dmCard = new ContainerBuilder().setAccentColor(0x57F287);
             dmCard.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${EMOJI.gift || '🎁'} Your Orbie Key Has Been Generated!\n\n` +
+                    `# ${EMOJI.key_gift || '🎁'} Your Orbie Key Has Been Generated!\n\n` +
                     `An exclusive key has been created for you:\n` +
                     `**Key:** \`\`\`${result.key}\`\`\`\n` +
-                    `${EMOJI.slot || '🎰'} **Assigned Slot:** Slot #${slot}\n` +
-                    `${EMOJI.duration || '🎯'} **Duration:** ${duration}\n\n` +
-                    `### ${EMOJI.shield || '🔒'} Security Notice:\n` +
+                    `${EMOJI.key_slot || '🎰'} **Assigned Slot:** Slot #${slot}\n` +
+                    `${EMOJI.key_duration || '🎯'} **Duration:** ${duration}\n\n` +
+                    `### ${EMOJI.key_shield || '🔒'} Security Notice:\n` +
                     `• This key is **strictly locked** to your Discord account.\n` +
                     `• If shared with anyone else, they will not be able to redeem it!\n\n` +
-                    `### ${EMOJI.rocket || '🚀'} How to Activate:\n` +
+                    `### ${EMOJI.key_rocket || '🚀'} How to Activate:\n` +
                     `1. Go to the ${panelChannel} channel in the server.\n` +
                     `2. Click the **Activate Premium** button and paste your key.\n` +
                     `3. Your Trial/Premium role and **Slot #${slot}** will be unlocked instantly!`
@@ -125,11 +125,11 @@ async function handleKeyGeneration(userId, guildOwnerId, targetUser, slot, durat
     const c = new ContainerBuilder().setAccentColor(0x57F287);
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# ${EMOJI.success || '✅'} Key Generated & Locked Successfully\n` +
+            `# ${EMOJI.key_success || '✅'} Key Generated & Locked Successfully\n` +
             `**Key:** \`\`\`${result.key}\`\`\`\n` +
             `**Locked To:** ${targetUser ? targetUser.tag : 'Anyone'}\n` +
-            `${EMOJI.slot || '🎰'} **Slot:** Slot #${slot}\n` +
-            `${EMOJI.duration || '🎯'} **Duration:** ${duration}\n` +
+            `${EMOJI.key_slot || '🎰'} **Slot:** Slot #${slot}\n` +
+            `${EMOJI.key_duration || '🎯'} **Duration:** ${duration}\n` +
             `**Status:** Key has been sent to user's **DM**! (${result.remaining || 'Unlimited'})`
         )
     );
@@ -149,7 +149,7 @@ export const setLimitCmd = {
     async execute(interaction) {
         const EMOJI = await getEmojis(interaction.guildId);
         if (interaction.user.id !== interaction.guild.ownerId) {
-            return await interaction.reply({ content: `${EMOJI.error || '❌'} This command can only be used by the server **Original Owner**!`, flags: MessageFlags.Ephemeral });
+            return await interaction.reply({ content: `${EMOJI.key_error || '❌'} This command can only be used by the server **Original Owner**!`, flags: MessageFlags.Ephemeral });
         }
 
         const targetAdmin = interaction.options.getUser('admin');
@@ -158,27 +158,27 @@ export const setLimitCmd = {
         await setAdminKeyLimit(targetAdmin.id, limit);
 
         const c = new ContainerBuilder().setAccentColor(0x57F287);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.key_success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
         await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral });
     },
 
     async prefixExecute(message, args) {
         const EMOJI = await getEmojis(message.guild.id);
         if (message.author.id !== message.guild.ownerId) {
-            return await message.reply({ content: `${EMOJI.error || '❌'} This command can only be used by the server **Original Owner**!`, allowedMentions: { repliedUser: false } });
+            return await message.reply({ content: `${EMOJI.key_error || '❌'} This command can only be used by the server **Original Owner**!`, allowedMentions: { repliedUser: false } });
         }
 
         const targetAdmin = message.mentions.users.first();
         const limit = parseInt(args[1]);
 
         if (!targetAdmin || isNaN(limit)) {
-            return await message.reply({ content: `${EMOJI.error || '❌'} Correct format usage: \`;setadminlimit @admin 5\``, allowedMentions: { repliedUser: false } });
+            return await message.reply({ content: `${EMOJI.key_error || '❌'} Correct format usage: \`;setadminlimit @admin 5\``, allowedMentions: { repliedUser: false } });
         }
 
         await setAdminKeyLimit(targetAdmin.id, limit);
 
         const c = new ContainerBuilder().setAccentColor(0x57F287);
-        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
+        c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.key_success || '✅'} Limit Updated\nAdmin ${targetAdmin.tag} has been granted a limit of **${limit}** key generations!`));
         await message.reply({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { repliedUser: false } });
     }
 };
@@ -204,7 +204,7 @@ export const checkTrialCmd = {
         if (!userDoc) {
             card.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${EMOJI.error || '❌'} No Record Found\n` +
+                    `# ${EMOJI.key_error || '❌'} No Record Found\n` +
                     `User <@${userId}> has **never** claimed a trial or redeemed any key.`
                 )
             );
@@ -236,7 +236,7 @@ export const checkTrialCmd = {
         const targetUser = message.mentions.users.first();
 
         if (!targetUser) {
-            return await message.reply({ content: `${EMOJI.error || '❌'} Please mention a user: \`;checktrial @user\``, allowedMentions: { repliedUser: false } });
+            return await message.reply({ content: `${EMOJI.key_error || '❌'} Please mention a user: \`;checktrial @user\``, allowedMentions: { repliedUser: false } });
         }
 
         const userId = targetUser.id;
@@ -246,7 +246,7 @@ export const checkTrialCmd = {
         if (!userDoc) {
             card.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `# ${EMOJI.error || '❌'} No Record Found\n` +
+                    `# ${EMOJI.key_error || '❌'} No Record Found\n` +
                     `User <@${userId}> has **never** claimed a trial or redeemed any key.`
                 )
             );
