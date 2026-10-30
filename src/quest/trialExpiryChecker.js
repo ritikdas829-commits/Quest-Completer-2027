@@ -1,5 +1,5 @@
 /**
- * trialExpiryChecker.js - Bulletproof expiry checker with strict safety filters
+ * trialExpiryChecker.js - Bulletproof expiry checker with strict unit normalization & safety filters
  * Location: src/quest/trialExpiryChecker.js
  */
 
@@ -23,10 +23,10 @@ export function startTrialExpiryChecker(client) {
         try {
             const now = Date.now();
             
-            // 🛑 Ultimate Safety Filter: Sirf active users jinpar expiry date hai, aur jo lifetime/unlimited nahi hain
+            // Sabhi active users ko fetch karo jinki expiry set hai
             const activeUsers = await UserTrial.find({
                 active: true,
-                expiresAt: { $ne: null, $lte: now }
+                expiresAt: { $ne: null }
             });
 
             if (!activeUsers || activeUsers.length === 0) return;
@@ -39,8 +39,15 @@ export function startTrialExpiryChecker(client) {
                     continue;
                 }
 
-                // Agar expiresAt abhi ke time se zyada hai, toh skip karo
-                if (!userDoc.expiresAt || userDoc.expiresAt > now) continue;
+                let expiryTime = userDoc.expiresAt;
+
+                // 🔄 UNIT FIX: Agar expiresAt seconds mein hai (10 digits), toh use milliseconds mein convert karo
+                if (expiryTime && expiryTime < 10000000000) {
+                    expiryTime = expiryTime * 1000;
+                }
+
+                // Agar expiry time abhi ke time ($now) se zyada hai, matlab abhi time bacha hai, toh skip karo
+                if (expiryTime && expiryTime > now) continue;
 
                 const userId = userDoc.userId;
 
