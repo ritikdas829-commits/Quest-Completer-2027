@@ -16,19 +16,50 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 📂 Independent Categories per UI/File
+// 📂 Independent Categories per UI/File (Single Source of Truth)
 export const EMOJI_CATEGORIES = {
     "🟢 System & Status": [
         'sys_success', 'sys_error', 'sys_warn', 'sys_loading', 'sys_online', 'sys_offline'
     ],
     "🎨 Orbie Panel UI": [
-        'panel_link', 'panel_premium', 'panel_orbs', 'panel_star', 'panel_crown', 'panel_gift', 'panel_button'
+        'panel_premium', 'panel_trial', 'panel_crown', 'panel_ticket', 'panel_success', 'panel_error', 'panel_shield'
     ],
-    "👤 Profile & User UI": [
-        'profile_user', 'profile_id', 'profile_slot', 'profile_calendar', 'profile_globe'
+    "🔗 Premium Link UI": [
+        'link_icon', 'link_gear', 'link_success', 'link_error', 'link_lock'
     ],
-    "🔑 Key & Admin UI": [
-        'admin_key', 'admin_duration', 'admin_target', 'admin_expire', 'admin_shield', 'admin_ticket'
+    "⚔️ Quest Commands UI": [
+        'quest_link', 'quest_search', 'quest_list', 'quest_gear', 'quest_bell', 'quest_error', 
+        'quest_success', 'quest_desktop', 'quest_video', 'quest_stream', 'quest_activity', 
+        'quest_mobile', 'quest_orbs', 'quest_gift', 'quest_task', 'quest_expire', 'quest_stats', 
+        'quest_reward', 'quest_warn', 'quest_dot', 'quest_loading', 'quest_robot'
+    ],
+    "🎰 Slot UI & Management": [
+        'slot_success', 'slot_error', 'slot_lock'
+    ],
+    "🔑 Key Command UI": [
+        'key_error', 'key_gift', 'key_slot', 'key_duration', 'key_shield', 'key_rocket', 
+        'key_success', 'key_user', 'key_id', 'key_status', 'key_type', 'key_expiry', 'key_chart'
+    ],
+    "⚡ Event Handler UI": [
+        'event_error', 'event_warn', 'event_list', 'event_link', 'event_success', 
+        'event_online', 'event_dot', 'event_loading', 'event_gift', 'event_robot'
+    ],
+    "📖 Guide Command UI": [
+        'guide_ticket', 'guide_ios', 'guide_phone', 'guide_pc'
+    ],
+    "📖 Help Command UI": [
+        'help_bot', 'help_presence', 'help_quest', 'help_utility', 
+        'help_success', 'help_warn', 'help_online', 'help_globe'
+    ],
+    "🏓 Ping Command UI": [
+        'ping_icon', 'ping_info', 'ping_arrow', 'ping_success', 'ping_warning', 'ping_error', 'ping_bot'
+    ],
+    "🔑 Key Activation Handler UI": [
+        'activate_error', 'activate_list', 'activate_success', 'activate_trial', 
+        'activate_expire', 'activate_reward', 'activate_shield', 'activate_rocket', 'activate_link', 'activate_online'
+    ],
+    "💬 Message Handler UI": [
+        'msg_premium', 'msg_diamond', 'msg_star', 'msg_gift', 'msg_error'
     ]
 };
 
@@ -42,28 +73,120 @@ const DEFAULT_EMOJIS = {
     sys_offline: "🔴",
 
     // Orbie Panel UI
-    panel_link: "🔗",
     panel_premium: "💎",
-    panel_orbs: "✨",
-    panel_star: "🌟",
+    panel_trial: "💎",
     panel_crown: "👑",
-    panel_gift: "🎁",
-    panel_button: "⭐",
+    panel_ticket: "🎫",
+    panel_success: "✅",
+    panel_error: "❌",
+    panel_shield: "🔒",
 
-    // Profile & User UI
-    profile_user: "👤",
-    profile_id: "🆔",
-    profile_slot: "🎰",
-    profile_calendar: "📅",
-    profile_globe: "🌐",
+    // Premium Link UI
+    link_icon: "🔗",
+    link_gear: "⚙️",
+    link_success: "✅",
+    link_error: "❌",
+    link_lock: "🔒",
 
-    // Key & Admin UI
-    admin_key: "🔑",
-    admin_duration: "🎯",
-    admin_target: "🎯",
-    admin_expire: "⏳",
-    admin_shield: "🛡️",
-    admin_ticket: "🎫"
+    // Quest Commands UI
+    quest_link: "🔗",
+    quest_search: "🔍",
+    quest_list: "📋",
+    quest_gear: "⚙️",
+    quest_bell: "🔔",
+    quest_error: "❌",
+    quest_success: "✅",
+    quest_desktop: "🖥️",
+    quest_video: "🎬",
+    quest_stream: "📺",
+    quest_activity: "🎮",
+    quest_mobile: "📱",
+    quest_orbs: "✨",
+    quest_gift: "🎁",
+    quest_task: "📋",
+    quest_expire: "📅",
+    quest_stats: "📊",
+    quest_reward: "🎁",
+    quest_warn: "⚠️",
+    quest_dot: "🔵",
+    quest_loading: "⚙️",
+    quest_robot: "🤖",
+
+    // Slot UI & Management
+    slot_success: "✅",
+    slot_error: "❌",
+    slot_lock: "🔒",
+
+    // Key Command UI
+    key_error: "❌",
+    key_gift: "🎁",
+    key_slot: "🎰",
+    key_duration: "🎯",
+    key_shield: "🔒",
+    key_rocket: "🚀",
+    key_success: "✅",
+    key_user: "👤",
+    key_id: "🆔",
+    key_status: "🟢",
+    key_type: "🏷️",
+    key_expiry: "⏳",
+    key_chart: "📊",
+
+    // Event Handler UI
+    event_error: "❌",
+    event_warn: "⚠️",
+    event_list: "📊",
+    event_link: "🔗",
+    event_success: "✅",
+    event_online: "🟢",
+    event_dot: "⚪",
+    event_loading: "🔄",
+    event_gift: "🎁",
+    event_robot: "🤖",
+
+    // Guide Command UI
+    guide_ticket: "🎫",
+    guide_ios: "🍎",
+    guide_phone: "📱",
+    guide_pc: "💻",
+
+    // Help Command UI
+    help_bot: "🤖",
+    help_presence: "🟢",
+    help_quest: "⚔️",
+    help_utility: "🛠️",
+    help_success: "✨",
+    help_warn: "💡",
+    help_online: "🌐",
+    help_globe: "🌍",
+
+    // Ping Command UI
+    ping_icon: "🏓",
+    ping_info: "⚡",
+    ping_arrow: "🚀",
+    ping_success: "🟢",
+    ping_warning: "🟡",
+    ping_error: "🔴",
+    ping_bot: "🤖",
+
+    // Key Activation Handler UI
+    activate_error: "❌",
+    activate_list: "📋",
+    activate_success: "✅",
+    activate_trial: "🧿",
+    activate_expire: "⏱️",
+    activate_reward: "📦",
+    activate_shield: "🛡️",
+    activate_rocket: "🚀",
+    activate_link: "🔗",
+    activate_online: "⚡",
+
+    // Message Handler UI
+    msg_premium: "💙",
+    msg_diamond: "💎",
+    msg_star: "🌟",
+    msg_gift: "🎁",
+    msg_error: "❌"
 };
 
 /**
