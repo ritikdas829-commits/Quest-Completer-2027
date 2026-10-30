@@ -66,7 +66,7 @@ const DEFAULT_EMOJIS = {
     calendar: "📅",
     globe: "🌐",
 
-    // Extra Actions & Utilities (Added for full coverage)
+    // Extra Actions & Utilities
     rocket: "🚀",
     lightning: "⚡",
     bell: "🔔",
@@ -82,6 +82,7 @@ const DEFAULT_EMOJIS = {
     reward: "🎁",
     desktop: "🖥️",
     mobile: "📱",
+    apple: "🍎", // Added for iOS guide button
     video: "🎬",
     stream: "📺",
     activity: "🎮",
