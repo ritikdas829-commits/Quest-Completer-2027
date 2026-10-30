@@ -1,5 +1,5 @@
 /**
- * emoji.js — Professional MongoDB Emoji Manager with Safe Validation & Crash Prevention
+ * emoji.js — Professional MongoDB Emoji Manager with Categories & Crash Prevention
  * Location: src/quest/emoji.js
  */
 
@@ -15,6 +15,15 @@ const questEmojiSchema = new mongoose.Schema({
 questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
+
+// 📂 Categorized Emojis Structure (Single Source of Truth)
+export const EMOJI_CATEGORIES = {
+    "🟢 Status & System Emojis": ['success', 'done', 'error', 'warn', 'loading', 'online', 'offline'],
+    "🎨 Panel & Action Emojis": ['link', 'search', 'list', 'links', 'premium', 'diamond', 'qdiamond', 'orbs', 'star', 'crown', 'trial', 'mail', 'announce', 's_admin', 'gift', 'arrow', 'dot'],
+    "🏷️ Trial & Card Emojis": ['keyType', 'tag', 'duration', 'target', 'expire', 'hourglass', 'key', 'keyIcon', 'keyButton', 'ticket', 'scroll', 'notes'],
+    "👤 Profile & Slot Emojis": ['user', 'id', 'slot', 'calendar', 'globe'],
+    "🛠️ Utilities & Devices Emojis": ['rocket', 'lightning', 'bell', 'pin', 'sparkles', 'lock', 'unlock', 'shield', 'task', 'stats', 'reward', 'desktop', 'mobile', 'apple', 'video', 'stream', 'activity', 'gear', 'robot']
+};
 
 const DEFAULT_EMOJIS = {
     // Basic States
@@ -97,15 +106,12 @@ const DEFAULT_EMOJIS = {
 function sanitizeEmoji(emojiValue, fallback = "⭐") {
     if (!emojiValue || typeof emojiValue !== 'string') return fallback;
 
-    // 1. Check if it's a standard unicode emoji or basic string
-    // 2. Check if it's a custom Discord emoji format: <:name:id> or <a:name:id> or just an ID digits string
     const customEmojiRegex = /^(?:<a?:[a-zA-Z0-9_]+:(\d+)>|(\d+))$/;
     
     if (customEmojiRegex.test(emojiValue.trim()) || emojiValue.trim().length <= 8) {
         return emojiValue.trim();
     }
 
-    // If it's a messy text string (like raw app emoji names without proper formatting), fallback safely
     if (emojiValue.includes(":") && !emojiValue.startsWith("<")) {
         return fallback;
     }
@@ -128,7 +134,6 @@ export class EmojiStore {
             const docs = await EmojiModel.find({});
             for (const doc of docs) {
                 const cacheKey = this.makeCacheKey(doc.guildId, doc.key);
-                // Sanitize upon loading into cache
                 this.cache.set(cacheKey, sanitizeEmoji(doc.value));
             }
             console.log(`🎨 Loaded ${docs.length} custom emoji(s) into memory cache safely.`);
@@ -146,10 +151,8 @@ export class EmojiStore {
                     customEmojis[key] = sanitizeEmoji(value);
                 }
             }
-            // Merge defaults with sanitized custom ones
             const merged = { ...DEFAULT_EMOJIS, ...customEmojis };
             
-            // Double-check all values to ensure no raw unformatted text goes into discord components
             for (const k in merged) {
                 merged[k] = sanitizeEmoji(merged[k], DEFAULT_EMOJIS[k] || "⭐");
             }
