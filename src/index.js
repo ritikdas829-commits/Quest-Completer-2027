@@ -8,7 +8,6 @@ import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
 import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
-import deployCommands from './utils/deployCommands.js';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
 
@@ -59,7 +58,6 @@ if (typeof connectDB === 'function') {
 }
 
 banner();
-await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
 
 // Sync roles from DB on startup
 try {
@@ -144,7 +142,7 @@ try {
 }
 
 // ── Client Ready Event ─────────────────────────────────────────────────────
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
     await cacheGuildInvites(client);
     console.log(`⚡ Guild invites cached successfully.`);
