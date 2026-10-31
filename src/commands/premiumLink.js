@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Full Detailed UI & Robust 6-10 Slot Progressive Panel (Fully Updated)
+ * premiumLink.js - Full Detailed UI & Progressive Step-by-Step Panel
  * Location: src/commands/premiumLink.js
  */
 
@@ -53,7 +53,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
         }
     }
 
-    // Header Container: Title, Terms & Live Invite/Boost Counter
     const c1 = new ContainerBuilder().setAccentColor(0x5865F2);
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${EMOJI.link_icon || '🔗'} Premium Link`));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -63,7 +62,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
     ));
     c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
-    // Body Container: Dynamic Progressive Account Panel
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
     c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${EMOJI.link_gear || '⚙️'} Account Panel (${slotsToShow} Visible Slots)`));
 
@@ -74,7 +72,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
 
         if (!linked) {
             if (slotData.can) {
-                // Unlocked but Not Linked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                     `### #${slotNum} Account Configuration\n` +
                     `• **User:** Not Linked (${slotData.label})\n` +
@@ -84,10 +81,9 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                     `• **Linked At:** N/A`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel(`Link #${slotNum}`).setStyle(ButtonStyle.Success).setEmoji('🔗')
+                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success).setEmoji('🔗')
                 ));
             } else {
-                // Locked Slot
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
                     `### #${slotNum} Account Configuration ${EMOJI.link_lock || '🔒'}\n` +
                     `• **User:** Locked (${slotData.label})\n` +
@@ -100,7 +96,6 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
                 ));
             }
         } else {
-            // Linked Slot (Active or Inactive)
             const isCurrentlyActive = Boolean(linked.isActive);
             const status = isCurrentlyActive ? `Active ${EMOJI.link_success || '✅'}` : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
