@@ -1,14 +1,13 @@
 /**
- * claim.js — Real Interactive Quest Claim Hub with QuestManager & TokenStore
+ * claim.js — Fully Fixed Direct API Claim Hub with Raw Filtering & Bulk Loop
  * Location: src/commands/claim.js
  */
 
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
-import { QuestManager } from '../quest/questManager.js';
 
 export default {
     name: 'claim',
-    prefix: 'claim', // Fixed: String format so the command loader registers it properly
+    prefix: 'claim',
     description: 'Real-time interactive quest reward claim hub',
     data: new SlashCommandBuilder()
         .setName('claim')
@@ -26,7 +25,6 @@ export default {
     }
 };
 
-// Helper function to create a dynamic API client wrapper for the user's token
 function createUserClient(token) {
     const BASE_URL = 'https://discord.com/api/v10';
     return {
@@ -59,7 +57,6 @@ async function handleClaimHub(target, client, isInteraction) {
     const userId = target.user?.id || target.author?.id;
     const guildId = target.guild?.id || 'global';
 
-    // 1. Token fetch from TokenStore
     let token = null;
     try {
         if (client.tokenStore) {
@@ -84,38 +81,44 @@ async function handleClaimHub(target, client, isInteraction) {
     }
 
     const userClient = createUserClient(token);
-    let qm;
+    let rawQuests = [];
 
     try {
-        // Fetch real quests from Discord API using user's token
         const questData = await userClient.get('/quests/@me');
-        qm = QuestManager.fromResponse(userClient, questData);
+        rawQuests = Array.isArray(questData) ? questData : (questData?.quests || questData?.items || []);
     } catch (err) {
         const errEmbed = new EmbedBuilder()
             .setColor(0xED4245)
             .setTitle('❌ API Connection Failed')
-            .setDescription(`Could not fetch quests using your token. It might be invalid or expired.\n\n*Error:* \`${err.message}\``);
+            .setDescription(`Could not fetch quests using your token.\n\n*Error:* \`${err.message}\``);
 
         return isInteraction 
             ? await target.editReply({ embeds: [errEmbed], components: [] }).catch(() => {}) 
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    const claimableQuests = qm.getClaimable();
+    // Direct and robust raw filtering for all completed & unclaimed quests
+    const claimableQuests = rawQuests.filter(q => {
+        const status = q.user_status || {};
+        const isCompleted = status.completed_at != null || status.percent_complete === 100;
+        const hasClaimed = status.claimed_at != null;
+        return isCompleted && !hasClaimed;
+    });
 
-    // 2. Build UI Components Dynamically based on claimable quests
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🎁 Interactive Reward Claim Hub')
         .setDescription(`Found **${claimableQuests.length}** claimable quest(s).\nSelect a specific quest from the dropdown or click **Claim All 🚀** to claim everything at once.`);
 
-    // Dropdown options strictly for claimable quests
     const selectOptions = claimableQuests.length > 0 
-        ? claimableQuests.slice(0, 25).map(q => ({
-            label: (q.config?.messages?.quest_name || q.id).substring(0, 100),
-            value: q.id,
-            description: 'Click to claim reward for this quest'
-        }))
+        ? claimableQuests.slice(0, 25).map(q => {
+            const questName = q.config?.messages?.quest_name || q.id;
+            return {
+                label: questName.substring(0, 100),
+                value: q.id,
+                description: 'Click to claim reward'
+            };
+        })
         : [{ label: 'No claimable quests found', value: 'none', description: 'Complete quests first!' }];
 
     const selectMenu = new StringSelectMenuBuilder()
@@ -148,10 +151,7 @@ async function handleClaimHub(target, client, isInteraction) {
 
     if (!response) return;
 
-    // 3. Collector to handle dropdown and button interactions with real logic
-    const collector = response.createMessageComponentCollector({
-        time: 120000
-    });
+    const collector = response.createMessageComponentCollector({ time: 120000 });
 
     collector.on('collect', async i => {
         try {
@@ -163,13 +163,13 @@ async function handleClaimHub(target, client, isInteraction) {
                 await i.deferUpdate().catch(() => {});
             }
 
-            // Handle Specific Quest Selection via Dropdown
+            // Dropdown selection individual claim
             if (i.componentType === ComponentType.StringSelect) {
                 const questId = i.values[0];
                 if (questId === 'none') return;
 
-                const targetQuest = qm.get(questId);
-                const questName = targetQuest?.config?.messages?.quest_name || questId;
+                const targetQ = claimableQuests.find(q => q.id === questId);
+                const questName = targetQ?.config?.messages?.quest_name || questId;
 
                 let success = false;
                 try {
@@ -187,25 +187,28 @@ async function handleClaimHub(target, client, isInteraction) {
                 } else {
                     resEmbed.setColor(0xED4245)
                         .setTitle('❌ Claim Failed')
-                        .setDescription(`Could not claim reward for **${questName}**. Make sure it's fully completed.`);
+                        .setDescription(`Could not claim reward for **${questName}**.`);
                 }
 
                 return await i.editReply({ embeds: [resEmbed], components: [row1, row2] }).catch(() => {});
             }
 
-            // Handle "Claim All" Button Click using QuestManager's real method
+            // Claim All Button click handler
             if (i.customId === 'claim_all_btn') {
                 let claimedCount = 0;
-                try {
-                    claimedCount = await qm.claimRewards((msg) => console.log(`[ClaimAll]: ${msg}`));
-                } catch (e) {
-                    console.error('[ClaimAll Error]:', e);
+                for (const q of claimableQuests) {
+                    try {
+                        await userClient.post(`/quests/${encodeURIComponent(q.id)}/claim-reward`);
+                        claimedCount++;
+                    } catch (err) {
+                        console.error(`[ClaimAll Error for ${q.id}]:`, err.message);
+                    }
                 }
 
                 const allSuccessEmbed = new EmbedBuilder()
                     .setColor(0x57F287)
                     .setTitle('🚀 Bulk Claim Completed!')
-                    .setDescription(`Successfully processed and claimed **${claimedCount}** quest reward(s).`);
+                    .setDescription(`Successfully processed and claimed **${claimedCount}** out of **${claimableQuests.length}** quest reward(s).`);
 
                 return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
             }
