@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Dynamic Emoji Integration & Clean UI Panel
+ * premiumLink.js - Dynamic Emoji Integration & Clean UI Panel (Updated for 10 Slots)
  * Location: src/commands/premiumLink.js
  */
 
@@ -158,7 +158,7 @@ export const linkCmd = {
 };
 
 export const unlinkCmd = {
-    data: new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('1-5').setRequired(true).setMinValue(1).setMaxValue(5)),
+    data: new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('1-10').setRequired(true).setMinValue(1).setMaxValue(10)),
     prefix: 'unlink',
     async execute(interaction, client) {
         await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
@@ -171,7 +171,7 @@ export const unlinkCmd = {
         const EMOJI = await getEmojis(message.guild.id);
         const prefix = getClientPrefix(client, message.guild.id);
         const slot = parseInt(args[0]); 
-        if (!slot || slot < 1 || slot > 5) return message.reply(`${EMOJI.link_error || '❌'} Correct usage: \`${prefix}unlink 1\``);
+        if (!slot || slot < 1 || slot > 10) return message.reply(`${EMOJI.link_error || '❌'} Correct usage: \`${prefix}unlink 1\``);
         await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
         const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
         await message.reply(panel);
