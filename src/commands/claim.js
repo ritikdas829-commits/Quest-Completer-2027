@@ -1,10 +1,11 @@
 /**
- * claim.js — Final Working Quest Claim Hub using QuestClient & Official Endpoints
+ * claim.js — Final Fixed Quest Claim Hub with User Lock & Direct Collector
  * Location: src/commands/claim.js
  */
 
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } from 'discord.js';
 import { QuestClient } from '../quest/questClient.js';
+import { setPanelOwner } from '../events/interactionCreate.js';
 
 export default {
     name: 'claim',
@@ -16,7 +17,7 @@ export default {
 
     async execute(interaction, client) {
         if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply({ ephemeral: true }).catch(() => {});
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
         }
         await handleClaimHub(interaction, client, true);
     },
@@ -57,7 +58,6 @@ async function handleClaimHub(target, client, isInteraction) {
     let rawQuests = [];
 
     try {
-        // Initialize official QuestClient wrapper
         questClient = new QuestClient(token);
         const questData = await questClient.fetchQuestsRaw();
         rawQuests = Array.isArray(questData) ? questData : (questData?.quests || questData?.items || []);
@@ -65,17 +65,17 @@ async function handleClaimHub(target, client, isInteraction) {
         const errEmbed = new EmbedBuilder()
             .setColor(0xED4245)
             .setTitle('❌ API Connection Failed')
-            .setDescription(`Could not fetch quests using your token. It might be invalid or expired.\n\n*Error:* \`${err.message}\``);
+            .setDescription(`Could not fetch quests using your token.\n\n*Error:* \`${err.message}\``);
 
         return isInteraction 
             ? await target.editReply({ embeds: [errEmbed], components: [] }).catch(() => {}) 
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    // Robust filtering for completed and unclaimed quests
+    // Precise filtering: completed & not yet claimed
     const claimableQuests = rawQuests.filter(q => {
         const status = q.user_status || q.userStatus || {};
-        const isCompleted = status.completed_at != null;
+        const isCompleted = status.completed_at != null || status.percent_complete === 100;
         const hasClaimed = status.claimed_at != null;
         return isCompleted && !hasClaimed;
     });
@@ -87,7 +87,7 @@ async function handleClaimHub(target, client, isInteraction) {
 
     const selectOptions = claimableQuests.length > 0 
         ? claimableQuests.slice(0, 25).map(q => {
-            const questName = q.config?.messages?.quest_name || q.id;
+            const questName = q.config?.messages?.quest_name || q.config?.application?.name || q.id;
             return {
                 label: questName.substring(0, 100),
                 value: q.id,
@@ -96,8 +96,11 @@ async function handleClaimHub(target, client, isInteraction) {
         })
         : [{ label: 'No claimable quests found', value: 'none', description: 'Complete quests first!' }];
 
+    const selectCustomId = `claim_quest_select_${userId}`;
+    const buttonCustomId = `claim_all_btn_${userId}`;
+
     const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('claim_quest_select')
+        .setCustomId(selectCustomId)
         .setPlaceholder('Select a specific quest to claim...')
         .addOptions(selectOptions);
 
@@ -106,7 +109,7 @@ async function handleClaimHub(target, client, isInteraction) {
     }
 
     const claimAllButton = new ButtonBuilder()
-        .setCustomId('claim_all_btn')
+        .setCustomId(buttonCustomId)
         .setLabel('Claim All 🚀')
         .setStyle(ButtonStyle.Success)
         .setDisabled(claimableQuests.length === 0);
@@ -126,25 +129,32 @@ async function handleClaimHub(target, client, isInteraction) {
 
     if (!response) return;
 
+    if (response.id) {
+        setPanelOwner(response.id, userId);
+    }
+
     const collector = response.createMessageComponentCollector({ time: 120000 });
 
     collector.on('collect', async i => {
         try {
             if (i.user.id !== userId) {
-                return await i.reply({ content: 'This menu is not for you!', ephemeral: true }).catch(() => {});
+                return await i.reply({
+                    content: '❌ **This UI Is Not Yours!**\n\nYou cannot use someone else\'s UI panel.\nPlease use your own command to create your personal UI panel.',
+                    flags: MessageFlags.Ephemeral
+                }).catch(() => {});
             }
 
             if (!i.deferred && !i.replied) {
                 await i.deferUpdate().catch(() => {});
             }
 
-            // Dropdown selection individual claim using official /reward-codes endpoint
-            if (i.componentType === ComponentType.StringSelect) {
+            // Single Quest Claim via /reward-codes (fallback /claim)
+            if (i.customId === selectCustomId && i.componentType === ComponentType.StringSelect) {
                 const questId = i.values[0];
                 if (questId === 'none') return;
 
                 const targetQ = claimableQuests.find(q => q.id === questId);
-                const questName = targetQ?.config?.messages?.quest_name || questId;
+                const questName = targetQ?.config?.messages?.quest_name || targetQ?.config?.application?.name || questId;
 
                 let success = false;
                 try {
@@ -160,19 +170,19 @@ async function handleClaimHub(target, client, isInteraction) {
                 const resEmbed = new EmbedBuilder()
                     .setColor(success ? 0x57F287 : 0xED4245)
                     .setTitle(success ? '✅ Claimed!' : '❌ Failed')
-                    .setDescription(success ? `Successfully claimed **${questName}**!` : `Failed to claim **${questName}** - already claimed or not completed.`);
+                    .setDescription(success ? `Successfully claimed reward for **${questName}**!` : `Failed to claim **${questName}**.`);
 
                 return await i.editReply({ embeds: [resEmbed], components: [row1, row2] }).catch(() => {});
             }
 
-            // Claim All Button click handler with correct endpoint and rate-limit delay (800ms)
-            if (i.customId === 'claim_all_btn') {
+            // Claim All Button click handler with 800ms delay
+            if (i.customId === buttonCustomId) {
                 let claimedCount = 0;
                 for (const q of claimableQuests) {
                     try {
                         await questClient.post(`/quests/${encodeURIComponent(q.id)}/reward-codes`);
                         claimedCount++;
-                        await new Promise(r => setTimeout(r, 800)); // Rate-limit protection
+                        await new Promise(r => setTimeout(r, 800));
                     } catch (e) {
                         try {
                             await questClient.post(`/quests/${encodeURIComponent(q.id)}/claim`);
@@ -182,12 +192,12 @@ async function handleClaimHub(target, client, isInteraction) {
                     }
                 }
 
-                const embedAll = new EmbedBuilder()
+                const allSuccessEmbed = new EmbedBuilder()
                     .setColor(0x57F287)
-                    .setTitle('🚀 Bulk Claim Done!')
-                    .setDescription(`Claimed **${claimedCount}/${claimableQuests.length}** rewards successfully.`);
+                    .setTitle('🚀 Bulk Claim Completed!')
+                    .setDescription(`Successfully processed and claimed **${claimedCount}/${claimableQuests.length}** quest reward(s).`);
 
-                return await i.editReply({ embeds: [embedAll], components: [] }).catch(() => {});
+                return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
             }
         } catch (err) {
             console.error('[Claim Collector Error]:', err);
@@ -197,13 +207,13 @@ async function handleClaimHub(target, client, isInteraction) {
     collector.on('end', async () => {
         try {
             const disabledMenu = new StringSelectMenuBuilder()
-                .setCustomId('claim_quest_select')
+                .setCustomId(selectCustomId)
                 .setPlaceholder('Menu expired')
                 .addOptions([{ label: 'Expired', value: 'expired', description: 'Expired' }])
                 .setDisabled(true);
 
             const disabledButton = new ButtonBuilder()
-                .setCustomId('claim_all_btn')
+                .setCustomId(buttonCustomId)
                 .setLabel('Claim All 🚀')
                 .setStyle(ButtonStyle.Success)
                 .setDisabled(true);
