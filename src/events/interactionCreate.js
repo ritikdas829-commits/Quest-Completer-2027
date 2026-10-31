@@ -15,10 +15,7 @@ import { getEmojis } from '../quest/emoji.js';
 import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
 
-// Map to track active running intervals and abort flags across users
 const activeRunners = new Map();
-
-// Helper: Track original panel requesters to restrict unauthorized access
 const panelOwners = new Map(); // messageId -> userId
 
 export function setPanelOwner(messageId, userId) {
@@ -27,7 +24,6 @@ export function setPanelOwner(messageId, userId) {
     }
 }
 
-// Helper: Build Token Dashboard Panel for Button Interactions
 async function buildTokenDashboardContent(client, guildId, userId) {
     const EMOJI = await getEmojis(guildId);
     const accounts = await client.tokenStore.getAllSlots(guildId, userId);
@@ -98,7 +94,7 @@ export default {
             const userId = interaction.user?.id;
             const EMOJI = await getEmojis(guildId);
 
-            // 🛑 1. SECURITY COOLDOWN CHECK (Active Task / ToS Ban Prevention)
+            // 1. SECURITY COOLDOWN CHECK
             const cooldown = checkActivityCooldown(userId);
             if (cooldown.active) {
                 return interaction.reply({
@@ -112,8 +108,7 @@ export default {
                 }).catch(() => {});
             }
 
-            // 🛡️ 2. STRICT UI OWNERSHIP LOCK (Prevent unauthorized clicks on someone else's panel)
-            // Applies to all component interactions (Buttons, Select Menus, etc.) where a message reference exists.
+            // 2. STRICT UI OWNERSHIP LOCK
             if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.message) {
                 const messageId = interaction.message.id;
                 if (panelOwners.has(messageId)) {
@@ -135,13 +130,13 @@ export default {
                 return;
             }
 
-            // 3.5. Orbie Premium & Trial Activation Button Handler
+            // 3.5. Key Activation Button Handler
             if (interaction.isButton() && interaction.customId === 'open_activate_modal') {
                 const handled = await handleActivationButton(interaction);
                 if (handled) return;
             }
 
-            // 3.6. Copy Key Button Handler (Sends only raw code without backticks)
+            // 3.6. Copy Key Button Handler
             if (interaction.isButton() && interaction.customId.startsWith('copy_key_')) {
                 const keyToCopy = interaction.customId.replace('copy_key_', '');
                 return await interaction.reply({
@@ -182,7 +177,7 @@ export default {
                 return;
             }
 
-            // 7. Token Dashboard Interactivity Handlers (`tokensys` buttons & dropdown)
+            // 7. Token Dashboard Interactivity Handlers
             if (interaction.isStringSelectMenu() && interaction.customId === 'tokensys_slot_select') {
                 await interaction.deferUpdate();
                 const selectedValue = interaction.values[0];
@@ -232,7 +227,6 @@ export default {
 
             // 8. Modals Handler
             if (interaction.isModalSubmit()) {
-                // Key Activation Modal Handler
                 if (interaction.customId === 'orbie_activate_modal') {
                     await handleActivationModalSubmit(interaction, client);
                     return;
@@ -240,7 +234,6 @@ export default {
 
                 if (interaction.customId === 'linkid-modal') {
                     await interaction.deferReply({ flags: 64 });
-
                     const token = interaction.fields.getTextInputValue('discord_token_input');
                     let userData = null;
 
@@ -303,10 +296,9 @@ export default {
                 return;
             }
 
-            // 10. Refresh Button Handler (Preserves selected quest context)
+            // 10. Refresh Button Handler
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
-
                 let currentQuestId = null;
                 try {
                     const row = interaction.message.components.find(r => r.components?.some(c => c.customId === 'quest_select'));
@@ -333,7 +325,7 @@ export default {
                 return;
             }
 
-            // 11. Start Button Handler — Fully Fixed with Live Progress Tracking & Logs
+            // 11. Start Button Handler
             if (interaction.isButton() && interaction.customId.startsWith('quest_start_')) {
                 await interaction.deferUpdate();
                 const questId = interaction.customId.replace('quest_start_', '');
