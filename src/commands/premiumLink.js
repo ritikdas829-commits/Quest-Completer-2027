@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Full Detailed UI & Robust 6-10 Slot Progressive Panel
+ * premiumLink.js - Full Detailed UI & Robust 6-10 Slot Progressive Panel (Fully Updated)
  * Location: src/commands/premiumLink.js
  */
 
@@ -147,6 +147,7 @@ export function buildLinkModal(slot) {
 }
 
 const linkData = new SlashCommandBuilder().setName('link').setDescription('Premium Link - Progressive System');
+const unlinkData = new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('Slot number (1-10)').setRequired(true).setMinValue(1).setMaxValue(10));
 
 export const linkCmd = {
     data: linkData,
@@ -176,7 +177,7 @@ export const linkCmd = {
 };
 
 export const unlinkCmd = {
-    data: new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('1-10').setRequired(true).setMinValue(1).setMaxValue(10)),
+    data: unlinkData,
     prefix: 'unlink',
     async execute(interaction, client) {
         try {
@@ -211,9 +212,10 @@ export async function handleButton(interaction, client) {
     const ownerId = interaction.user.id;
     const member = interaction.member;
     const EMOJI = await getEmojis(guildId);
+    const rawId = interaction.customId;
 
-    if (interaction.customId.startsWith('link_slot_')) {
-        const slotNum = parseInt(interaction.customId.split('_')[2]);
+    if (rawId.startsWith('link_slot_')) {
+        const slotNum = parseInt(rawId.split('_')[2]);
         const prog = await getProgressiveSlots(member);
         const slotData = prog.slots.find(s => s.slot === slotNum);
         if (!slotData?.can) {
@@ -230,8 +232,8 @@ export async function handleButton(interaction, client) {
         return await interaction.showModal(buildLinkModal(slotNum));
     }
 
-    if (interaction.customId.startsWith('unlink_slot_')) {
-        const slotToUnlink = parseInt(interaction.customId.split('_')[2]);
+    if (rawId.startsWith('unlink_slot_')) {
+        const slotToUnlink = parseInt(rawId.split('_')[2]);
         await client.tokenStore.removeSlot(guildId, ownerId, slotToUnlink);
         const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client, member);
         if (interaction.deferred || interaction.replied) {
@@ -240,8 +242,8 @@ export async function handleButton(interaction, client) {
         return await interaction.update(panel);
     }
 
-    if (interaction.customId.startsWith('select_slot_')) {
-        const slotToSelect = parseInt(interaction.customId.split('_')[2]);
+    if (rawId.startsWith('select_slot_')) {
+        const slotToSelect = parseInt(rawId.split('_')[2]);
         await client.tokenStore.setActiveSlot(guildId, ownerId, slotToSelect);
         const panel = await buildPremiumLinkPanel(guildId, ownerId, client.tokenStore, client, member);
         if (interaction.deferred || interaction.replied) {
