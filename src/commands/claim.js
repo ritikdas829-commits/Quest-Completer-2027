@@ -1,9 +1,10 @@
 /**
- * claim.js — Final Working Quest Claim Hub with Correct Endpoints & Rate-Limit Protection
+ * claim.js — Final Working Quest Claim Hub using QuestClient & Official Endpoints
  * Location: src/commands/claim.js
  */
 
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { QuestClient } from '../quest/questClient.js';
 
 export default {
     name: 'claim',
@@ -24,34 +25,6 @@ export default {
         await handleClaimHub(message, client, false);
     }
 };
-
-function createUserClient(token) {
-    const BASE_URL = 'https://discord.com/api/v10';
-    return {
-        async get(endpoint) {
-            const res = await fetch(`${BASE_URL}${endpoint}`, {
-                headers: { Authorization: token }
-            });
-            if (!res.ok) throw new Error(`API GET Error: ${res.statusText}`);
-            return await res.json();
-        },
-        async post(endpoint, body = {}) {
-            const res = await fetch(`${BASE_URL}${endpoint}`, {
-                method: 'POST',
-                headers: {
-                    Authorization: token,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-            if (!res.ok) {
-                const text = await res.text();
-                throw new Error(`API POST Error (${res.status}): ${text}`);
-            }
-            return await res.text().then(t => t ? JSON.parse(t) : {});
-        }
-    };
-}
 
 async function handleClaimHub(target, client, isInteraction) {
     const userId = target.user?.id || target.author?.id;
@@ -80,24 +53,26 @@ async function handleClaimHub(target, client, isInteraction) {
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    const userClient = createUserClient(token);
+    let questClient;
     let rawQuests = [];
 
     try {
-        const questData = await userClient.get('/quests/@me');
+        // Initialize official QuestClient wrapper
+        questClient = new QuestClient(token);
+        const questData = await questClient.fetchQuestsRaw();
         rawQuests = Array.isArray(questData) ? questData : (questData?.quests || questData?.items || []);
     } catch (err) {
         const errEmbed = new EmbedBuilder()
             .setColor(0xED4245)
             .setTitle('❌ API Connection Failed')
-            .setDescription(`Could not fetch quests using your token.\n\n*Error:* \`${err.message}\``);
+            .setDescription(`Could not fetch quests using your token. It might be invalid or expired.\n\n*Error:* \`${err.message}\``);
 
         return isInteraction 
             ? await target.editReply({ embeds: [errEmbed], components: [] }).catch(() => {}) 
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    // Improved Filtering: check completed_at and ensure it's not already claimed
+    // Robust filtering for completed and unclaimed quests
     const claimableQuests = rawQuests.filter(q => {
         const status = q.user_status || q.userStatus || {};
         const isCompleted = status.completed_at != null;
@@ -163,7 +138,7 @@ async function handleClaimHub(target, client, isInteraction) {
                 await i.deferUpdate().catch(() => {});
             }
 
-            // Dropdown selection individual claim using correct endpoint
+            // Dropdown selection individual claim using official /reward-codes endpoint
             if (i.componentType === ComponentType.StringSelect) {
                 const questId = i.values[0];
                 if (questId === 'none') return;
@@ -173,11 +148,11 @@ async function handleClaimHub(target, client, isInteraction) {
 
                 let success = false;
                 try {
-                    await userClient.post(`/quests/${encodeURIComponent(questId)}/reward-codes`);
+                    await questClient.post(`/quests/${encodeURIComponent(questId)}/reward-codes`);
                     success = true;
                 } catch (e) {
                     try {
-                        await userClient.post(`/quests/${encodeURIComponent(questId)}/claim`);
+                        await questClient.post(`/quests/${encodeURIComponent(questId)}/claim`);
                         success = true;
                     } catch {}
                 }
@@ -190,17 +165,17 @@ async function handleClaimHub(target, client, isInteraction) {
                 return await i.editReply({ embeds: [resEmbed], components: [row1, row2] }).catch(() => {});
             }
 
-            // Claim All Button click handler with correct endpoint and rate-limit delay
+            // Claim All Button click handler with correct endpoint and rate-limit delay (800ms)
             if (i.customId === 'claim_all_btn') {
                 let claimedCount = 0;
                 for (const q of claimableQuests) {
                     try {
-                        await userClient.post(`/quests/${encodeURIComponent(q.id)}/reward-codes`);
+                        await questClient.post(`/quests/${encodeURIComponent(q.id)}/reward-codes`);
                         claimedCount++;
                         await new Promise(r => setTimeout(r, 800)); // Rate-limit protection
                     } catch (e) {
                         try {
-                            await userClient.post(`/quests/${encodeURIComponent(q.id)}/claim`);
+                            await questClient.post(`/quests/${encodeURIComponent(q.id)}/claim`);
                             claimedCount++;
                             await new Promise(r => setTimeout(r, 800));
                         } catch {}
