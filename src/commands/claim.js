@@ -1,5 +1,5 @@
 /**
- * claim.js — Final Fixed Quest Claim Hub with User Lock & Direct Collector
+ * claim.js — Final Synchronized Quest Claim Hub with User-Based UI Lock
  * Location: src/commands/claim.js
  */
 
@@ -72,7 +72,7 @@ async function handleClaimHub(target, client, isInteraction) {
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    // Precise filtering: completed & not yet claimed
+    // Precise filtering for completed and unclaimed quests
     const claimableQuests = rawQuests.filter(q => {
         const status = q.user_status || q.userStatus || {};
         const isCompleted = status.completed_at != null || status.percent_complete === 100;
@@ -139,7 +139,7 @@ async function handleClaimHub(target, client, isInteraction) {
         try {
             if (i.user.id !== userId) {
                 return await i.reply({
-                    content: '❌ **This UI Is Not Yours!**\n\nYou cannot use someone else\'s UI panel.\nPlease use your own command to create your personal UI panel.',
+                    content: `❌ **This UI Is Not Yours!**\n\nYou cannot use someone else's UI panel.\nPlease use your own command to create your personal UI panel.`,
                     flags: MessageFlags.Ephemeral
                 }).catch(() => {});
             }
@@ -148,8 +148,8 @@ async function handleClaimHub(target, client, isInteraction) {
                 await i.deferUpdate().catch(() => {});
             }
 
-            // Single Quest Claim via /reward-codes (fallback /claim)
-            if (i.customId === selectCustomId && i.componentType === ComponentType.StringSelect) {
+            // Dropdown selection individual claim
+            if (i.componentType === ComponentType.StringSelect && i.customId === selectCustomId) {
                 const questId = i.values[0];
                 if (questId === 'none') return;
 
@@ -170,12 +170,12 @@ async function handleClaimHub(target, client, isInteraction) {
                 const resEmbed = new EmbedBuilder()
                     .setColor(success ? 0x57F287 : 0xED4245)
                     .setTitle(success ? '✅ Claimed!' : '❌ Failed')
-                    .setDescription(success ? `Successfully claimed reward for **${questName}**!` : `Failed to claim **${questName}**.`);
+                    .setDescription(success ? `Successfully claimed **${questName}**!` : `Failed to claim **${questName}**.`);
 
                 return await i.editReply({ embeds: [resEmbed], components: [row1, row2] }).catch(() => {});
             }
 
-            // Claim All Button click handler with 800ms delay
+            // Claim All Button click handler with 800ms rate-limit protection delay
             if (i.customId === buttonCustomId) {
                 let claimedCount = 0;
                 for (const q of claimableQuests) {
@@ -192,12 +192,12 @@ async function handleClaimHub(target, client, isInteraction) {
                     }
                 }
 
-                const allSuccessEmbed = new EmbedBuilder()
+                const embedAll = new EmbedBuilder()
                     .setColor(0x57F287)
-                    .setTitle('🚀 Bulk Claim Completed!')
-                    .setDescription(`Successfully processed and claimed **${claimedCount}/${claimableQuests.length}** quest reward(s).`);
+                    .setTitle('🚀 Bulk Claim Done!')
+                    .setDescription(`Successfully processed and claimed **${claimedCount}/${claimableQuests.length}** reward(s).`);
 
-                return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
+                return await i.editReply({ embeds: [embedAll], components: [] }).catch(() => {});
             }
         } catch (err) {
             console.error('[Claim Collector Error]:', err);
