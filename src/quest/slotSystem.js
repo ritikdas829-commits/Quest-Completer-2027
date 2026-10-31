@@ -1,5 +1,5 @@
 /**
- * slotSystem.js - Strict Trial Only Slot #1 & Dynamic Role Progression (Fixed)
+ * slotSystem.js - Clean 6-Slot Progressive Engine & Dynamic Unlock System
  * Location: src/quest/slotSystem.js
  */
 
@@ -43,12 +43,12 @@ async function loadUserData(userId) {
 }
 
 export const SLOTS = {
-    1: { label: 'Free Slot (Trial / Base)', need: 'Free', invites: 0, boosts: 0 },
-    2: { label: '2 Invite Slot', need: '2 Invites Required', invites: 2, boosts: 0 },
-    3: { label: '5 Invite Slot', need: '5 Invites Required', invites: 5, boosts: 0 },
-    4: { label: '10 Invite Slot', need: '10 Invites Required', invites: 10, boosts: 0 },
-    5: { label: '15 Invite OR 1 Boost Slot', need: '15 Invites or 1 Boost Required', invites: 15, boosts: 1 },
-    6: { label: '2 Boost Slot', need: '2 Boosts Required', invites: 0, boosts: 2 },
+    1: { label: 'Free Slot (Base)', need: 'Free', invites: 0, boosts: 0 },
+    2: { label: '2 Invite Slot', need: '2 Invites', invites: 2, boosts: 0 },
+    3: { label: '5 Invite Slot', need: '5 Invites', invites: 5, boosts: 0 },
+    4: { label: '10 Invite Slot', need: '10 Invites', invites: 10, boosts: 0 },
+    5: { label: '15 Invite OR 1 Boost Slot', need: '15 Invites or 1 Boost', invites: 15, boosts: 1 },
+    6: { label: '2 Boost Slot', need: '2 Boosts', invites: 0, boosts: 2 },
 };
 
 export async function getCounts(member) {
@@ -86,7 +86,7 @@ export async function getProgressiveSlots(member) {
                 slots: [],
                 invites: 0,
                 boosts: 0,
-                slotsToShow: 1,
+                slotsToShow: 6,
                 isTrialActive: false,
                 userProfile: null
             };
@@ -106,16 +106,15 @@ export async function getProgressiveSlots(member) {
             createdTimestamp: member.user.createdTimestamp
         };
 
-        // Dynamic Slot Role Checks
-        const hasRole2 = invites >= 2 || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
-        const hasRole5 = invites >= 5 || (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3));
-        const hasRole10 = invites >= 10 || (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4));
-        const hasBoost1 = invites >= 15 || boosts >= 1 || (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST));
-        const hasBoost2 = boosts >= 2 || (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST));
+        // Precise Independent Tier Unlocks
+        const hasSlot1 = true;
+        const hasSlot2 = invites >= 2 || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
+        const hasSlot3 = invites >= 5 || (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3));
+        const hasSlot4 = invites >= 10 || (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4));
+        const hasSlot5 = invites >= 15 || boosts >= 1 || (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST));
+        const hasSlot6 = boosts >= 2 || (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST));
 
-        const hasHigherTier = hasRole2 || hasRole5 || hasRole10 || hasBoost1 || hasBoost2;
-
-        // Only manage slot-based roles (never touch key-based Trial/Premium)
+        // Auto Role Revocation Check if Requirements Drop
         try {
             if (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2) && invites < 2) {
                 await member.roles.remove(roles.ROLE_SLOT_2).catch(() => {});
@@ -133,95 +132,71 @@ export async function getProgressiveSlots(member) {
                 await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
             }
         } catch (e) {
-            console.error("Failed to manage slot roles:", e.message);
+            console.error("Role Sync Error:", e.message);
         }
 
-        // Check if user has active trial AND no higher slot roles
-        const isTrialActive = userData && userData.active && (userData.expiresAt === null || userData.expiresAt > Date.now()) && !hasHigherTier;
+        const isTrialActive = userData && userData.active && (userData.expiresAt === null || userData.expiresAt > Date.now());
 
-        // RULE 1: STRICTLY TRIAL USER - ONLY 1 SLOT SHOW
-        if (isTrialActive) {
-            return {
-                slots: [{
-                    slot: 1,
-                    ...SLOTS[1],
-                    can: true,
-                    reason: 'Trial Active (Slot #1 Unlocked)',
-                    needRoleId: roles.ROLE_TRIAL || '',
-                    currentInvites: invites,
-                    currentBoosts: boosts,
-                }],
-                invites,
-                boosts,
-                slotsToShow: 1,
-                isTrialActive: true,
-                alreadyClaimed: true,
-                userProfile
-            };
-        }
-
-        // RULE 2: NON-TRIAL / UPGRADED PROGRESSIVE SLOTS
-        let unlockedCount = 0;
-        if (hasRole2) unlockedCount = 2;
-        if (hasRole5) unlockedCount = 3;
-        if (hasRole10) unlockedCount = 4;
-        if (hasBoost1) unlockedCount = 5;
-        if (hasBoost2) unlockedCount = 6;
-
-        const slots = [];
-
-        slots.push({
-            slot: 1,
-            label: 'Free Slot',
-            can: true,
-            need: 'Free',
-            reason: 'Base free slot available for everyone.'
-        });
-
-        if (unlockedCount >= 2) {
-            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: true, need: '2 Invites', reason: 'Unlocked via 2 Invites Role' });
-        } else {
-            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: false, need: '2 Invites', reason: 'Requires 2 Invites or Role' });
-        }
-
-        if (unlockedCount >= 3) {
-            slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: true, need: '5 Invites', reason: 'Unlocked via 5 Invites Role' });
-        } else if (unlockedCount >= 2) {
-            slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: false, need: '5 Invites', reason: 'Requires 5 Invites' });
-        }
-
-        if (unlockedCount >= 4) {
-            slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: true, need: '10 Invites', reason: 'Unlocked via 10 Invites Role' });
-        } else if (unlockedCount >= 3) {
-            slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: false, need: '10 Invites', reason: 'Requires 10 Invites' });
-        }
-
-        if (unlockedCount >= 5) {
-            slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: true, need: '1 Boost or 15 Invites', reason: 'Unlocked via 1 Boost Role' });
-        } else if (unlockedCount >= 4) {
-            slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: false, need: '1 Boost or 15 Invites', reason: 'Requires 1 Boost or 15 Invites' });
-        }
-
-        if (unlockedCount >= 6) {
-            slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: true, need: '2 Boosts', reason: 'Unlocked via 2 Boost Role' });
-        } else if (unlockedCount >= 5) {
-            slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: false, need: '2 Boosts', reason: 'Requires 2 Boosts' });
-        }
+        // Build All 6 Slots Dynamically Without Drop-offs
+        const slots = [
+            {
+                slot: 1,
+                label: 'Free Base Slot',
+                can: true,
+                need: 'Free',
+                reason: 'Unlocked for all users'
+            },
+            {
+                slot: 2,
+                label: 'Slot 2 (2 Invites)',
+                can: hasSlot2,
+                need: '2 Invites Required',
+                reason: hasSlot2 ? 'Unlocked via 2 Invites' : 'Requires 2 valid invites'
+            },
+            {
+                slot: 3,
+                label: 'Slot 3 (5 Invites)',
+                can: hasSlot3,
+                need: '5 Invites Required',
+                reason: hasSlot3 ? 'Unlocked via 5 Invites' : 'Requires 5 valid invites'
+            },
+            {
+                slot: 4,
+                label: 'Slot 4 (10 Invites)',
+                can: hasSlot4,
+                need: '10 Invites Required',
+                reason: hasSlot4 ? 'Unlocked via 10 Invites' : 'Requires 10 valid invites'
+            },
+            {
+                slot: 5,
+                label: 'Slot 5 (15 Inv / 1 Boost)',
+                can: hasSlot5,
+                need: '15 Invites or 1 Boost Required',
+                reason: hasSlot5 ? 'Unlocked via 15 Invites / 1 Boost' : 'Requires 15 Invites or 1 Boost'
+            },
+            {
+                slot: 6,
+                label: 'Slot 6 (2 Boosts)',
+                can: hasSlot6,
+                need: '2 Boosts Required',
+                reason: hasSlot6 ? 'Unlocked via 2 Server Boosts' : 'Requires 2 Server Boosts'
+            }
+        ];
 
         return { 
             slots, 
             invites, 
             boosts, 
             slotsToShow: slots.length, 
-            isTrialActive: false,
+            isTrialActive,
             alreadyClaimed: userData?.claimedTrial || false,
             userProfile
         };
 
     } catch (err) {
-        console.error("getProgressiveSlots error:", err.message);
+        console.error("getProgressiveSlots Error:", err.message);
         return { 
-            slots: [{ slot: 1, ...SLOTS[1], can: false, reason: 'Error loading slots', currentInvites: 0, currentBoosts: 0 }], 
+            slots: [{ slot: 1, ...SLOTS[1], can: true, reason: 'Fallback Base Slot' }], 
             invites: 0, 
             boosts: 0, 
             slotsToShow: 1, 
@@ -229,4 +204,4 @@ export async function getProgressiveSlots(member) {
             userProfile: null
         };
     }
-    }
+}
