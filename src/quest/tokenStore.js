@@ -1,5 +1,5 @@
 /**
- * tokenStore.js — 5-Slot MongoDB Persistent Token Store with Cross-Guild Fallback & Encryption
+ * tokenStore.js — Upgraded Multi-Slot MongoDB Token Store (Supports up to 10 Slots)
  * Location: src/quest/tokenStore.js
  */
 
@@ -8,11 +8,11 @@ import mongoose from 'mongoose';
 
 const ALGORITHM = 'aes-256-gcm';
 
-// UPGRADED SCHEMA — Per guild + per user + per slot (1-5) — Multi server + multi user
+// Upgraded Schema — Supports up to 10 slots
 const userTokenSchema = new mongoose.Schema({
     guildId: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
-    slot: { type: Number, required: true, min: 1, max: 5, index: true },
+    slot: { type: Number, required: true, min: 1, max: 10, index: true }, // Changed max from 5 to 10
     encryptedData: { type: String, required: true },
     username: { type: String, default: '' },
     linkedUserId: { type: String, default: '' },
@@ -97,20 +97,16 @@ export class TokenStore {
             if (!userId) return null;
             const targetGuild = guildId || 'global';
 
-            // 1. Try exact guild + user with active: true
             let activeDoc = await TokenModel.findOne({ guildId: targetGuild, userId, isActive: true });
             
-            // 2. Try global + user if not found
             if (!activeDoc && targetGuild !== 'global') {
                 activeDoc = await TokenModel.findOne({ guildId: 'global', userId, isActive: true });
             }
 
-            // 3. Fallback: Any guild for this user marked active: true (Cross-server persistence)
             if (!activeDoc) {
                 activeDoc = await TokenModel.findOne({ userId, isActive: true });
             }
 
-            // 4. Fallback: First available slot for this user anywhere
             if (!activeDoc) {
                 activeDoc = await TokenModel.findOne({ guildId: targetGuild, userId }).sort({ slot: 1 });
             }
@@ -143,8 +139,6 @@ export class TokenStore {
         return active ? active.token : null;
     }
 
-    // ── Methods required by premiumLink.js & linkGuard.js ──
-
     async getAllSlots(guildId, userId) {
         try {
             const targetGuild = guildId || 'global';
@@ -173,7 +167,7 @@ export class TokenStore {
     async saveSlot({ guildId, ownerId, slot, token, linkedUserId = '', username = '', avatar = '', isActive = false }) {
         try {
             if (!ownerId || !slot) return false;
-            if (slot < 1 || slot > 5) return false;
+            if (slot < 1 || slot > 10) return false; // Allowed up to 10 slots
 
             const targetGuild = guildId || 'global';
             const userId = ownerId;
@@ -213,7 +207,6 @@ export class TokenStore {
             this.cache.delete(cacheKey);
             await TokenModel.findOneAndDelete({ guildId: targetGuild, userId, slot });
             
-            // Fallback to next available slot if active was removed
             const remaining = await TokenModel.findOne({ userId }).sort({ slot: 1 });
             if (remaining) {
                 await TokenModel.findOneAndUpdate({ guildId: remaining.guildId, userId, slot: remaining.slot }, { isActive: true });
@@ -246,8 +239,6 @@ export class TokenStore {
         }
     }
 
-    // ── Original Core Methods ──
-
     async save(guildId, userId, slot, token, username = '') {
         return await this.saveSlot({ guildId, ownerId: userId, slot, token, username });
     }
@@ -263,7 +254,6 @@ export class TokenStore {
             let cached = this.cache.get(cacheKey);
             
             if (!cached) {
-                // Try finding in cache by user & slot regardless of guild prefix
                 for (const [k, v] of this.cache.entries()) {
                     if (k.endsWith(`_${userId}_slot_${slot}`)) { cached = v; break; }
                 }
@@ -314,7 +304,7 @@ export class TokenStore {
 
     getUserSlots(guildId, userId) {
         const slots = [];
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 10; i++) { // Support up to 10 slots
             if (this.has(guildId, userId, i)) slots.push(i);
         }
         return slots;
