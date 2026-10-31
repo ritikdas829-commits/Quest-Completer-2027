@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Dynamic Emoji Integration & Clean UI Panel (Updated for 10 Slots)
+ * premiumLink.js - Dynamic Emoji Integration & Clean UI Panel (Payload & Crash Fixed)
  * Location: src/commands/premiumLink.js
  */
 
@@ -60,10 +60,9 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
         `Use \`${prefix}guide\` for token guide. Active slot runs quests — Use \`${prefix}quest\` to run active, \`${prefix}questall\` to run all slots.\n\n` +
         `> **Invites:** ${invites} | **Boosts:** ${boosts}`
     ));
-    c1.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Support server: ${SUPPORT_SERVER}`));
 
     const c2 = new ContainerBuilder().setAccentColor(0x2B2D31);
-    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${EMOJI.link_gear || '⚙️'} Account Panel (${slotsToShow} Visible Slots)`));
+    c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${EMOJI.link_gear || '⚙️'} Account Panel (${slotsToShow} Slots)`));
 
     for (let idx = 0; idx < slots.length; idx++) {
         const slotData = slots[idx];
@@ -73,23 +72,17 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
         if (!linked) {
             if (slotData.can) {
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${slotNum} Account Configuration\n` +
-                    `• **User:** Not Linked (${slotData.label})\n` +
-                    `• **Status:** Not Active\n` +
-                    `• **Requirement:** ${slotData.need} - ${EMOJI.link_success || '✅'} Unlocked\n` +
-                    `• **Account Age:** N/A\n` +
-                    `• **Linked At:** N/A`
+                    `### #${slotNum} Slot (${slotData.label})\n` +
+                    `• **User:** Not Linked | **Status:** Not Active\n` +
+                    `• **Req:** ${slotData.need} ${EMOJI.link_success || '✅'}`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel('Link').setStyle(ButtonStyle.Success).setEmoji('🔗')
+                    new ButtonBuilder().setCustomId(`link_slot_${slotNum}`).setLabel(`Link #${slotNum}`).setStyle(ButtonStyle.Success).setEmoji('🔗')
                 ));
             } else {
                 c2.addTextDisplayComponents(new TextDisplayBuilder().setContent(
-                    `### #${slotNum} Account Configuration ${EMOJI.link_lock || '🔒'}\n` +
-                    `• **User:** Locked (${slotData.label})\n` +
-                    `• **Status:** Locked\n` +
-                    `• **Requirement:** ${slotData.need}\n` +
-                    `• **Note:** ${slotData.reason}`
+                    `### #${slotNum} Slot ${EMOJI.link_lock || '🔒'}\n` +
+                    `• **Status:** Locked (${slotData.need})`
                 ));
                 c2.addActionRowComponents(new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`locked_slot_${slotNum}`).setLabel(`Locked (${slotData.need})`).setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji('🔒')
@@ -99,16 +92,13 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
             const isCurrentlyActive = Boolean(linked.isActive);
             const status = isCurrentlyActive ? `Active ${EMOJI.link_success || '✅'}` : 'Not Active';
             const age = getAccountAge(linked.linkedUserId);
-            const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
+            const linkedAt = linked.linkedAt ? new Date(linked.linkedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A';
             const avatarUrl = linked.avatar ? `https://cdn.discordapp.com/avatars/${linked.linkedUserId}/${linked.avatar}.png?size=128` : null;
             
             const content = 
-                `### #${slotNum} Account Configuration\n` +
-                `• **User:** ${linked.username} (\`${linked.linkedUserId || 'N/A'}\`)\n` +
-                `• **Slot Type:** ${slotData.label}\n` +
-                `• **Status:** ${status}\n` +
-                `• **Account Age:** ${age}\n` +
-                `• **Linked At:** ${linkedAt}`;
+                `### #${slotNum} ${linked.username}\n` +
+                `• **ID:** \`${linked.linkedUserId || 'N/A'}\` | **Status:** ${status}\n` +
+                `• **Type:** ${slotData.label} | **Age:** ${age}`;
             
             if (avatarUrl) {
                 c2.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
@@ -147,13 +137,24 @@ export const linkCmd = {
     data: linkData,
     prefix: 'link',
     async execute(interaction, client) {
-        await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client, interaction.member);
-        await interaction.editReply(panel);
+        try {
+            await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+            const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client, interaction.member);
+            await interaction.editReply(panel).catch(async () => {
+                await interaction.followUp(panel).catch(() => {});
+            });
+        } catch (err) {
+            console.error('[Link Exec Error]:', err.message);
+        }
     },
     async prefixExecute(message, _args, client) {
-        const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
-        await message.reply(panel);
+        try {
+            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
+            await message.reply(panel).catch(() => {});
+        } catch (err) {
+            console.error('[Link Prefix Exec Error]:', err.message);
+            await message.reply('❌ An error occurred while opening the panel.').catch(() => {});
+        }
     }
 };
 
@@ -161,20 +162,28 @@ export const unlinkCmd = {
     data: new SlashCommandBuilder().setName('unlink').setDescription('Unlink slot').addIntegerOption(o=>o.setName('slot').setDescription('1-10').setRequired(true).setMinValue(1).setMaxValue(10)),
     prefix: 'unlink',
     async execute(interaction, client) {
-        await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 });
-        const slot = interaction.options.getInteger('slot');
-        await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, slot);
-        const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client, interaction.member);
-        await interaction.editReply(panel);
+        try {
+            await interaction.deferReply({ flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+            const slot = interaction.options.getInteger('slot');
+            await client.tokenStore.removeSlot(interaction.guild.id, interaction.user.id, slot);
+            const panel = await buildPremiumLinkPanel(interaction.guild.id, interaction.user.id, client.tokenStore, client, interaction.member);
+            await interaction.editReply(panel);
+        } catch (err) {
+            console.error('[Unlink Exec Error]:', err.message);
+        }
     },
     async prefixExecute(message, args, client) {
-        const EMOJI = await getEmojis(message.guild.id);
-        const prefix = getClientPrefix(client, message.guild.id);
-        const slot = parseInt(args[0]); 
-        if (!slot || slot < 1 || slot > 10) return message.reply(`${EMOJI.link_error || '❌'} Correct usage: \`${prefix}unlink 1\``);
-        await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
-        const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
-        await message.reply(panel);
+        try {
+            const EMOJI = await getEmojis(message.guild.id);
+            const prefix = getClientPrefix(client, message.guild.id);
+            const slot = parseInt(args[0]); 
+            if (!slot || slot < 1 || slot > 10) return message.reply(`${EMOJI.link_error || '❌'} Correct usage: \`${prefix}unlink 1\``);
+            await client.tokenStore.removeSlot(message.guild.id, message.author.id, slot);
+            const panel = await buildPremiumLinkPanel(message.guild.id, message.author.id, client.tokenStore, client, message.member);
+            await message.reply(panel);
+        } catch (err) {
+            console.error('[Unlink Prefix Error]:', err.message);
+        }
     }
 };
 
