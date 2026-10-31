@@ -114,7 +114,7 @@ for (const file of commandFiles) {
         registerCmd(mod.default);
     }
 
-    // 2. Register any valid named exports securely (Fixed operators here)
+    // 2. Register any valid named exports securely
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || !cmd || typeof cmd !== 'object') continue;
         if (cmd.data || cmd.name || cmd.prefix) {
@@ -155,7 +155,10 @@ client.once(Events.ClientReady, async () => {
             Routes.applicationCommands(client.user.id),
             { body: commandsData },
         );
-        console.log(`✓ ${commandsData.length} command(s) registered successfully.`);
+        
+        // Detailed log showing names just like before
+        const commandNames = Array.from(client.commands.values()).map(c => c.data.name).join(', ');
+        console.log(`[SlashCmds] ✓ ${commandsData.length} command(s) registered: ${commandNames}`);
     } catch (error) {
         console.error('❌ Failed to register slash commands:', error);
     }
