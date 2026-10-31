@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Strict UI Ownership Lock
+ * interactionCreate.js — Complete Interaction Handler with Strict UI Ownership Lock (FINAL FIXED)
  * Location: src/events/interactionCreate.js
  */
 
@@ -9,8 +9,7 @@ import { handleActivationButton, handleActivationModalSubmit } from '../handlers
 import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { buildHelpPanel } from '../commands/help.js';
 import { QuestClient } from '../quest/questClient.js';
-import { QuestManager } from '../quest/questManager.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags } from '【entity-discord¦canonical_name=Discord】.js';
 import { getEmojis } from '../quest/emoji.js';
 import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
@@ -18,9 +17,15 @@ import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
 const activeRunners = new Map();
 const panelOwners = new Map(); // messageId -> userId
 
+function cleanToken(t){ 
+    return String(t || '').trim().replace(/^['"]+|['"]+$/g, '').replace(/\s+/g, ''); 
+}
+
 export function setPanelOwner(messageId, userId) {
     if (messageId && userId) {
         panelOwners.set(messageId, userId);
+        // Auto cleanup after 1 hour - memory leak fix
+        setTimeout(() => panelOwners.delete(messageId), 60 * 60 * 1000);
     }
 }
 
@@ -115,9 +120,7 @@ export default {
                     const ownerId = panelOwners.get(messageId);
                     if (userId !== ownerId) {
                         return interaction.reply({
-                            content: `❌ **This UI Is Not Yours!**\n\n` +
-                                     `You cannot use someone else's UI panel.\n` +
-                                     `Please use your own command to create your personal UI panel.`,
+                            content: `❌ **This UI Is Not Yours!**\n\nYou cannot use someone else's UI panel.\nPlease use your own command to create your personal UI panel.`,
                             flags: MessageFlags.Ephemeral
                         }).catch(() => {});
                     }
@@ -145,11 +148,12 @@ export default {
                 });
             }
 
-            // 4. Premium Slot Buttons Handler
+            // 4. Premium Slot Buttons Handler (FIXED - locked_slot added)
             if (interaction.isButton() && (
                 interaction.customId.startsWith('link_slot_') ||
                 interaction.customId.startsWith('unlink_slot_') ||
-                interaction.customId.startsWith('select_slot_')
+                interaction.customId.startsWith('select_slot_') ||
+                interaction.customId.startsWith('locked_slot_')
             )) {
                 await handlePremiumButton(interaction, client);
                 return;
@@ -199,7 +203,7 @@ export default {
                     return;
                 }
 
-                startUserOnlinePresence(userId, active.token, 'online');
+                startUserOnlinePresence(userId, cleanToken(active.token), 'online');
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
                 await interaction.followUp({ content: `${EMOJI.event_online || '🟢'} **Slot #${active.slot}** is now brought online 24/7!`, flags: 64 });
                 const replyMsg = await interaction.editReply(updatedPanel);
@@ -234,11 +238,11 @@ export default {
 
                 if (interaction.customId === 'linkid-modal') {
                     await interaction.deferReply({ flags: 64 });
-                    const token = interaction.fields.getTextInputValue('discord_token_input');
+                    const token = cleanToken(interaction.fields.getTextInputValue('discord_token_input'));
                     let userData = null;
 
                     try {
-                        const res = await fetch('https://discord.com/api/v9/users/@me', {
+                        const res = await fetch('https://discord.com/api/v10/users/@me', {
                             headers: { Authorization: token }
                         });
 
@@ -273,7 +277,7 @@ export default {
                     const successEmbed = new EmbedBuilder()
                         .setColor(0x57F287)
                         .setTitle(`${EMOJI.event_success || '✅'} Successfully Linked!`)
-                        .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
+                        .setDescription(`Linked successfully as **${userData.username}** in 【entity-MongoDB¦canonical_name=MongoDB】 database securely.`);
 
                     const replyMsg = await interaction.editReply({ embeds: [successEmbed] });
                     if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
@@ -290,24 +294,25 @@ export default {
             if (interaction.isStringSelectMenu() && (interaction.customId === 'quest_select' || interaction.customId.startsWith('quest_select_'))) {
                 await interaction.deferUpdate();
                 const selectedQuestId = interaction.values[0];
+                // Save questId for refresh
+                const runnerKey = `${guildId}_${userId}`;
+                if (activeRunners.has(runnerKey)) {
+                    activeRunners.get(runnerKey).questId = selectedQuestId;
+                } else {
+                    activeRunners.set(runnerKey, { questId: selectedQuestId, isRunning: false });
+                    setTimeout(() => { if(activeRunners.get(runnerKey)?.isRunning === false) activeRunners.delete(runnerKey); }, 60000);
+                }
                 const panel = await buildQuestSolverPanel(client, guildId, userId, selectedQuestId);
                 const replyMsg = await interaction.editReply(panel);
                 if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
-            // 10. Refresh Button Handler
+            // 10. Refresh Button Handler (FIXED - ComponentsV2 safe)
             if (interaction.isButton() && interaction.customId === 'quest_refresh') {
                 await interaction.deferUpdate();
-                let currentQuestId = null;
-                try {
-                    const row = interaction.message.components.find(r => r.components?.some(c => c.customId === 'quest_select'));
-                    const menu = row?.components?.find(c => c.customId === 'quest_select');
-                    if (menu?.options) {
-                        const defaultOpt = menu.options.find(o => o.default);
-                        if (defaultOpt) currentQuestId = defaultOpt.value;
-                    }
-                } catch {}
+                const runnerKey = `${guildId}_${userId}`;
+                let currentQuestId = activeRunners.get(runnerKey)?.questId || null;
 
                 const timeString = new Date().toLocaleTimeString();
                 const loadingLogs = `${EMOJI.event_loading || '🔄'} Refreshing quests...\n[${timeString}] Fetching latest progress from Discord...`;
@@ -331,7 +336,7 @@ export default {
                 const questId = interaction.customId.replace('quest_start_', '');
                 const runnerKey = `${guildId}_${userId}`;
 
-                if (activeRunners.has(runnerKey)) {
+                if (activeRunners.has(runnerKey) && activeRunners.get(runnerKey).isRunning) {
                     const existing = activeRunners.get(runnerKey);
                     existing.isRunning = false;
                     clearInterval(existing.interval);
@@ -347,8 +352,7 @@ export default {
                     return;
                 }
 
-                const cleanToken = typeof token === 'string' ? token.trim().replace(/['"]+/g, '') : token;
-                const qc = new QuestClient(cleanToken);
+                const qc = new QuestClient(cleanToken(token));
 
                 let manager;
                 try {
@@ -390,7 +394,7 @@ export default {
                     return;
                 }
 
-                const runnerContext = { isRunning: true, interval: null, notified: false, latestLog: `Quest initialized.\n[${new Date().toLocaleTimeString()}] Fast mode active.` };
+                const runnerContext = { isRunning: true, interval: null, notified: false, questId, latestLog: `Quest initialized.\n[${new Date().toLocaleTimeString()}] Fast mode active.` };
                 activeRunners.set(runnerKey, runnerContext);
 
                 const initPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
@@ -400,7 +404,6 @@ export default {
                 manager.doingQuest(
                     quest, 
                     async (msg) => {
-                        console.log(`[Quest Runner Log] ${msg}`);
                         runnerContext.latestLog += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
                     }, 
                     async (done, total) => {
@@ -452,14 +455,11 @@ export default {
                         activeRunners.delete(runnerKey);
                         return;
                     }
-
                     try {
                         const autoPanel = await buildQuestSolverPanel(client, guildId, userId, questId, runnerContext.latestLog);
                         const autoMsg = await interaction.editReply(autoPanel).catch(() => {});
                         if (autoMsg?.id) setPanelOwner(autoMsg.id, userId);
-                    } catch (e) {
-                        console.error('Auto-refresh UI update error:', e.message);
-                    }
+                    } catch {}
                 }, 4000);
 
                 setTimeout(() => {
