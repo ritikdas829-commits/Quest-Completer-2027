@@ -46,7 +46,7 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// Safe 【entity-MongoDB¦canonical_name=MongoDB】 Connection
+// Safe MongoDB Connection
 const connectDB = dbModule.connectDB || dbModule.default;
 if (typeof connectDB === 'function') {
     try {
@@ -114,7 +114,7 @@ for (const file of commandFiles) {
         registerCmd(mod.default);
     }
 
-    // 2. Register any valid named exports securely
+    // 2. Register any valid named exports securely (Fixed operators here)
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || !cmd || typeof cmd !== 'object') continue;
         if (cmd.data || cmd.name || cmd.prefix) {
@@ -123,7 +123,7 @@ for (const file of commandFiles) {
     }
 }
 
-// ── Dynamic Event Loader ────────────────────────────────────────────────────
+// ── Dynamic Event Loader ────────────────────────────────────────────────----
 try {
     const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
     for (const file of eventFiles) {
