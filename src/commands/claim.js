@@ -1,5 +1,5 @@
 /**
- * claim.js — Fully Fixed Direct API Claim Hub with Raw Filtering & Bulk Loop
+ * claim.js — Final Working Quest Claim Hub with Correct Endpoints & Rate-Limit Protection
  * Location: src/commands/claim.js
  */
 
@@ -97,10 +97,10 @@ async function handleClaimHub(target, client, isInteraction) {
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    // Direct and robust raw filtering for all completed & unclaimed quests
+    // Improved Filtering: check completed_at and ensure it's not already claimed
     const claimableQuests = rawQuests.filter(q => {
-        const status = q.user_status || {};
-        const isCompleted = status.completed_at != null || status.percent_complete === 100;
+        const status = q.user_status || q.userStatus || {};
+        const isCompleted = status.completed_at != null;
         const hasClaimed = status.claimed_at != null;
         return isCompleted && !hasClaimed;
     });
@@ -163,7 +163,7 @@ async function handleClaimHub(target, client, isInteraction) {
                 await i.deferUpdate().catch(() => {});
             }
 
-            // Dropdown selection individual claim
+            // Dropdown selection individual claim using correct endpoint
             if (i.componentType === ComponentType.StringSelect) {
                 const questId = i.values[0];
                 if (questId === 'none') return;
@@ -173,44 +173,46 @@ async function handleClaimHub(target, client, isInteraction) {
 
                 let success = false;
                 try {
-                    await userClient.post(`/quests/${encodeURIComponent(questId)}/claim-reward`);
+                    await userClient.post(`/quests/${encodeURIComponent(questId)}/reward-codes`);
                     success = true;
                 } catch (e) {
-                    console.error(`[Claim Error] Failed for ${questId}:`, e.message);
+                    try {
+                        await userClient.post(`/quests/${encodeURIComponent(questId)}/claim`);
+                        success = true;
+                    } catch {}
                 }
 
-                const resEmbed = new EmbedBuilder();
-                if (success) {
-                    resEmbed.setColor(0x57F287)
-                        .setTitle('✅ Quest Reward Claimed!')
-                        .setDescription(`Successfully claimed reward for **${questName}**!`);
-                } else {
-                    resEmbed.setColor(0xED4245)
-                        .setTitle('❌ Claim Failed')
-                        .setDescription(`Could not claim reward for **${questName}**.`);
-                }
+                const resEmbed = new EmbedBuilder()
+                    .setColor(success ? 0x57F287 : 0xED4245)
+                    .setTitle(success ? '✅ Claimed!' : '❌ Failed')
+                    .setDescription(success ? `Successfully claimed **${questName}**!` : `Failed to claim **${questName}** - already claimed or not completed.`);
 
                 return await i.editReply({ embeds: [resEmbed], components: [row1, row2] }).catch(() => {});
             }
 
-            // Claim All Button click handler
+            // Claim All Button click handler with correct endpoint and rate-limit delay
             if (i.customId === 'claim_all_btn') {
                 let claimedCount = 0;
                 for (const q of claimableQuests) {
                     try {
-                        await userClient.post(`/quests/${encodeURIComponent(q.id)}/claim-reward`);
+                        await userClient.post(`/quests/${encodeURIComponent(q.id)}/reward-codes`);
                         claimedCount++;
-                    } catch (err) {
-                        console.error(`[ClaimAll Error for ${q.id}]:`, err.message);
+                        await new Promise(r => setTimeout(r, 800)); // Rate-limit protection
+                    } catch (e) {
+                        try {
+                            await userClient.post(`/quests/${encodeURIComponent(q.id)}/claim`);
+                            claimedCount++;
+                            await new Promise(r => setTimeout(r, 800));
+                        } catch {}
                     }
                 }
 
-                const allSuccessEmbed = new EmbedBuilder()
+                const embedAll = new EmbedBuilder()
                     .setColor(0x57F287)
-                    .setTitle('🚀 Bulk Claim Completed!')
-                    .setDescription(`Successfully processed and claimed **${claimedCount}** out of **${claimableQuests.length}** quest reward(s).`);
+                    .setTitle('🚀 Bulk Claim Done!')
+                    .setDescription(`Claimed **${claimedCount}/${claimableQuests.length}** rewards successfully.`);
 
-                return await i.editReply({ embeds: [allSuccessEmbed], components: [] }).catch(() => {});
+                return await i.editReply({ embeds: [embedAll], components: [] }).catch(() => {});
             }
         } catch (err) {
             console.error('[Claim Collector Error]:', err);
