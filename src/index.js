@@ -1,10 +1,10 @@
 /**
- * index.js — Fully Fixed Main Entry Point with Robust Command Loader
+ * index.js — Fully Fixed Main Entry Point with Automated Slash Command Registration
  * Location: index.js
  */
 
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, Partials, REST, Routes } from 'discord.js';
 import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -141,9 +141,25 @@ try {
     console.error('❌ Error loading events:', err);
 }
 
-// ── Client Ready Event ─────────────────────────────────────────────────────
-client.once('ready', async () => {
+// ── Client Ready Event & Slash Command Deployment ──────────────────────────
+client.once('clientReady', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
+
+    // Register Slash Commands with Discord API
+    try {
+        console.log(`[SlashCmds] Registering slash commands...`);
+        const rest = new REST({ version: '10' }).setToken(TOKEN);
+        const commandsData = Array.from(client.commands.values()).map(c => c.data.toJSON());
+        
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: commandsData },
+        );
+        console.log(`✓ ${commandsData.length} command(s) registered successfully.`);
+    } catch (error) {
+        console.error('❌ Failed to register slash commands:', error);
+    }
+
     await cacheGuildInvites(client);
     console.log(`⚡ Guild invites cached successfully.`);
 
