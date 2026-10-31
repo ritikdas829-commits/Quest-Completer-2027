@@ -1,5 +1,5 @@
 /**
- * slotSystem.js - Progressive Step-by-Step Slot Unlock System (Fixed)
+ * slotSystem.js - Strict Step-by-Step Progressive Slot Unlock System
  * Location: src/quest/slotSystem.js
  */
 
@@ -29,9 +29,7 @@ async function loadUserData(userId) {
                 expiresAt: mongoUser.expiresAt
             };
         }
-    } catch (err) {
-        // Fallback to local JSON storage
-    }
+    } catch (err) {}
 
     if (!fs.existsSync(filePath)) return null;
     try {
@@ -74,7 +72,6 @@ export async function getCounts(member) {
 
         return { invites, boosts };
     } catch (err) {
-        console.error("getCounts error:", err.message);
         return { invites: 0, boosts: 0 };
     }
 }
@@ -115,27 +112,6 @@ export async function getProgressiveSlots(member) {
 
         const hasHigherTier = hasRole2 || hasRole5 || hasRole10 || hasBoost1 || hasBoost2;
 
-        // Role management
-        try {
-            if (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2) && invites < 2) {
-                await member.roles.remove(roles.ROLE_SLOT_2).catch(() => {});
-            }
-            if (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3) && invites < 5) {
-                await member.roles.remove(roles.ROLE_SLOT_3).catch(() => {});
-            }
-            if (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4) && invites < 10) {
-                await member.roles.remove(roles.ROLE_SLOT_4).catch(() => {});
-            }
-            if (roles.ROLE_1_BOOST && member.roles.cache.has(roles.ROLE_1_BOOST) && boosts < 1 && invites < 15) {
-                await member.roles.remove(roles.ROLE_1_BOOST).catch(() => {});
-            }
-            if (roles.ROLE_2_BOOST && member.roles.cache.has(roles.ROLE_2_BOOST) && boosts < 2) {
-                await member.roles.remove(roles.ROLE_2_BOOST).catch(() => {});
-            }
-        } catch (e) {
-            console.error("Failed to manage slot roles:", e.message);
-        }
-
         const isTrialActive = userData && userData.active && (userData.expiresAt === null || userData.expiresAt > Date.now()) && !hasHigherTier;
 
         // RULE 1: STRICTLY TRIAL USER - ONLY 1 SLOT SHOW
@@ -159,8 +135,8 @@ export async function getProgressiveSlots(member) {
             };
         }
 
-        // RULE 2: STEP-BY-STEP PROGRESSIVE SLOTS HIERARCHY
-        let unlockedCount = 1; // Base Slot #1 always unlocked
+        // RULE 2: STRICT STEP-BY-STEP PROGRESSIVE SLOTS HIERARCHY
+        let unlockedCount = 1; 
         if (hasRole2) unlockedCount = 2;
         if (hasRole5) unlockedCount = 3;
         if (hasRole10) unlockedCount = 4;
@@ -169,7 +145,7 @@ export async function getProgressiveSlots(member) {
 
         const slots = [];
 
-        // Slot 1 (Always visible)
+        // Slot 1 (Always visible & unlocked)
         slots.push({
             slot: 1,
             label: 'Free Slot',
@@ -178,47 +154,57 @@ export async function getProgressiveSlots(member) {
             reason: 'Base free slot available for everyone.'
         });
 
-        // Slot 2 (Visible if unlocked or next milestone)
+        // Slot 2 (Always visible - locked or unlocked)
+        slots.push({
+            slot: 2,
+            label: 'Slot 2 (2 Invites)',
+            can: unlockedCount >= 2,
+            need: '2 Invites',
+            reason: unlockedCount >= 2 ? 'Unlocked via 2 Invites' : 'Requires 2 Invites'
+        });
+
+        // Slot 3 (Visible ONLY if Slot 2 milestone is reached/unlocked)
         if (unlockedCount >= 2) {
-            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: true, need: '2 Invites', reason: 'Unlocked via 2 Invites' });
-        } else {
-            slots.push({ slot: 2, label: 'Slot 2 (2 Invites)', can: false, need: '2 Invites', reason: 'Requires 2 Invites' });
+            slots.push({
+                slot: 3,
+                label: 'Slot 3 (5 Invites)',
+                can: unlockedCount >= 3,
+                need: '5 Invites',
+                reason: unlockedCount >= 3 ? 'Unlocked via 5 Invites' : 'Requires 5 Invites'
+            });
         }
 
-        // Slot 3 (Visible only if Slot 2 is unlocked or reached)
-        if (unlockedCount >= 2) {
-            if (unlockedCount >= 3) {
-                slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: true, need: '5 Invites', reason: 'Unlocked via 5 Invites' });
-            } else {
-                slots.push({ slot: 3, label: 'Slot 3 (5 Invites)', can: false, need: '5 Invites', reason: 'Requires 5 Invites' });
-            }
-        }
-
-        // Slot 4 (Visible only if Slot 3 is unlocked or reached)
+        // Slot 4 (Visible ONLY if Slot 3 milestone is reached/unlocked)
         if (unlockedCount >= 3) {
-            if (unlockedCount >= 4) {
-                slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: true, need: '10 Invites', reason: 'Unlocked via 10 Invites' });
-            } else {
-                slots.push({ slot: 4, label: 'Slot 4 (10 Invites)', can: false, need: '10 Invites', reason: 'Requires 10 Invites' });
-            }
+            slots.push({
+                slot: 4,
+                label: 'Slot 4 (10 Invites)',
+                can: unlockedCount >= 4,
+                need: '10 Invites',
+                reason: unlockedCount >= 4 ? 'Unlocked via 10 Invites' : 'Requires 10 Invites'
+            });
         }
 
-        // Slot 5 (Visible only if Slot 4 is unlocked or reached)
+        // Slot 5 (Visible ONLY if Slot 4 milestone is reached/unlocked)
         if (unlockedCount >= 4) {
-            if (unlockedCount >= 5) {
-                slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: true, need: '1 Boost or 15 Invites', reason: 'Unlocked via Boost/Invites' });
-            } else {
-                slots.push({ slot: 5, label: 'Slot 5 (15 Inv / 1 Boost)', can: false, need: '1 Boost or 15 Invites', reason: 'Requires 1 Boost or 15 Invites' });
-            }
+            slots.push({
+                slot: 5,
+                label: 'Slot 5 (15 Inv / 1 Boost)',
+                can: unlockedCount >= 5,
+                need: '1 Boost or 15 Invites',
+                reason: unlockedCount >= 5 ? 'Unlocked via Boost/Invites' : 'Requires 1 Boost or 15 Invites'
+            });
         }
 
-        // Slot 6 (Visible only if Slot 5 is unlocked or reached)
+        // Slot 6 (Visible ONLY if Slot 5 milestone is reached/unlocked)
         if (unlockedCount >= 5) {
-            if (unlockedCount >= 6) {
-                slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: true, need: '2 Boosts', reason: 'Unlocked via 2 Boosts' });
-            } else {
-                slots.push({ slot: 6, label: 'Slot 6 (2 Boosts)', can: false, need: '2 Boosts', reason: 'Requires 2 Boosts' });
-            }
+            slots.push({
+                slot: 6,
+                label: 'Slot 6 (2 Boosts)',
+                can: unlockedCount >= 6,
+                need: '2 Boosts',
+                reason: unlockedCount >= 6 ? 'Unlocked via 2 Boosts' : 'Requires 2 Boosts'
+            });
         }
 
         return { 
@@ -234,7 +220,7 @@ export async function getProgressiveSlots(member) {
     } catch (err) {
         console.error("getProgressiveSlots error:", err.message);
         return { 
-            slots: [{ slot: 1, ...SLOTS[1], can: false, reason: 'Error loading slots', currentInvites: 0, currentBoosts: 0 }], 
+            slots: [{ slot: 1, ...SLOTS[1], can: true, reason: 'Fallback Base Slot' }], 
             invites: 0, 
             boosts: 0, 
             slotsToShow: 1, 
