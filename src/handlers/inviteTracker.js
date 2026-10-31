@@ -1,5 +1,5 @@
 /**
- * inviteTracker.js - Robust Multi-Server Invite Tracker with Independent Emojis
+ * inviteTracker.js - Robust Multi-Server Invite Tracker with User Mentions & Emojis
  * Location: src/handlers/inviteTracker.js
  * Strict Rules: Account Age >= 7 Days, Rejoin Window >= 14 Days
  */
@@ -183,9 +183,17 @@ export async function handleInviteJoin(member) {
         }
         invitesCache.set(guild.id, newMap);
 
+        const createdAt = Math.floor(member.user.createdTimestamp / 1000);
+
         if (isVanity) {
             memoryCache.set(`vanity_joined_${member.id}`, { isVanity: true });
-            if (joinChannel) await joinChannel.send(`${EMOJI.invite_join || '📥'} <@${member.id}> joined using Vanity URL!`).catch(() => {});
+            if (joinChannel) {
+                const vanityMsg = `✛ Welcome <@${member.id}> !\n` +
+                                  `✛ Created **<t:${createdAt}:R>**\n` +
+                                  `✛ They were invited by \`Vanity URL\`\n` +
+                                  `✛ \`${guild.name}\` now has \`${guild.memberCount}\` members`;
+                await joinChannel.send({ content: vanityMsg }).catch(() => {});
+            }
             return;
         }
 
@@ -231,8 +239,14 @@ export async function handleInviteJoin(member) {
         inviterData.count = inviterData.invitedUsers.length;
         await saveUserDB(guild.id, inviter.id, inviterData);
 
+        // 🎯 Send Dynamic Welcome Format with Mentions (@User) & Inviter Total Count
         if (joinChannel) {
-            await joinChannel.send(`${EMOJI.invite_join || '📥'} <@${member.id}> joined! Invited by <@${inviter.id}> (**${inviterData.count}** valid invites)`).catch(() => {});
+            const customWelcomeMsg = `✛ Welcome <@${member.id}> !\n` +
+                                     `✛ Created **<t:${createdAt}:R>**\n` +
+                                     `✛ They were invited by <@${inviter.id}> (\`${inviterData.count}\` invites)\n` +
+                                     `✛ \`${guild.name}\` now has \`${guild.memberCount}\` members`;
+
+            await joinChannel.send({ content: customWelcomeMsg }).catch(() => {});
         }
 
         // Role Sync for Invite Thresholds (2, 5, 10 invites)
