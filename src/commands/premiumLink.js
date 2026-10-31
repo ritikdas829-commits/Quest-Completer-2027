@@ -1,5 +1,5 @@
 /**
- * premiumLink.js - Full Detailed UI & Progressive Step-by-Step Panel
+ * premiumLink.js - Full Detailed UI & Progressive Step-by-Step Panel (FINAL FIXED)
  * Location: src/commands/premiumLink.js
  */
 
@@ -9,7 +9,7 @@ import {
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
     ModalBuilder, TextInputBuilder, TextInputStyle, 
     MessageFlags, SlashCommandBuilder,
-} from 'discord.js';
+} from '【entity-discord¦canonical_name=Discord】.js';
 import { getProgressiveSlots } from '../quest/slotSystem.js';
 import { getEmojis } from '../quest/emoji.js';
 
@@ -44,11 +44,14 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
 
     let accounts = await tokenStore.getAllSlots(guildId, ownerId);
 
+    // Auto-fix: agar koi active nahi hai toh pehle wale ko active banao (sirf ek baar)
     if (accounts.length > 0) {
         const activeAccounts = accounts.filter(a => a.isActive);
-        if (activeAccounts.length !== 1) {
-            const targetActiveSlot = activeAccounts.length > 0 ? activeAccounts[0].slot : accounts[0].slot;
-            await tokenStore.setActiveSlot(guildId, ownerId, targetActiveSlot);
+        if (activeAccounts.length === 0) {
+            await tokenStore.setActiveSlot(guildId, ownerId, accounts[0].slot);
+            accounts = await tokenStore.getAllSlots(guildId, ownerId);
+        } else if (activeAccounts.length > 1) {
+            await tokenStore.setActiveSlot(guildId, ownerId, activeAccounts[0].slot);
             accounts = await tokenStore.getAllSlots(guildId, ownerId);
         }
     }
@@ -136,7 +139,7 @@ export async function buildPremiumLinkPanel(guildId, ownerId, tokenStore, client
 export function buildLinkModal(slot) {
     const m = new ModalBuilder().setCustomId(`link_modal_slot_${slot}`).setTitle(`Link Slot #${slot}`);
     m.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('token_input').setLabel('Discord Token').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Paste Discord token here...')
+        new TextInputBuilder().setCustomId('token_input').setLabel('【entity-Discord¦canonical_name=Discord】 Token').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Paste 【entity-Discord¦canonical_name=Discord】 token here...').setMinLength(10).setMaxLength(400)
     ));
     return m;
 }
@@ -209,6 +212,10 @@ export async function handleButton(interaction, client) {
     const EMOJI = await getEmojis(guildId);
     const rawId = interaction.customId;
 
+    if (rawId.startsWith('locked_slot_')) {
+        return await interaction.reply({ content: `🔒 **Slot Locked!** You need more invites/boosts to unlock this slot.`, flags: MessageFlags.Ephemeral }).catch(()=>{});
+    }
+
     if (rawId.startsWith('link_slot_')) {
         const slotNum = parseInt(rawId.split('_')[2]);
         const prog = await getProgressiveSlots(member);
@@ -251,7 +258,9 @@ export async function handleButton(interaction, client) {
 export async function handleModal(interaction, client) {
     if (!interaction.customId.startsWith('link_modal_slot_')) return;
     const slot = parseInt(interaction.customId.split('_')[3]);
-    const token = interaction.fields.getTextInputValue('token_input').trim();
+    // 🎯 FIXED: Full sanitize like questClient.js
+    const rawToken = interaction.fields.getTextInputValue('token_input');
+    const token = rawToken.trim().replace(/^['"]+|['"]+$/g, '').replace(/\s+/g, '');
     const prefix = getClientPrefix(client, interaction.guild.id);
     const EMOJI = await getEmojis(interaction.guild.id);
 
