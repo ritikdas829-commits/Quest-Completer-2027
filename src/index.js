@@ -1,5 +1,5 @@
 /**
- * index.js — Fully Fixed Main Entry Point with Automated Slash Command Registration & Express Server
+ * index.js — Fully Fixed Main Entry Point with Automated Slash Command Registration
  * Location: index.js
  */
 
@@ -10,7 +10,6 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { TokenStore } from './quest/tokenStore.js';
 import * as dbModule from './utils/db.js';
-import express from 'express'; // Added for Web Port Binding
 
 // Trackers, Role Store & Expiry Service Imports
 import { cacheGuildInvites } from './handlers/inviteTracker.js';
@@ -115,7 +114,7 @@ for (const file of commandFiles) {
         registerCmd(mod.default);
     }
 
-    // 2. Register any valid named exports securely
+    // 2. Register any valid named exports securely (Fixed operators here)
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || !cmd || typeof cmd !== 'object') continue;
         if (cmd.data || cmd.name || cmd.prefix) {
@@ -167,18 +166,6 @@ client.once(Events.ClientReady, async () => {
     // ⏱️ Start automatic trial expiry checker background job
     startTrialExpiryChecker(client);
     console.log(`⏳ Trial expiry background checker service started.`);
-});
-
-// ── Simple Express Server for Render Port Binding ──────────────────────────
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-    res.send('Bot is active and running 24/7!');
-});
-
-app.listen(PORT, () => {
-    console.log(`🌐 Express server listening on port ${PORT}`);
 });
 
 client.login(TOKEN);
