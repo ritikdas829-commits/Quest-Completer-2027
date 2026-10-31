@@ -1,5 +1,5 @@
 /**
- * interactionCreate.js — Complete Interaction Handler with Claim & Independent Emojis
+ * interactionCreate.js — Complete Interaction Handler with Strict UI Ownership Lock
  * Location: src/events/interactionCreate.js
  */
 
@@ -10,7 +10,7 @@ import { buildQuestSolverPanel } from '../quest/questUI.js';
 import { buildHelpPanel } from '../commands/help.js';
 import { QuestClient } from '../quest/questClient.js';
 import { QuestManager } from '../quest/questManager.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, ComponentType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } from 'discord.js';
 import { getEmojis } from '../quest/emoji.js';
 import { startUserOnlinePresence, stopUserOnlinePresence } from '../quest/userPresence.js';
 import { checkActivityCooldown } from '../quest/suspiciousActivity.js';
@@ -22,7 +22,9 @@ const activeRunners = new Map();
 const panelOwners = new Map(); // messageId -> userId
 
 export function setPanelOwner(messageId, userId) {
-    panelOwners.set(messageId, userId);
+    if (messageId && userId) {
+        panelOwners.set(messageId, userId);
+    }
 }
 
 // Helper: Build Token Dashboard Panel for Button Interactions
@@ -110,15 +112,20 @@ export default {
                 }).catch(() => {});
             }
 
-            // 🛡️ 2. ORIGINAL USER LOCK CHECK (Prevent unauthorized clicks on someone else's panel)
-            if (interaction.message && panelOwners.has(interaction.message.id)) {
-                const ownerId = panelOwners.get(interaction.message.id);
-                if (userId !== ownerId) {
-                    return interaction.reply({
-                        content: `### ${EMOJI.event_error || '❌'} Unauthorized Access\n` +
-                                 `> This control panel does not belong to you! Please execute your own command to interact with quests.`,
-                        flags: 64
-                    }).catch(() => {});
+            // 🛡️ 2. STRICT UI OWNERSHIP LOCK (Prevent unauthorized clicks on someone else's panel)
+            // Applies to all component interactions (Buttons, Select Menus, etc.) where a message reference exists.
+            if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.message) {
+                const messageId = interaction.message.id;
+                if (panelOwners.has(messageId)) {
+                    const ownerId = panelOwners.get(messageId);
+                    if (userId !== ownerId) {
+                        return interaction.reply({
+                            content: `❌ **This UI Is Not Yours!**\n\n` +
+                                     `You cannot use someone else's UI panel.\n` +
+                                     `Please use your own command to create your personal UI panel.`,
+                            flags: MessageFlags.Ephemeral
+                        }).catch(() => {});
+                    }
                 }
             }
 
@@ -170,7 +177,8 @@ export default {
                 else if (val === 'help_cat_utility') cat = 'utility';
 
                 const updatedHelpPanel = await buildHelpPanel(interaction.user, client, guildId, cat);
-                await interaction.editReply(updatedHelpPanel);
+                const replyMsg = await interaction.editReply(updatedHelpPanel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
@@ -182,7 +190,8 @@ export default {
                 
                 await client.tokenStore.setActiveSlot(guildId, userId, slotNum);
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
-                await interaction.editReply(updatedPanel);
+                const replyMsg = await interaction.editReply(updatedPanel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
@@ -198,7 +207,8 @@ export default {
                 startUserOnlinePresence(userId, active.token, 'online');
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
                 await interaction.followUp({ content: `${EMOJI.event_online || '🟢'} **Slot #${active.slot}** is now brought online 24/7!`, flags: 64 });
-                await interaction.editReply(updatedPanel);
+                const replyMsg = await interaction.editReply(updatedPanel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
@@ -207,103 +217,16 @@ export default {
                 stopUserOnlinePresence(userId);
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
                 await interaction.followUp({ content: `${EMOJI.event_warn || '🔴'} Account online gateway connection disconnected.`, flags: 64 });
-                await interaction.editReply(updatedPanel);
+                const replyMsg = await interaction.editReply(updatedPanel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
             if (interaction.isButton() && interaction.customId === 'tokensys_btn_refresh') {
                 await interaction.deferUpdate();
                 const updatedPanel = await buildTokenDashboardContent(client, guildId, userId);
-                await interaction.editReply(updatedPanel);
-                return;
-            }
-
-            // 7.5. Claim Hub Interactivity Handlers (Dropdown & Claim All Button)
-            if (interaction.customId === 'claim_quest_select' || interaction.customId === 'claim_all_btn') {
-                await interaction.deferUpdate().catch(() => {});
-
-                let token = null;
-                try {
-                    if (client.tokenStore) {
-                        const activeSlot = await client.tokenStore.getActiveSlot(guildId, userId);
-                        if (activeSlot) {
-                            token = activeSlot.token || await client.tokenStore.get(guildId, userId, activeSlot.slot);
-                        }
-                    }
-                } catch (err) {
-                    console.error('[Claim Interaction] Token fetch error:', err);
-                }
-
-                if (!token) {
-                    return await interaction.followUp({ content: '❌ Token required! Please link your account first.', flags: 64 }).catch(() => {});
-                }
-
-                let questClient;
-                let rawQuests = [];
-                try {
-                    questClient = new QuestClient(token);
-                    const questData = await questClient.fetchQuestsRaw();
-                    rawQuests = Array.isArray(questData) ? questData : (questData?.quests || questData?.items || []);
-                } catch (err) {
-                    return await interaction.followUp({ content: `❌ Failed to fetch quests: ${err.message}`, flags: 64 }).catch(() => {});
-                }
-
-                const claimableQuests = rawQuests.filter(q => {
-                    const status = q.user_status || q.userStatus || {};
-                    return status.completed_at != null && status.claimed_at == null;
-                });
-
-                // Handle Individual Dropdown Selection
-                if (interaction.isStringSelectMenu() && interaction.customId === 'claim_quest_select') {
-                    const questId = interaction.values[0];
-                    if (questId === 'none') return;
-
-                    const targetQ = claimableQuests.find(q => q.id === questId);
-                    const questName = targetQ?.config?.messages?.quest_name || questId;
-
-                    let success = false;
-                    try {
-                        await questClient.post(`/quests/${encodeURIComponent(questId)}/reward-codes`);
-                        success = true;
-                    } catch (e) {
-                        try {
-                            await questClient.post(`/quests/${encodeURIComponent(questId)}/claim`);
-                            success = true;
-                        } catch {}
-                    }
-
-                    const resEmbed = new EmbedBuilder()
-                        .setColor(success ? 0x57F287 : 0xED4245)
-                        .setTitle(success ? '✅ Claimed!' : '❌ Failed')
-                        .setDescription(success ? `Successfully claimed **${questName}**!` : `Failed to claim **${questName}** - already claimed or not completed.`);
-
-                    return await interaction.editReply({ embeds: [resEmbed] }).catch(() => {});
-                }
-
-                // Handle Claim All Button Click with 800ms Rate Limit Delay
-                if (interaction.isButton() && interaction.customId === 'claim_all_btn') {
-                    let claimedCount = 0;
-                    for (const q of claimableQuests) {
-                        try {
-                            await questClient.post(`/quests/${encodeURIComponent(q.id)}/reward-codes`);
-                            claimedCount++;
-                            await new Promise(r => setTimeout(r, 800)); // Rate limit safety
-                        } catch (e) {
-                            try {
-                                await questClient.post(`/quests/${encodeURIComponent(q.id)}/claim`);
-                                claimedCount++;
-                                await new Promise(r => setTimeout(r, 800));
-                            } catch {}
-                        }
-                    }
-
-                    const embedAll = new EmbedBuilder()
-                        .setColor(0x57F287)
-                        .setTitle('🚀 Bulk Claim Done!')
-                        .setDescription(`Claimed **${claimedCount}/${claimableQuests.length}** rewards successfully.`);
-
-                    return await interaction.editReply({ embeds: [embedAll], components: [] }).catch(() => {});
-                }
+                const replyMsg = await interaction.editReply(updatedPanel);
+                if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                 return;
             }
 
@@ -359,7 +282,8 @@ export default {
                         .setTitle(`${EMOJI.event_success || '✅'} Successfully Linked!`)
                         .setDescription(`Linked successfully as **${userData.username}** in MongoDB database securely.`);
 
-                    await interaction.editReply({ embeds: [successEmbed] });
+                    const replyMsg = await interaction.editReply({ embeds: [successEmbed] });
+                    if (replyMsg?.id) setPanelOwner(replyMsg.id, userId);
                     return;
                 }
 
