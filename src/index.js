@@ -4,7 +4,7 @@
  */
 
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, Partials, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, Partials, REST, Routes, Events } from 'discord.js';
 import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -46,7 +46,7 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// Safe MongoDB Connection
+// Safe 【entity-MongoDB¦canonical_name=MongoDB】 Connection
 const connectDB = dbModule.connectDB || dbModule.default;
 if (typeof connectDB === 'function') {
     try {
@@ -142,7 +142,7 @@ try {
 }
 
 // ── Client Ready Event & Slash Command Deployment ──────────────────────────
-client.once('clientReady', async () => {
+client.once(Events.ClientReady, async () => {
     console.log(`🤖 Logged in as ${client.user.tag}!`);
 
     // Register Slash Commands with Discord API
