@@ -246,6 +246,7 @@ export class QuestManager {
                     try {
                         const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, {
                             timestamp: Math.min(secondsNeeded, timestamp + Math.random()),
+                            platform: 0, // ✅ Fixed integer platform
                         });
                         
                         quest.updateUserStatus(extractStatus(res));
@@ -268,7 +269,10 @@ export class QuestManager {
             }
 
             try {
-                const finalRes = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, { timestamp: secondsNeeded });
+                const finalRes = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, { 
+                    timestamp: secondsNeeded,
+                    platform: 0 // ✅ Fixed integer platform
+                });
                 quest.updateUserStatus(extractStatus(finalRes));
             } catch { /* Best effort */ }
 
@@ -292,14 +296,22 @@ export class QuestManager {
                 if (Date.now() - startTime > maxDurationMs) {
                     safeLog(log, `Quest "${questName}" timed out.`);
                     try {
-                        const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { stream_key: null, terminal: true });
+                        const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
+                            stream_key: null, 
+                            terminal: true,
+                            platform: 0 // ✅ Fixed integer platform
+                        });
                         quest.updateUserStatus(extractStatus(res));
                     } catch { /* ignore */ }
                     return true;
                 }
 
                 try {
-                    const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { stream_key: null, terminal: false });
+                    const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
+                        stream_key: null, 
+                        terminal: false,
+                        platform: 0 // ✅ Fixed integer platform
+                    });
                     quest.updateUserStatus(extractStatus(res));
                     consecutiveErrors = 0;
                 } catch (err) {
@@ -329,7 +341,11 @@ export class QuestManager {
             }
 
             try {
-                const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { stream_key: null, terminal: true });
+                const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
+                    stream_key: null, 
+                    terminal: true,
+                    platform: 0 // ✅ Fixed integer platform
+                });
                 quest.updateUserStatus(extractStatus(res));
             } catch { /* Best effort */ }
 
