@@ -16,7 +16,17 @@ questEmojiSchema.index({ guildId: 1, key: 1 }, { unique: true });
 
 const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji', questEmojiSchema);
 
-// 📂 Independent Categories per UI/File (Single Source of Truth)
+// ⚔️ DEDICATED & ISOLATED QUEST COMMANDS UI CATEGORY
+export const QUEST_UI_CATEGORIES = {
+    "⚔️ Quest Commands UI": [
+        'quest_link', 'quest_search', 'quest_list', 'quest_gear', 'quest_bell', 'quest_error', 
+        'quest_success', 'quest_desktop', 'quest_video', 'quest_stream', 'quest_activity', 
+        'quest_mobile', 'quest_orbs', 'quest_gift', 'quest_task', 'quest_expire', 'quest_stats', 
+        'quest_reward', 'quest_warn', 'quest_dot', 'quest_loading', 'quest_robot'
+    ]
+};
+
+// 📂 Other Independent Categories per UI/File
 export const EMOJI_CATEGORIES = {
     "🟢 System & Status": [
         'sys_success', 'sys_error', 'sys_warn', 'sys_loading', 'sys_online', 'sys_offline'
@@ -27,12 +37,7 @@ export const EMOJI_CATEGORIES = {
     "🔗 Premium Link UI": [
         'link_icon', 'link_gear', 'link_success', 'link_error', 'link_lock'
     ],
-    "⚔️ Quest Commands UI": [
-        'quest_link', 'quest_search', 'quest_list', 'quest_gear', 'quest_bell', 'quest_error', 
-        'quest_success', 'quest_desktop', 'quest_video', 'quest_stream', 'quest_activity', 
-        'quest_mobile', 'quest_orbs', 'quest_gift', 'quest_task', 'quest_expire', 'quest_stats', 
-        'quest_reward', 'quest_warn', 'quest_dot', 'quest_loading', 'quest_robot'
-    ],
+    ...QUEST_UI_CATEGORIES, // Merged cleanly here
     "🎰 Slot UI & Management": [
         'slot_success', 'slot_error', 'slot_lock'
     ],
@@ -66,6 +71,32 @@ export const EMOJI_CATEGORIES = {
     ]
 };
 
+// ⚔️ Dedicated Default Emojis for Quest UI
+export const DEFAULT_QUEST_EMOJIS = {
+    quest_link: "🔗",
+    quest_search: "🔍",
+    quest_list: "📋",
+    quest_gear: "⚙️",
+    quest_bell: "🔔",
+    quest_error: "❌",
+    quest_success: "✅",
+    quest_desktop: "🖥️",
+    quest_video: "🎬",
+    quest_stream: "📺",
+    quest_activity: "🎮",
+    quest_mobile: "📱",
+    quest_orbs: "✨",
+    quest_gift: "🎁",
+    quest_task: "📋",
+    quest_expire: "📅",
+    quest_stats: "📊",
+    quest_reward: "🎁",
+    quest_warn: "⚠️",
+    quest_dot: "🔵",
+    quest_loading: "⚙️",
+    quest_robot: "🤖"
+};
+
 const DEFAULT_EMOJIS = {
     // System & Status
     sys_success: "✅",
@@ -91,29 +122,8 @@ const DEFAULT_EMOJIS = {
     link_error: "❌",
     link_lock: "🔒",
 
-    // Quest Commands UI
-    quest_link: "🔗",
-    quest_search: "🔍",
-    quest_list: "📋",
-    quest_gear: "⚙️",
-    quest_bell: "🔔",
-    quest_error: "❌",
-    quest_success: "✅",
-    quest_desktop: "🖥️",
-    quest_video: "🎬",
-    quest_stream: "📺",
-    quest_activity: "🎮",
-    quest_mobile: "📱",
-    quest_orbs: "✨",
-    quest_gift: "🎁",
-    quest_task: "📋",
-    quest_expire: "📅",
-    quest_stats: "📊",
-    quest_reward: "🎁",
-    quest_warn: "⚠️",
-    quest_dot: "🔵",
-    quest_loading: "⚙️",
-    quest_robot: "🤖",
+    // Quest Commands UI (Included from separate object)
+    ...DEFAULT_QUEST_EMOJIS,
 
     // Slot UI & Management
     slot_success: "✅",
