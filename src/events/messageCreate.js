@@ -59,7 +59,8 @@ export default {
                 `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
                 `${EMOJI.msg_diamond || '💎'} **Free Orbie Premium Trial!**\n` +
                 `> ${EMOJI.msg_star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-                `> ${EMOJI.msg_gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n\n` +
+                `> ${EMOJI.msg_gift || '🎁'} Use the command below to get your trial key at no cost:\n` +
+                `\`\`\`${prefix}activate trial\`\`\`\n` +
                 `Join support: https://discord.gg/y5f29e5tQb`
             );
         return await message.reply({ embeds: [embed] }).catch(() => {});
