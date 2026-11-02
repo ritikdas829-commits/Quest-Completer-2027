@@ -65,7 +65,7 @@ export default {
             .addFields(
               { 
                 name: `${EMOJI.msg_gift || '🎁'} Activation Command`, 
-                value: `Neche diye gaye text ko long-press karke copy karein:\n\n**${prefix}activate trial**`, 
+                value: `Long-press or tap the text below to copy:\n\n**${prefix}activate trial**`, 
                 inline: false 
               }
             )
@@ -75,7 +75,7 @@ export default {
             })
             .setTimestamp();
 
-        // 💡 FIXED: Plain text 'content' ke sath bheja hai taaki mobile par 1-tap / select karke easily copy ho sake!
+        // 💡 FIXED: Sent as plain text in 'content' so mobile users can easily copy it with a single tap/select!
         return await message.reply({ 
           content: `${prefix}activate trial`, 
           embeds: [embed] 
