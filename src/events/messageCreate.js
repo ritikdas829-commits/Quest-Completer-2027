@@ -1,5 +1,5 @@
 /**
- * messageCreate.js — Dynamic Prefix & Emoji System with Anti-Duplicate Guard
+ * messageCreate.js — Dynamic Prefix & Emoji System with Anti-Duplicate Guard (FINAL)
  * Location: src/events/messageCreate.js
  */
 
@@ -7,7 +7,7 @@ import { getEmojis } from '../quest/emoji.js';
 import { getRoles } from '../quest/roleStore.js';
 import { EmbedBuilder } from 'discord.js';
 
-// Anti-double trigger guard map
+// Anti-double trigger guard
 const processedMessages = new Set();
 
 export default {
@@ -16,12 +16,12 @@ export default {
   async execute(message, client) {
     if (message.author.bot || !message.guild) return;
 
-    // Prevent handling the same message ID twice within 3 seconds
+    // Prevent handling same message twice within 3 seconds
     if (processedMessages.has(message.id)) return;
     processedMessages.add(message.id);
     setTimeout(() => processedMessages.delete(message.id), 3000);
 
-    // Get correct prefix dynamically
+    // Dynamic prefix
     const prefix = client.getPrefix ? client.getPrefix(message.guild.id) : (client.prefix || process.env.PREFIX || ';');
     
     if (!message.content.startsWith(prefix)) return;
@@ -29,11 +29,11 @@ export default {
     const args = message.content.slice(prefix.length).trim().split(/\s+/);
     const commandName = args.shift().toLowerCase();
 
-    // Check if command exists first
+    // Check if command exists
     const command = client.prefixCommands.get(commandName);
     if (!command) return;
 
-    // 🛑 Allow 'activate trial' and 'autoquest' without double checking role access here
+    // Allow activate trial and autoquest without role check
     const isActivateTrial = commandName === 'activate' && args[0]?.toLowerCase() === 'trial';
     const isAutoquest = commandName === 'autoquest';
 
@@ -52,17 +52,23 @@ export default {
         member.premiumSince;
 
       if (!hasValidRole) {
+        // Exact embed like your screenshot
         const embed = new EmbedBuilder()
             .setColor(0x2B2D31)
-            .setTitle(`${EMOJI.msg_premium || '💙'} Premium Access Required`)
+            .setTitle(`${EMOJI.msg_premium || '👑'} Premium Access Required`)
             .setDescription(
-                `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
+                `This premium bot requires the **Premium, Booster,** or **Trial** role/status.\n\n` +
                 `${EMOJI.msg_diamond || '💎'} **Free Orbie Premium Trial!**\n` +
-                `> ${EMOJI.msg_star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-                `> ${EMOJI.msg_gift || '🎁'} Use the command below to get your trial key at no cost:\n\n` +
-                `\`${prefix}activate trial\`\n\n` +
-                `Join support: https://discord.gg/y5f29e5tQb`
-            );
+                `> ${EMOJI.msg_star || '🎫'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
+                `> ${EMOJI.msg_gift || '🎁'} Use the command \`${prefix}activate trial\` to get your trial key at no cost.\n`
+            )
+            .setFooter({ text: `Join support: https://discord.gg/y5f29e5tQb` });
+
+        // Support link as per screenshot
+        embed.setDescription(
+            embed.data.description + `\n\nJoin support: https://discord.gg/codershub`
+        );
+
         return await message.reply({ embeds: [embed] }).catch(() => {});
       }
     }
