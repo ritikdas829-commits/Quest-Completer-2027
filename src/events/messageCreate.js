@@ -66,7 +66,7 @@ export default {
 
         // Support link as per screenshot
         embed.setDescription(
-            embed.data.description + `\n\nJoin support: https://discord.gg/codershub`
+            embed.data.description + `\n\nJoin support: https://discord.gg/vKxm99UkNv`
         );
 
         return await message.reply({ embeds: [embed] }).catch(() => {});
