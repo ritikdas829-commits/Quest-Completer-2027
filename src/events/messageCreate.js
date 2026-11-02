@@ -52,18 +52,34 @@ export default {
         member.premiumSince;
 
       if (!hasValidRole) {
+        // ✨ Cool & Sleek UI Design
         const embed = new EmbedBuilder()
-            .setColor(0x2B2D31)
-            .setTitle(`${EMOJI.msg_premium || '💙'} Premium Access Required`)
+            .setColor(0x5865F2) // Blurple modern color
+            .setTitle(`${EMOJI.msg_premium || '💎'} Premium Access Restricted`)
             .setDescription(
-                `This premium bot requires the **Premium**, **Booster**, or **Trial** role/status.\n\n` +
-                `${EMOJI.msg_diamond || '💎'} **Free Orbie Premium Trial!**\n` +
-                `> ${EMOJI.msg_star || '🌟'} You are eligible to claim a free 3-day Orbie Premium trial.\n` +
-                `> ${EMOJI.msg_gift || '🎁'} Use the command below to get your trial key at no cost:\n\n` +
-                `\`${prefix}activate trial\`\n\n` +
-                `Join support: https://discord.gg/y5f29e5tQb`
-            );
-        return await message.reply({ embeds: [embed] }).catch(() => {});
+                `> Hey **${message.author.username}**, this command requires an active **Premium**, **Booster**, or **Trial** pass.\n\n` +
+                `✨ **Unlock Free Access Instantly!**\n` +
+                `We are offering a free **3-day Orbie Premium trial** to get you started right away.\n\n` +
+                `👇 **Tap & copy the command below to activate your free trial:**`
+            )
+            .addFields(
+              { 
+                name: `${EMOJI.msg_gift || '🎁'} Activation Command`, 
+                value: `Neche diye gaye text ko long-press karke copy karein:\n\n**${prefix}activate trial**`, 
+                inline: false 
+              }
+            )
+            .setFooter({ 
+              text: `Orbie Bot • Secure & Fast System`, 
+              iconURL: client.user.displayAvatarURL() 
+            })
+            .setTimestamp();
+
+        // 💡 FIXED: Plain text 'content' ke sath bheja hai taaki mobile par 1-tap / select karke easily copy ho sake!
+        return await message.reply({ 
+          content: `${prefix}activate trial`, 
+          embeds: [embed] 
+        }).catch(() => {});
       }
     }
 
