@@ -253,21 +253,50 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
         : await target.reply({ embeds: [resultEmbed], components: [] }).catch(() => {});
 }
 
-// Helper function to render embed
+// Helper function to render embed with chunking support (prevents 1024 char limit error)
 function createCategoryEmbed(categoryName, emojis) {
     const keysList = EMOJI_CATEGORIES[categoryName] || [];
-    const fieldContent = keysList
-        .map(k => `• \`${k}\` : ${emojis[k] || '⭐'}`)
-        .join('\n');
+    const lines = keysList.map(k => `• \`${k}\` : ${emojis[k] || '⭐'}`);
+
+    const fields = [];
+    let currentChunk = [];
+    let currentLength = 0;
+
+    for (const line of lines) {
+        if (currentLength + line.length + 1 > 1024 && currentChunk.length > 0) {
+            fields.push({
+                name: fields.length === 0 ? categoryName : `${categoryName} (cont.)`,
+                value: currentChunk.join('\n'),
+                inline: false
+            });
+            currentChunk = [line];
+            currentLength = line.length;
+        } else {
+            currentChunk.push(line);
+            currentLength += line.length + 1;
+        }
+    }
+
+    if (currentChunk.length > 0) {
+        fields.push({
+            name: fields.length === 0 ? categoryName : `${categoryName} (cont.)`,
+            value: currentChunk.join('\n'),
+            inline: false
+        });
+    }
+
+    if (fields.length === 0) {
+        fields.push({
+            name: categoryName,
+            value: 'No emojis in this category.',
+            inline: false
+        });
+    }
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle(`🎨 Quest Bot UI Emojis Manager`)
         .setDescription(`Viewing category: **${categoryName}**\nSelect a category from the dropdown menu to view emojis.\n`)
-        .addFields({
-            name: categoryName,
-            value: fieldContent || 'No emojis in this category.',
-            inline: false
-        })
+        .addFields(fields)
         .setFooter({ text: 'To update: /setemoji <key> <emoji> | To reset: /setemoji <key> reset' });
 }
