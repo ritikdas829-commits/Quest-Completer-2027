@@ -1,5 +1,5 @@
 /**
- * slotSystem.js - Strict Step-by-Step Progressive Slot Unlock System (FIXED FOR ALL 6 SLOTS)
+ * slotSystem.js - Strict Step-by-Step Progressive Slot Unlock & Visibility System
  * Location: src/quest/slotSystem.js
  */
 
@@ -88,15 +88,10 @@ export async function getProgressiveSlots(member) {
     try {
         if (!member) {
             return {
-                slots: Array.from({ length: 6 }, (_, i) => ({
-                    slot: i + 1,
-                    ...SLOTS[i + 1],
-                    can: i === 0,
-                    reason: i === 0 ? 'Base Slot' : 'Requires Guild Access'
-                })),
+                slots: [ { slot: 1, ...SLOTS[1], can: true, reason: 'Base Slot' } ],
                 invites: 0,
                 boosts: 0,
-                slotsToShow: 6,
+                slotsToShow: 1,
                 isTrialActive: false,
                 userProfile: null
             };
@@ -116,7 +111,7 @@ export async function getProgressiveSlots(member) {
             createdTimestamp: member.user.createdTimestamp
         };
 
-        // Milestone Checks
+        // Milestone Checks based on your requirements
         const hasRole2 = invites >= 2 || (roles.ROLE_2_INVITES && member.roles.cache.has(roles.ROLE_2_INVITES)) || (roles.ROLE_SLOT_2 && member.roles.cache.has(roles.ROLE_SLOT_2));
         const hasRole5 = invites >= 5 || (roles.ROLE_5_INVITES && member.roles.cache.has(roles.ROLE_5_INVITES)) || (roles.ROLE_SLOT_3 && member.roles.cache.has(roles.ROLE_SLOT_3));
         const hasRole10 = invites >= 10 || (roles.ROLE_10_INVITES && member.roles.cache.has(roles.ROLE_10_INVITES)) || (roles.ROLE_SLOT_4 && member.roles.cache.has(roles.ROLE_SLOT_4));
@@ -129,29 +124,27 @@ export async function getProgressiveSlots(member) {
         // RULE 1: Trial User logic
         if (isTrialActive) {
             const unlockedSlot = userData.slot || 1;
-            const slots = Array.from({ length: 6 }, (_, i) => {
-                const sNum = i + 1;
-                const isUnlocked = sNum <= unlockedSlot;
-                return {
+            const slots = [];
+            for (let sNum = 1; sNum <= Math.min(unlockedSlot + 1, 6); sNum++) {
+                slots.push({
                     slot: sNum,
                     ...SLOTS[sNum],
-                    can: isUnlocked,
-                    reason: isUnlocked ? `Trial Active (Slot #${sNum} Unlocked)` : 'Locked (Requires Higher Tier)'
-                };
-            });
-
+                    can: sNum <= unlockedSlot,
+                    reason: sNum <= unlockedSlot ? `Trial Active (Slot #${sNum})` : `Locked (Requires Invites/Boosts)`
+                });
+            }
             return {
                 slots,
                 invites,
                 boosts,
-                slotsToShow: 6,
+                slotsToShow: slots.length,
                 isTrialActive: true,
                 alreadyClaimed: true,
                 userProfile
             };
         }
 
-        // RULE 2: Calculate max unlocked slots
+        // RULE 2: Calculate unlocked slots count progressively
         let unlockedCount = 1; 
         if (hasRole2) unlockedCount = 2;
         if (hasRole5) unlockedCount = 3;
@@ -159,51 +152,25 @@ export async function getProgressiveSlots(member) {
         if (hasBoost1) unlockedCount = 5;
         if (hasBoost2) unlockedCount = 6;
 
-        // Build all 6 slots with correct permission evaluation
-        const slots = [
-            {
-                slot: 1,
-                ...SLOTS[1],
-                can: true,
-                reason: 'Base free slot available for everyone.'
-            },
-            {
-                slot: 2,
-                ...SLOTS[2],
-                can: unlockedCount >= 2,
-                reason: unlockedCount >= 2 ? 'Unlocked via 2 Invites' : 'Requires 2 Invites'
-            },
-            {
-                slot: 3,
-                ...SLOTS[3],
-                can: unlockedCount >= 3,
-                reason: unlockedCount >= 3 ? 'Unlocked via 5 Invites' : 'Requires 5 Invites'
-            },
-            {
-                slot: 4,
-                ...SLOTS[4],
-                can: unlockedCount >= 4,
-                reason: unlockedCount >= 4 ? 'Unlocked via 10 Invites' : 'Requires 10 Invites'
-            },
-            {
-                slot: 5,
-                ...SLOTS[5],
-                can: unlockedCount >= 5,
-                reason: unlockedCount >= 5 ? 'Unlocked via 1 Boost or 15 Invites' : 'Requires 1 Boost or 15 Invites'
-            },
-            {
-                slot: 6,
-                ...SLOTS[6],
-                can: unlockedCount >= 6,
-                reason: unlockedCount >= 6 ? 'Unlocked via 2 Boosts' : 'Requires 2 Boosts'
-            }
+        // Visibility limit: show unlocked slots + 1 next locked slot for progressive guidance
+        const maxVisible = Math.min(unlockedCount + 1, 6);
+
+        const allSlotsConfig = [
+            { slot: 1, ...SLOTS[1], can: true, reason: 'Base free slot available for everyone.' },
+            { slot: 2, ...SLOTS[2], can: unlockedCount >= 2, reason: unlockedCount >= 2 ? 'Unlocked via 2 Invites' : 'Requires 2 Invites' },
+            { slot: 3, ...SLOTS[3], can: unlockedCount >= 3, reason: unlockedCount >= 3 ? 'Unlocked via 5 Invites' : 'Requires 5 Invites' },
+            { slot: 4, ...SLOTS[4], can: unlockedCount >= 4, reason: unlockedCount >= 4 ? 'Unlocked via 10 Invites' : 'Requires 10 Invites' },
+            { slot: 5, ...SLOTS[5], can: unlockedCount >= 5, reason: unlockedCount >= 5 ? 'Unlocked via 1 Boost or 15 Invites' : 'Requires 1 Boost or 15 Invites' },
+            { slot: 6, ...SLOTS[6], can: unlockedCount >= 6, reason: unlockedCount >= 6 ? 'Unlocked via 2 Boosts' : 'Requires 2 Boosts' }
         ];
+
+        const slots = allSlotsConfig.slice(0, maxVisible);
 
         return { 
             slots, 
             invites, 
             boosts, 
-            slotsToShow: 6, 
+            slotsToShow: slots.length, 
             isTrialActive: false,
             alreadyClaimed: userData?.claimedTrial || false,
             userProfile
@@ -212,15 +179,10 @@ export async function getProgressiveSlots(member) {
     } catch (err) {
         console.error("getProgressiveSlots error:", err.message);
         return { 
-            slots: Array.from({ length: 6 }, (_, i) => ({
-                slot: i + 1,
-                ...SLOTS[i + 1],
-                can: i === 0,
-                reason: i === 0 ? 'Fallback Base Slot' : 'System Fallback Locked'
-            })), 
+            slots: [ { slot: 1, ...SLOTS[1], can: true, reason: 'Fallback Base Slot' } ], 
             invites: 0, 
             boosts: 0, 
-            slotsToShow: 6, 
+            slotsToShow: 1, 
             isTrialActive: false,
             userProfile: null
         };
