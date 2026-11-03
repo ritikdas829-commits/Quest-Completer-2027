@@ -109,7 +109,7 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     };
 
     const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
-        const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type };
+        const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type.replace(/_/g, ' ') };
         let dur = '';
         if (type === 'PLAY_ON_DESKTOP' || type === 'STREAM_ON_DESKTOP') {
             dur = `  •  **${Math.ceil(task.target / 60)} min**`;
@@ -320,7 +320,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
                 :                        { color: 0x5865F2, icon: EMOJI.quest_dot || '🔵', label: 'Available' };
 
             const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
-                const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type };
+                const meta = TASK_META[type] ?? { icon: EMOJI.quest_gear || '⚙️', label: type.replace(/_/g, ' ') };
                 let dur = '';
                 if (type === 'PLAY_ON_DESKTOP' || type === 'STREAM_ON_DESKTOP') dur = `  •  **${Math.ceil(task.target / 60)} min**`;
                 else if (type === 'WATCH_VIDEO' || type === 'WATCH_VIDEO_ON_MOBILE') {
