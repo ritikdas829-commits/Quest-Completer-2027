@@ -104,6 +104,8 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
         STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
         PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
         WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
+        PLAY_ON_XBOX:          { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on Xbox' },
+        PLAY_ON_PLAYSTATION:   { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on PlayStation' },
     };
 
     const taskLines = Object.entries((cfg.task_config ?? cfg.task_config_v2)?.tasks ?? {}).map(([type, task]) => {
@@ -301,6 +303,8 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
             PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
             WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
+            PLAY_ON_XBOX:          { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on Xbox' },
+            PLAY_ON_PLAYSTATION:   { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on PlayStation' },
         };
 
         for (const q of all.slice(0, 10)) {
