@@ -1,6 +1,5 @@
-
 /**
- * questRunner.js — Single Quest Execution & Safe Claim Logic
+ * questRunner.js — Single Quest Execution & Safe Claim Logic (With Auto-Token Removal)
  * Location: src/quest/questRunner.js
  */
 
@@ -28,6 +27,19 @@ function isExpiredError(error) {
     );
 }
 
+// 🛡️ Helper to check if token is invalid or unauthorized (expired / revoked / bad token)
+function isInvalidTokenError(error) {
+    const msg = String(error?.message ?? error).toLowerCase();
+    const status = Number(error?.status || error?.statusCode || error?.code);
+    return (
+        status === 401 ||
+        status === 403 ||
+        msg.includes('unauthorized') ||
+        msg.includes('invalid token') ||
+        msg.includes('token expired')
+    );
+}
+
 export async function runSingleQuest(
     guildId,
     userId,
@@ -52,6 +64,7 @@ export async function runSingleQuest(
     });
 
     try {
+        const activeSlotData = tokenStore ? await tokenStore.getActiveSlot(guildId, userId) : null;
         const token = await getActiveToken(
             guildId,
             userId,
@@ -63,8 +76,21 @@ export async function runSingleQuest(
             return result('no_token');
         }
 
-        const client = new QuestClient(token);
-        const manager = await client.fetchQuests();
+        let client;
+        let manager;
+
+        try {
+            client = new QuestClient(token);
+            manager = await client.fetchQuests();
+        } catch (error) {
+            // If token itself is invalid/unauthorized on fetch, auto-remove it!
+            if (isInvalidTokenError(error) && activeSlotData) {
+                log(`[Auth] Token for slot #${activeSlotData.slot} is invalid or expired. Auto-removing from store.`);
+                await tokenStore.removeSlot(guildId, userId, activeSlotData.slot);
+                return result('token_invalid', { error: 'Token expired or invalid. Automatically removed from slot.' });
+            }
+            throw error;
+        }
 
         const quest =
             manager.get(questId) ??
@@ -86,6 +112,12 @@ export async function runSingleQuest(
             if (isExpiredError(error)) {
                 log('[Quest] Quest expired. Execution stopped.');
                 return result('expired', { quest });
+            }
+
+            if (isInvalidTokenError(error) && activeSlotData) {
+                log(`[Auth] Token unauthorized during quest execution. Auto-removing slot #${activeSlotData.slot}.`);
+                await tokenStore.removeSlot(guildId, userId, activeSlotData.slot);
+                return result('token_invalid', { quest, error: 'Token became invalid. Slot auto-removed.' });
             }
 
             log(`[Quest] Execution failed: ${error.message}`);
@@ -111,6 +143,12 @@ export async function runSingleQuest(
                 return result('expired', { quest });
             }
 
+            if (isInvalidTokenError(error) && activeSlotData) {
+                log(`[Auth] Token unauthorized during claim. Auto-removing slot #${activeSlotData.slot}.`);
+                await tokenStore.removeSlot(guildId, userId, activeSlotData.slot);
+                return result('token_invalid', { quest, error: 'Token expired during claim. Slot auto-removed.' });
+            }
+
             log(`[Quest] Claim failed: ${error.message}`);
             return result('claim_failed', {
                 quest,
@@ -118,11 +156,6 @@ export async function runSingleQuest(
             });
         }
 
-        /*
-         * Do not assume that a successful HTTP request means a reward
-         * was granted. This runner accepts a positive numeric result
-         * only if claimRewards() itself returns a verified claim count.
-         */
         const claimed =
             typeof claimResult === 'number' &&
             Number.isFinite(claimResult) &&
