@@ -234,8 +234,8 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     info += `### ${EMOJI.stats || '📊'} Live Progress\n`;
     const progIcon = selected.progress.total >= 100 ? (EMOJI.success || '✅') : (EMOJI.loading || '⏳');
     info += `${progIcon} **Progress:** \`${selected.progress.total}%\` \`${progressBar(selected.progress.total)}\`\n`;
-    info += `-# ${EMOJI.desktop || '🖥️'} **Web/Desktop**: ${selected.platformProgress.desktop}%\n`;
-    info += `-# ${EMOJI.mobile || '📱'} **Mobile**: ${selected.platformProgress.mobile}%\n`;
+    info += `-# 🖥️ **Web/Desktop**: ${selected.platformProgress.desktop}%\n`;
+    info += `-# 📱 **Mobile**: ${selected.platformProgress.mobile}%\n`;
     container.addTextDisplayComponents(text(info));
 
     const seenT = new Set(), taskLines = [];
@@ -244,10 +244,10 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         if (seenT.has(base)) continue;
         seenT.add(base);
         const t = selected.tasks[type];
-        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`${EMOJI.desktop || '🖥️'} Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`${EMOJI.mobile || '📱'} Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO')) taskLines.push(`${EMOJI.video || '🎬'} Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else taskLines.push(`${EMOJI.gear || '⚙️'} ${type.replace(/_/g, ' ')}`);
+        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`🖥️ Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
+        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`📱 Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
+        else if (type.includes('WATCH_VIDEO')) taskLines.push(`🎬 Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
+        else taskLines.push(`⚙️ ${type.replace(/_/g, ' ')}`);
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
@@ -261,17 +261,17 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         } catch {}
     }
 
-    // SELECT DROPDOWN WITH EMOJI PARSING
+    // SELECT DROPDOWN WITH CLEAN UNICODE EMOJIS
     const menuOptions = [];
     for (const q of allQuests.slice(0, 25)) {
         const hasMobile = Object.keys(q.tasks).some(t => t.includes('MOBILE'));
-        const pEmoji = hasMobile ? (EMOJI.mobile || '📱') : (EMOJI.desktop || '🖥️');
+        const pEmoji = hasMobile ? '📱' : '🖥️';
         const pLabelPrefix = hasMobile ? '[Mobile] ' : '[Desktop] ';
         const opt = new StringSelectMenuOptionBuilder()
             .setLabel(shorten(pLabelPrefix + q.game + ': ' + q.questName, 95))
             .setValue(String(q.id))
             .setDescription(`${q.progress.total}% Complete — Reward: ${q.rewardSummary}`)
-            .setEmoji(parseEmoji(pEmoji));
+            .setEmoji(pEmoji);
         if (String(q.id) === String(selected.id)) opt.setDefault(true);
         menuOptions.push(opt);
     }
