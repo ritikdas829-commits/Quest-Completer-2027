@@ -12,7 +12,7 @@ const ALGORITHM = 'aes-256-gcm';
 const userTokenSchema = new mongoose.Schema({
     guildId: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
-    slot: { type: Number, required: true, min: 1, max: 10, index: true }, // Changed max from 5 to 10
+    slot: { type: Number, required: true, min: 1, max: 10, index: true },
     encryptedData: { type: String, required: true },
     username: { type: String, default: '' },
     linkedUserId: { type: String, default: '' },
@@ -90,8 +90,6 @@ export class TokenStore {
         }
     }
 
-    // ── ROBUST GET ACTIVE SLOT WITH CROSS-GUILD & RESTART FALLBACK ──
-
     async getActiveSlot(guildId, userId) {
         try {
             if (!userId) return null;
@@ -164,34 +162,31 @@ export class TokenStore {
         }
     }
 
-    async saveSlot({ guildId, ownerId, slot, token, linkedUserId = '', username = '', avatar = '', isActive = false }) {
+    // 🚀 FIXED: Automatically sets newly saved/updated tokens to ACTIVE so users don't need to relink!
+    async saveSlot({ guildId, ownerId, slot, token, linkedUserId = '', username = '', avatar = '', isActive = true }) {
         try {
             if (!ownerId || !slot) return false;
-            if (slot < 1 || slot > 10) return false; // Allowed up to 10 slots
+            if (slot < 1 || slot > 10) return false;
 
             const targetGuild = guildId || 'global';
             const userId = ownerId;
             
-            if (isActive) {
-                await TokenModel.updateMany({ userId }, { isActive: false });
-            }
-
-            const existingCount = await TokenModel.countDocuments({ guildId: targetGuild, userId });
-            if (existingCount === 0 && !isActive) {
-                isActive = true;
-            }
+            // Deactivate other slots for this user and make this one active
+            await TokenModel.updateMany({ userId }, { isActive: false });
 
             const encrypted = encrypt(token, this.key);
             const cacheKey = this.makeCacheKey(targetGuild, userId, slot);
-            this.cache.set(cacheKey, { encryptedData: encrypted, username, linkedUserId, avatar, isActive });
+            const finalIsActive = true;
+
+            this.cache.set(cacheKey, { encryptedData: encrypted, username, linkedUserId, avatar, isActive: finalIsActive });
 
             await TokenModel.findOneAndUpdate(
                 { guildId: targetGuild, userId, slot },
-                { encryptedData: encrypted, username, linkedUserId, avatar, isActive, linkedAt: new Date(), updatedAt: new Date() },
+                { encryptedData: encrypted, username, linkedUserId, avatar, isActive: finalIsActive, linkedAt: new Date(), updatedAt: new Date() },
                 { upsert: true, new: true }
             );
 
-            console.log(`✅ Token saved [${targetGuild}] ${userId} slot ${slot} — Encrypted — Persistent`);
+            console.log(`✅ Token saved & set active [${targetGuild}] ${userId} slot ${slot} — Encrypted — Persistent`);
             return true;
         } catch (err) {
             console.error(`❌ Error saving slot [${guildId}] ${userId} slot ${slot}:`, err.message);
@@ -304,7 +299,7 @@ export class TokenStore {
 
     getUserSlots(guildId, userId) {
         const slots = [];
-        for (let i = 1; i <= 10; i++) { // Support up to 10 slots
+        for (let i = 1; i <= 10; i++) {
             if (this.has(guildId, userId, i)) slots.push(i);
         }
         return slots;
