@@ -103,7 +103,7 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
         WATCH_VIDEO:           { icon: EMOJI.quest_video || '🎬', label: 'Watch Video' },
         STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
         PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
-        WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
+        WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_task_mobile || EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
         PLAY_ON_XBOX:          { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on Xbox' },
         PLAY_ON_PLAYSTATION:   { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on PlayStation' },
     };
@@ -169,8 +169,8 @@ async function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '', pe
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `${EMOJI.quest_task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
-            `${EMOJI.quest_expire || '📅'} **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
+            `${EMOJI.quest_tasks_header || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown task*'}\n\n` +
+            `${EMOJI.quest_expires || '📅'} **Expires**  <t:${expiresEpoch}:R>  *(${daysLeft}d left)*\n\n` +
             `${EMOJI.quest_stats || '📊'} **Progress**\n${progressText}\n\n` +
             `${EMOJI.quest_reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
         ),
@@ -253,17 +253,22 @@ async function runQuestAll(guildId, userId, tokenStore, send, prefix, client) {
             return progressMsgs[idx].edit(card);
         }));
 
-        // 📩 Send DM Notification upon successful completion of questall
+        // 📩 Send DM Notification upon successful completion of questall with Quest & Feedback Links
         if (client && completed.length > 0) {
             try {
                 const EMOJI = await getEmojis(guildId);
                 const targetUser = await client.users.fetch(userId);
-                const questNames = completed.map(q => q.config?.messages?.quest_name || 'Discord Quest').join(', ');
+                const questNames = completed.map(q => {
+                    const qName = q.config?.messages?.quest_name || 'Discord Quest';
+                    return `[${qName}](https://discord.com/quests/${q.id})`;
+                }).join(', ');
+
                 await targetUser.send(
                     `${EMOJI.quest_success || '🎉'} **All Quests Completed Successfully!**\n\n` +
                     `📌 **Completed Quests:** ${questNames}\n` +
                     `✨ **Total Rewards Claimed:** ${claimed}\n` +
-                    `🔗 **Status:** 100% Completed via \`${prefix}questall\``
+                    `🔗 **Status:** 100% Completed via \`${prefix}questall\`\n\n` +
+                    `💬 *Consider leaving feedback in [SyntheX Development > #feedbacks](https://discord.com/channels/1551511842214514820/1551511843137130504)*`
                 );
             } catch (dmErr) {
                 console.log(`[QuestAll] Could not send DM to user ${userId}:`, dmErr.message);
@@ -302,7 +307,7 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             WATCH_VIDEO:           { icon: EMOJI.quest_video || '🎬', label: 'Watch Video' },
             STREAM_ON_DESKTOP:     { icon: EMOJI.quest_stream || '📺', label: 'Stream on Desktop' },
             PLAY_ACTIVITY:         { icon: EMOJI.quest_activity || '🎮', label: 'Play Activity' },
-            WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
+            WATCH_VIDEO_ON_MOBILE: { icon: EMOJI.quest_task_mobile || EMOJI.quest_mobile || '📱', label: 'Watch Video on Mobile' },
             PLAY_ON_XBOX:          { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on Xbox' },
             PLAY_ON_PLAYSTATION:   { icon: EMOJI.quest_task_generic || '⚙️', label: 'Play on PlayStation' },
         };
@@ -350,8 +355,8 @@ async function runQuestList(guildId, userId, tokenStore, send, prefix) {
             c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
             c.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                    `${EMOJI.quest_stats || '📊'} **Status:** ${st.label}   ${EMOJI.quest_expire || '📅'} **Expires:** <t:${expiresEpoch}:R> *(${daysLeft}d)*\n\n` +
-                    `${EMOJI.quest_task || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown*'}\n\n` +
+                    `${EMOJI.quest_stats || '📊'} **Status:** ${st.label}   ${EMOJI.quest_expires || '📅'} **Expires:** <t:${expiresEpoch}:R> *(${daysLeft}d)*\n\n` +
+                    `${EMOJI.quest_tasks_header || '📋'} **Task**\n${taskLines.join('\n') || '*Unknown*'}\n\n` +
                     `${EMOJI.quest_reward || '🎁'} **Reward**\n${rewardLines.join('\n') || '*No rewards listed*'}`,
                 ),
             );
