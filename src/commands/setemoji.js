@@ -167,9 +167,8 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
             const cacheKey = emojiStore.makeCacheKey(guildId, key);
             emojiStore.cache.delete(cacheKey);
 
-            if (emojiStore.makeCacheKey('global', key)) {
-                emojiStore.cache.delete(`global_${key}`);
-            }
+            const globalCacheKey = emojiStore.makeCacheKey('global', key);
+            emojiStore.cache.delete(globalCacheKey);
 
             const mongoose = (await import('mongoose')).default;
             const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji');
