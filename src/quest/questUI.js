@@ -142,7 +142,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         return { components: [c], flags: MessageFlags.IsComponentsV2 };
     }
 
-    // Clean token string thoroughly (remove quotes, spaces, newlines)
     const token = String(rawToken).trim().replace(/^['"]+|['"]+$/g, '').replace(/\s+/g, '');
 
     let rawQuests;
@@ -208,7 +207,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         };
     });
 
-    // 🛑 PROFESSIONAL NO QUESTS EMPTY STATE
     if (!allQuests.length) {
         const c = new ContainerBuilder().setAccentColor(ACCENT);
         c.addTextDisplayComponents(text(
@@ -225,6 +223,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     
     container.addTextDisplayComponents(text(`# ${EMOJI.quest_header_tool || '🛠️'} ${selected.game}`));
 
+    // FIXED: Using EMOJI.quest_expires instead of default calendar emoji
     let info = `### ${EMOJI.quest_overview_star || '✨'} Quest Overview\n`;
     info += `${EMOJI.quest_gift || '🎁'} **Reward:** ${selected.rewardSummary} ${EMOJI.quest_gift_sparkle || '✨'}\n`;
     info += `${EMOJI.quest_game || '🟢'} **Game:** ${selected.game}\n`;
@@ -252,7 +251,7 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
             taskIcon = EMOJI.quest_task_desktop || '🖥️';
             taskLabel = `Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`;
         } else if (type.includes('WATCH_VIDEO_ON_MOBILE')) {
-            taskIcon = EMOJI.quest_task_mobile || '📱';
+            taskIcon = EMOJI.quest_task_mobile || EMOJI.quest_mobile || '📱'; // FIXED: Using custom mobile task emoji
             taskLabel = `Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`;
         } else if (type.includes('WATCH_VIDEO')) {
             taskIcon = EMOJI.quest_task_video || '🎬';
@@ -267,7 +266,9 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
 
         taskLines.push(`${taskIcon} ${taskLabel}`);
     }
-    container.addTextDisplayComponents(text(`### ${EMOJI.quest_tasks_header || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
+
+    // FIXED: Using EMOJI.quest_task for the Tasks Required header section
+    container.addTextDisplayComponents(text(`### ${EMOJI.quest_task || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
     // BANNER
     const bannerUrl = selected.images?.banner;
