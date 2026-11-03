@@ -223,7 +223,6 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
     const selected = allQuests.find(q => String(q.id) === String(selectedQuestId)) ?? allQuests[0];
     const container = new ContainerBuilder().setAccentColor(ACCENT);
     
-    // Connected with new emojiStore key from emoji.js
     container.addTextDisplayComponents(text(`# ${EMOJI.quest_header_tool || '🛠️'} ${selected.game}`));
 
     let info = `### ${EMOJI.quest_overview_star || '✨'} Quest Overview\n`;
@@ -245,10 +244,28 @@ export async function buildQuestSolverPanel(client, guildId, userId, selectedQue
         if (seenT.has(base)) continue;
         seenT.add(base);
         const t = selected.tasks[type];
-        if (type.includes('PLAY_ON_DESKTOP')) taskLines.push(`${EMOJI.quest_task_desktop || '🖥️'} Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO_ON_MOBILE')) taskLines.push(`${EMOJI.quest_task_mobile || '📱'} Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else if (type.includes('WATCH_VIDEO')) taskLines.push(`${EMOJI.quest_task_video || '🎬'} Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`);
-        else taskLines.push(`${EMOJI.quest_task_generic || '⚙️'} ${type.replace(/_/g, ' ')}`);
+        
+        let taskIcon = EMOJI.quest_task_generic || '⚙️';
+        let taskLabel = type.replace(/_/g, ' ');
+
+        if (type.includes('PLAY_ON_DESKTOP')) {
+            taskIcon = EMOJI.quest_task_desktop || '🖥️';
+            taskLabel = `Play On Desktop for ${Math.ceil((t.target || 900) / 60)} minutes`;
+        } else if (type.includes('WATCH_VIDEO_ON_MOBILE')) {
+            taskIcon = EMOJI.quest_task_mobile || '📱';
+            taskLabel = `Watch Video On Mobile for ${Math.ceil((t.target || 0) / 60)} minutes`;
+        } else if (type.includes('WATCH_VIDEO')) {
+            taskIcon = EMOJI.quest_task_video || '🎬';
+            taskLabel = `Watch Video On Desktop for ${Math.ceil((t.target || 0) / 60)} minutes`;
+        } else if (type.includes('PLAY_ON_XBOX')) {
+            taskIcon = EMOJI.quest_task_generic || '⚙️';
+            taskLabel = 'Play on Xbox';
+        } else if (type.includes('PLAY_ON_PLAYSTATION')) {
+            taskIcon = EMOJI.quest_task_generic || '⚙️';
+            taskLabel = 'Play on PlayStation';
+        }
+
+        taskLines.push(`${taskIcon} ${taskLabel}`);
     }
     container.addTextDisplayComponents(text(`### ${EMOJI.quest_tasks_header || '📋'} Tasks Required:\n${taskLines.join('\n')}`));
 
