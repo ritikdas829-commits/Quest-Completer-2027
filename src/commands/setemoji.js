@@ -32,7 +32,16 @@ export default {
         const key = interaction.options.getString('key')?.toLowerCase().trim();
         const newEmoji = interaction.options.getString('emoji')?.trim();
 
-        await handleEmojiLogic(interaction, guildId, key, newEmoji, true);
+        try {
+            await handleEmojiLogic(interaction, guildId, key, newEmoji, true);
+        } catch (err) {
+            console.error('[SetEmoji Execute Error]:', err);
+            const errEmbed = new EmbedBuilder()
+                .setColor(0xED4245)
+                .setTitle('❌ Execution Error')
+                .setDescription('An error occurred while processing your emoji command.');
+            await interaction.editReply({ embeds: [errEmbed], components: [] }).catch(() => {});
+        }
     },
 
     async prefixExecute(message, args) {
@@ -40,7 +49,11 @@ export default {
         const key = args[0]?.toLowerCase().trim();
         const newEmoji = args[1]?.trim();
 
-        await handleEmojiLogic(message, guildId, key, newEmoji, false);
+        try {
+            await handleEmojiLogic(message, guildId, key, newEmoji, false);
+        } catch (err) {
+            console.error('[SetEmoji Prefix Error]:', err);
+        }
     }
 };
 
@@ -49,7 +62,6 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
     let key = keyInput;
     let newEmoji = newEmojiInput;
 
-    // Check if user wants to reset via prefix command (e.g. ?setemoji reset quest_list)
     let isResetMode = false;
     if (key === 'reset' || key === 'default' || key === 'remove') {
         isResetMode = true;
@@ -61,15 +73,19 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
 
     const emojis = await getEmojis(guildId);
 
-    // 1. Interactive Dropdown menu (Quest UI Category prioritized on top)
+    // 1. Interactive Dropdown menu
     if (!key) {
-        // Ensure "⚔️ Quest Commands UI" is listed FIRST in dropdown
         const categories = Object.keys(EMOJI_CATEGORIES).sort((a, b) => {
             if (a.includes('Quest Commands UI')) return -1;
             if (b.includes('Quest Commands UI')) return 1;
             return 0;
         });
         
+        if (!categories.length) {
+            const errEmbed = new EmbedBuilder().setColor(0xED4245).setTitle('❌ Error').setDescription('No emoji categories found.');
+            return isInteraction ? await target.editReply({ embeds: [errEmbed] }).catch(() => {}) : await target.reply({ embeds: [errEmbed] }).catch(() => {});
+        }
+
         const firstCategory = categories[0];
         const embed = createCategoryEmbed(firstCategory, emojis);
 
@@ -160,20 +176,27 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
             : await target.reply({ embeds: [errEmbed], components: [] }).catch(() => {});
     }
 
-    // 3. Handle Reset / Auto-Remove of Saved Database Custom Text
+    // 3. Handle Reset / Auto-Remove
     if (isResetMode) {
         try {
-            // Delete key from DB to restore default fallback emoji
-            const cacheKey = emojiStore.makeCacheKey(guildId, key);
-            emojiStore.cache.delete(cacheKey);
-
-            const globalCacheKey = emojiStore.makeCacheKey('global', key);
-            emojiStore.cache.delete(globalCacheKey);
+            if (emojiStore && emojiStore.cache) {
+                if (typeof emojiStore.makeCacheKey === 'function') {
+                    emojiStore.cache.delete(emojiStore.makeCacheKey(guildId, key));
+                    emojiStore.cache.delete(emojiStore.makeCacheKey('global', key));
+                } else {
+                    emojiStore.cache.delete(`${guildId}:${key}`);
+                    emojiStore.cache.delete(`global:${key}`);
+                    emojiStore.cache.delete(`${guildId}_${key}`);
+                    emojiStore.cache.delete(`global_${key}`);
+                }
+            }
 
             const mongoose = (await import('mongoose')).default;
             const EmojiModel = mongoose.models.QuestEmoji || mongoose.model('QuestEmoji');
-            await EmojiModel.deleteOne({ guildId, key });
-            await EmojiModel.deleteOne({ guildId: 'global', key });
+            if (EmojiModel) {
+                await EmojiModel.deleteOne({ guildId, key });
+                await EmojiModel.deleteOne({ guildId: 'global', key });
+            }
 
             const freshEmojis = await getEmojis(guildId);
             const defaultEmoji = freshEmojis[key] || '⭐';
@@ -204,7 +227,13 @@ async function handleEmojiLogic(target, guildId, keyInput, newEmojiInput, isInte
     }
 
     // 5. Overwrite Old DB Entry & Save New Emoji Safely
-    const success = await saveEmoji(key, newEmoji, guildId);
+    let success = false;
+    try {
+        success = await saveEmoji(key, newEmoji, guildId);
+    } catch (saveErr) {
+        console.error('Save emoji error:', saveErr);
+        success = false;
+    }
 
     const resultEmbed = new EmbedBuilder();
     if (success) {
