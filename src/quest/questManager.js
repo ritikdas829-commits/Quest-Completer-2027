@@ -1,5 +1,5 @@
 /**
- * questManager.js — Complete Manager with Game Heartbeats, Video Progression & Live Progress Callback
+ * questManager.js — Complete Manager with Smart Active Quest Filtering
  * Location: src/quest/questManager.js
  */
 
@@ -86,6 +86,14 @@ export class QuestManager {
     getClaimable() {
         return this.list().filter((q) => q.isCompleted() && !q.hasClaimedRewards() && !q.isExpired());
     }
+    
+    // 🎯 SMART FILTER: Sirf wahi quests lo jo active hain, incomplete hain, aur valid hain!
+    getActiveIncompleteQuests() {
+        return this.list().filter(
+            (q) => q.id !== EXCLUDED_QUEST_ID && !q.isCompleted() && !q.isExpired()
+        );
+    }
+
     filterQuestsValid() {
         return this.list().filter(
             (q) => q.id !== EXCLUDED_QUEST_ID && !q.isCompleted() && !q.isExpired(),
@@ -246,7 +254,7 @@ export class QuestManager {
                     try {
                         const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, {
                             timestamp: Math.min(secondsNeeded, timestamp + Math.random()),
-                            platform: 0, // ✅ Fixed integer platform
+                            platform: 0,
                         });
                         
                         quest.updateUserStatus(extractStatus(res));
@@ -271,7 +279,7 @@ export class QuestManager {
             try {
                 const finalRes = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/video-progress`, { 
                     timestamp: secondsNeeded,
-                    platform: 0 // ✅ Fixed integer platform
+                    platform: 0 
                 });
                 quest.updateUserStatus(extractStatus(finalRes));
             } catch { /* Best effort */ }
@@ -299,7 +307,7 @@ export class QuestManager {
                         const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
                             stream_key: null, 
                             terminal: true,
-                            platform: 0 // ✅ Fixed integer platform
+                            platform: 0 
                         });
                         quest.updateUserStatus(extractStatus(res));
                     } catch { /* ignore */ }
@@ -310,7 +318,7 @@ export class QuestManager {
                     const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
                         stream_key: null, 
                         terminal: false,
-                        platform: 0 // ✅ Fixed integer platform
+                        platform: 0 
                     });
                     quest.updateUserStatus(extractStatus(res));
                     consecutiveErrors = 0;
@@ -344,7 +352,7 @@ export class QuestManager {
                 const res = await this.client.post(`/quests/${encodeURIComponent(quest.id)}/heartbeat`, { 
                     stream_key: null, 
                     terminal: true,
-                    platform: 0 // ✅ Fixed integer platform
+                    platform: 0 
                 });
                 quest.updateUserStatus(extractStatus(res));
             } catch { /* Best effort */ }
