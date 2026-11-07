@@ -1,5 +1,5 @@
 /**
- * questClient.js — Fully Sanitized & Fixed Authorization Header Logic
+ * questClient.js — Fully Sanitized & Fixed Authorization Header Logic with Safe Rate-Limit Backoff
  * Location: src/quest/questClient.js
  */
 
@@ -10,7 +10,7 @@ const BASE_URL = 'https://discord.com/api/v10';
 const BASE_URL_V9 = 'https://discord.com/api/v9';
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-const MAX_RETRIES = 4;
+const MAX_RETRIES = 5;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RETRY_DELAY_MS = 60_000;
 
@@ -19,19 +19,23 @@ function sleep(ms) {
 }
 
 function getRetryDelay(response, attempt) {
-    const retryAfter = Number(response.headers.get('retry-after'));
+    let retryAfter = null;
+    try {
+        const headerVal = response.headers.get('retry-after');
+        if (headerVal) retryAfter = Number(headerVal);
+    } catch {}
 
     if (Number.isFinite(retryAfter) && retryAfter >= 0) {
         return Math.min(
-            retryAfter * 1000,
+            (retryAfter * 1000) + 1000, // Safe buffer extra 1 second
             MAX_RETRY_DELAY_MS
         );
     }
 
-    return Math.min(
-        1000 * (2 ** attempt),
-        MAX_RETRY_DELAY_MS
-    );
+    // Exponential backoff with jitter to prevent simultaneous hammering
+    const baseDelay = 2000 * (2 ** attempt);
+    const jitter = Math.random() * 1000;
+    return Math.min(baseDelay + jitter, MAX_RETRY_DELAY_MS);
 }
 
 async function readResponse(response) {
@@ -79,7 +83,6 @@ export class QuestClient {
             );
         }
 
-        // 🎯 FIX 1: Clean quotes, whitespaces, and newlines from token string
         this.#token = userToken
             .trim()
             .replace(/^['"]+|['"]+$/g, '')
@@ -87,7 +90,6 @@ export class QuestClient {
     }
 
     #buildHeaders() {
-        // 🎯 FIX 2: Optimized Discord Client Native Headers
         const headers = {
             'Authorization':      this.#token,
             'Content-Type':       'application/json',
@@ -169,12 +171,7 @@ export class QuestClient {
                 });
             } catch (error) {
                 if (attempt < MAX_RETRIES) {
-                    await sleep(
-                        Math.min(
-                            1000 * (2 ** attempt),
-                            MAX_RETRY_DELAY_MS
-                        )
-                    );
+                    await sleep(1000 * (2 ** attempt));
                     continue;
                 }
 
@@ -185,13 +182,14 @@ export class QuestClient {
 
             if (response.status === 429) {
                 const delay = getRetryDelay(response, attempt);
+                console.warn(`⚠️ Rate limited (429) on ${path}. Retrying in ${Math.round(delay / 1000)}s (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+                
                 if (attempt < MAX_RETRIES) {
                     await sleep(delay);
                     continue;
                 }
 
                 const payload = await readResponse(response);
-
                 throw createHttpError(
                     response.status,
                     payload,
